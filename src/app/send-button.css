@@ -1,0 +1,33 @@
+/* Hallmark · component: send button · genre: modern-minimal · theme: existing CHECKUMAIT
+ * states: default · hover · focus · active · disabled · loading · error · success
+ * contrast: pass (46–50)
+ * pre-emit critique: P5 H5 E5 S5 R5 V4
+ */
+.send-circle{
+  position:relative;
+  flex:0 0 auto;
+  width:36px;
+  height:36px;
+  display:grid;
+  place-items:center;
+  padding:0;
+  border:1px solid var(--ink);
+  border-radius:50%;
+  background:var(--ink);
+  color:var(--white);
+}
+.send-circle::before{content:"";position:absolute;inset:-4px;border-radius:50%}
+.send-circle svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+@media (hover:hover){.send-circle:hover,.send-circle.is-hover{background:var(--brand);border-color:var(--brand)}}
+.send-circle:focus-visible,.send-circle.is-focus{outline:2px solid var(--brand);outline-offset:3px}
+.send-circle:active,.send-circle.is-active{transform:scale(.94);background:var(--brand-dark);border-color:var(--brand-dark)}
+.send-circle:disabled{opacity:1;border-color:var(--line);background:var(--line);color:var(--muted);cursor:not-allowed}
+.send-circle[data-state="loading"]{cursor:wait}
+.send-circle[data-state="loading"] svg{opacity:.55}
+.send-circle[data-state="error"]{border-color:var(--red);background:var(--red)}
+.send-circle[data-state="success"]{border-color:var(--brand);background:var(--brand)}
+.chat-composer textarea{padding-right:50px}
+.floating-chat>footer{align-items:center}
+.floating-chat>footer .send-circle{width:36px;height:36px;border-radius:50%;background:var(--ink);color:var(--white)}
+.floating-chat>footer .send-circle:disabled{border-color:var(--line);background:var(--line);color:var(--muted)}
+.send-button-preview{display:flex;align-items:center;gap:12px;padding:20px;background:var(--white)}

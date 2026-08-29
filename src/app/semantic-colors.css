@@ -1,0 +1,59 @@
+/* CHECKUMAIT neutral semantic color system. */
+html,body,.app-shell,.main-area,.sidebar,.main-area:has(.expense-detail-page),.main-area:has(.expense-detail-redesign){background:#fcfcfc}
+.topbar{background:rgba(252,252,252,.94)}
+.chat-page,.page:has(.rules-overview){max-width:1320px}
+.summary-card,.panel,.table-panel,.card,.calendar-card,.chat-workspace,.rules-overview,.v3-ai-card,.v3-rule-row,.v4-stage-card,.v4-progress-card{border-color:#e5e5e5;background:#fff;box-shadow:var(--shadow)}
+.outline,.icon-button,.more-square,.search-box,input,textarea,select{border-color:#e5e5e5;color:#171717}
+.primary{border-color:#176b5b;background:#176b5b}.primary:hover{border-color:#125447;background:#125447}
+.side-nav button{color:#666}.side-nav button:hover,.side-nav button.active{background:#f2f2f2;color:#171717}.side-nav button.active svg{color:#176b5b}
+.status-safe{border-color:#cfe5db;background:#eef7f3;color:#176b5b}.status-warn,.status-action{border-color:#f1d7a8;background:#fff5e6;color:#b96900}.status-risk{border-color:#f3caca;background:#fff1f1;color:#c23b3b}
+.v3-ai-comment,.ai-comment,.compact-comment{border-color:#cfe5db!important;background:#eef7f3!important}.v3-ai-comment b,.v3-ai-comment>svg,.ai-comment b,.ai-comment>svg{color:#176b5b!important}.v3-ai-comment p,.ai-comment p{color:#171717!important}
+.v3-action-chip,.result-action-count{border-color:#f1d7a8!important;background:#fff5e6!important;color:#b96900!important}
+.v3-section-heading h2,.v3-ai-copy h3,.v3-process-heading h2,.v4-stage-name>b,.v4-progress-card h3,.v4-check-list b{color:#171717}
+.v3-section-heading p,.v3-ai-copy>p,.v3-process-heading p,.v4-stage-name>small,.v4-check-list small,.v4-stage-card>footer,.v4-progress-card li small{color:#666}
+
+/* Final expense-plan typography overrides */
+.plans-v2-metrics small{font-size:13px}
+.plans-v2-metrics b{font-size:26px}
+.plans-v2-tabs button{font-size:14px}
+.plans-v2-search input,.plans-v2-tools .outline{font-size:13px}
+.plans-v2-head,.plans-v2-row{grid-template-columns:34px minmax(145px,1.1fr) minmax(180px,1.35fr) 108px 112px 124px 120px 122px 32px}
+.plans-v2-head{min-height:50px;font-size:12px}
+.plans-v2-row{min-height:76px}
+.plans-v2-row>b,.plans-v2-row>strong{font-size:14px}
+.plans-v2-row>span{font-size:13px}
+.plans-v2-row>.status{font-size:12.5px}
+.plans-v2-row>em{font-size:12.5px}
+.plans-v2-row>time{font-size:12px}
+.plans-v2-table>footer{font-size:12px}
+
+/* Global inset outline buttons */
+.outline{border:1px solid #dfe3e1!important;box-shadow:none!important;outline:none!important}
+.outline:hover{border-color:#d4dad7!important;box-shadow:none!important;outline:none!important}
+.outline:focus,.outline:focus-visible{border-color:#cfd8d4!important;box-shadow:none!important;outline:none!important}
+.app-shell button,.onboarding-landing button,.onboarding-setup button{box-shadow:none!important;outline:none!important}
+.app-shell button:focus-visible,.onboarding-landing button:focus-visible,.onboarding-setup button:focus-visible{box-shadow:none!important;outline:none!important}
+.app-shell button:not(.primary):not(.selected):not(.active),.onboarding-landing button:not(.primary):not(.selected):not(.active),.onboarding-setup button:not(.primary):not(.selected):not(.active),label.outline{border-color:#dfe3e1!important}
+
+/* Standard text CTAs share one control height across onboarding and the app. */
+.primary:not(.small),.outline:not(.small),label.outline:not(.small){height:40px!important;min-height:40px!important}
+
+/* Readability across main product pages */
+.chat-context span{font-size:12px}.chat-context b{font-size:14px}.chat-context p{font-size:13px}
+.message p{font-size:14px}.quick-prompts button{font-size:12px}.chat-composer textarea{font-size:14px}
+.schedule-v2-breadcrumb{font-size:12px}.schedule-v2-metrics small{font-size:13px}.schedule-v2-metrics b{font-size:27px}
+.schedule-v2-calendar>header h2{font-size:20px}.schedule-v2-week span{font-size:11px}.schedule-v2-grid>div>span{font-size:12px}.schedule-v2-grid>div>button{font-size:10.5px}
+.schedule-v2-upcoming h2{font-size:17px}.schedule-v2-upcoming time b{font-size:13px}.schedule-v2-upcoming time small{font-size:10px}.schedule-v2-upcoming label>span b{font-size:13px}.schedule-v2-upcoming label>span small{font-size:11px}.schedule-v2-upcoming label>em{font-size:10.5px}
+.rules-overview b{font-size:12px}.rules-overview h2{font-size:20px}.rules-overview p{font-size:13px}
+.rule-library article b{font-size:14px}.rule-library article small{font-size:12px}.auto-badge,.institution-badge{font-size:11px}.strict-table>div:not(.card-head){font-size:13px}.strict-table .strict-head{font-size:11.5px}.rule-caution p{font-size:12.5px}
+.detail-top h1{font-size:31px;font-weight:760}.detail-top p{font-size:14px}.breadcrumb{font-size:12px}.stepper{font-size:13px}
+.form-card h2{font-size:20px}.section-copy{font-size:13px}.field-grid label{position:relative;font-size:13px}.field-grid input,.field-grid textarea,.field-grid select{font-size:14px}.file-drop span{font-size:12px}.category-grid button{font-size:13px}.question{font-size:13px}.question button{font-size:12px}.info-note,.auto-check-note span{font-size:12px}
+.field-grid .file-field{min-height:126px;display:flex;align-items:flex-start;flex-direction:column;gap:8px;padding:16px;border:1px dashed #d9dddb;border-radius:6px;background:#fcfcfc}
+.field-grid .file-field>.field-label{color:var(--text);font-size:13px;font-weight:650}
+.field-grid .file-field>small{color:var(--muted);font-size:12px;font-weight:400;line-height:1.5}
+.field-grid .file-field>button{min-width:110px;height:40px;margin-top:4px;padding:0 14px;border:1px solid #dfe3e1;border-radius:5px;background:#fff;white-space:nowrap}
+.field-label{display:inline-flex;align-items:baseline;gap:3px;width:max-content}
+.required-mark{position:static;display:inline!important;color:#c23b3b;font-size:14px;font-style:normal;font-weight:800;line-height:1}
+.expense-v5-header>p{font-size:13px}.expense-v5-card h2{font-size:18px}.expense-v5-plan-grid dt{font-size:13px}.expense-v5-plan-grid dd{font-size:14px}.expense-v5-file-row>span{font-size:13px}.expense-v5-file-row li b{font-size:13px}.expense-v5-file-row li small{font-size:11px}
+.expense-v5-ai-comment b{font-size:13px}.expense-v5-ai-comment small{font-size:12.5px}.expense-v5-rules summary small{font-size:12px}.expense-v5-rule-list article b{font-size:13px}.expense-v5-rule-list article small{font-size:11px}.expense-v5-rule-list article p{font-size:12px}
+.expense-v5-prep>header p{font-size:12px}.expense-v5-prep-grid h3{font-size:15px}.expense-v5-prep-grid header small{font-size:11px}.expense-v5-checks b{font-size:13px}.expense-v5-checks small{font-size:11.5px}.expense-v5-checks em{font-size:10px}
