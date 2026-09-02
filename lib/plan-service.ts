@@ -17,6 +17,29 @@ function normalizePlans(plans: ExpensePlan[]): ExpensePlan[] {
   });
 }
 
+function normalizeSchedules(items: ScheduleItem[]): ScheduleItem[] {
+  const normalized = items.map((item) => {
+    const legacyState = item.state as string;
+    if (legacyState !== "예정") return item;
+    return {
+      ...item,
+      state: item.type === "집행" ? "집행 예정" : "준비 필요",
+    } as ScheduleItem;
+  });
+  const executionRows = INITIAL_SCHEDULES.filter(
+    (item) => item.type === "집행",
+  );
+  return [
+    ...normalized,
+    ...executionRows.filter(
+      (row) =>
+        !normalized.some(
+          (item) => item.planId === row.planId && item.type === "집행",
+        ),
+    ),
+  ];
+}
+
 function read<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
   const value = window.localStorage.getItem(key);
@@ -32,6 +55,7 @@ function write<T>(key: string, value: T) {
 export const planService = {
   listPlans: () => Promise.resolve(normalizePlans(read(PLAN_KEY, INITIAL_PLANS))),
   savePlans: (plans: ExpensePlan[]) => { write(PLAN_KEY, plans); return Promise.resolve(plans); },
-  listSchedules: () => Promise.resolve(read(SCHEDULE_KEY, INITIAL_SCHEDULES)),
+  listSchedules: () =>
+    Promise.resolve(normalizeSchedules(read(SCHEDULE_KEY, INITIAL_SCHEDULES))),
   saveSchedules: (items: ScheduleItem[]) => { write(SCHEDULE_KEY, items); return Promise.resolve(items); },
 };

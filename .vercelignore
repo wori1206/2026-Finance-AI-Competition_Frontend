@@ -1,0 +1,14 @@
+# ChatGPT 캔버스(Cloudflare Workers) 전용 — Vercel 배포에는 불필요
+worker
+db
+examples
+drizzle
+build
+scripts
+tests
+.openai
+vite.config.ts
+drizzle.config.ts
+package.json.cloudflare.bak
+.sites-runtime
+.wrangler
