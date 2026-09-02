@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { INITIAL_PLANS } from "../lib/mock-data";
 import { planService } from "../lib/plan-service";
 import type {
@@ -8,6 +8,12 @@ import type {
   PlanStatus,
   ScheduleItem,
 } from "../lib/types";
+import { API켜짐 } from "../lib/config";
+import { 판정실행 } from "../lib/judge";
+import { 정규화하기 } from "../lib/normalize";
+import { 비목목록, 계획추가 } from "../lib/api";
+import { 체크저장 } from "../lib/tasks";
+import { 상세를계획으로 } from "../lib/adapt";
 import { SendButton } from "./send-button";
 import "./detail-refinement.css";
 
@@ -203,6 +209,9 @@ const navItems = [
   { page: "rules", label: "마이페이지", icon: "user" },
 ] as const;
 
+/** 🔴 서버는 「2026 」 연도 접두사를 알아서 벗깁니다 (corpus.programs 별칭). */
+const 현재사업 = "2026 초기창업패키지";
+
 const EXPENSE_CATEGORIES = [
   "재료비",
   "외주용역비",
@@ -236,6 +245,22 @@ const FEE_SUBTYPES = [
 ] as const;
 
 type CheckQuestion = { label: string; options?: string[] };
+
+/**
+ * 🔴 서버 비목 라벨과 이 파일의 질문표 키가 다릅니다.
+ *      서버 `기계장치`  ↔ 질문표 `기계장치비`
+ *      서버 `특허권등무형자산취득비` ↔ 질문표 `특허권 등 무형자산 취득비`
+ *    공백을 접고 앞부분이 겹치면 같은 것으로 봅니다. 못 찾으면 빈 배열입니다.
+ */
+function 질문찾기(라벨: string): CheckQuestion[] {
+  const 접기 = (x: string) => x.replace(/\s/g, "");
+  const 키 = 접기(라벨.split(" · ")[0]);
+  const 후보 = Object.keys(CATEGORY_QUESTIONS);
+  const 맞는것 =
+    후보.find((k) => 접기(k) === 키) ??
+    후보.find((k) => 접기(k).startsWith(키) || 키.startsWith(접기(k)));
+  return 맞는것 ? CATEGORY_QUESTIONS[맞는것] : [];
+}
 
 const CATEGORY_QUESTIONS: Record<string, CheckQuestion[]> = {
   재료비: [
@@ -1370,18 +1395,99 @@ function HomePage({
   );
 }
 
-function AiCheckingOverlay({ count, onComplete }: { count: number; onComplete: () => void }) {
+function AiCheckingOverlay({
+  count,
+  planId,
+  대체입력,
+  onComplete,
+  onFail,
+}: {
+  count: number;
+  /** 주면 «진짜» 판정을 부릅니다. 없으면 예전처럼 연출만 합니다. */
+  planId?: string;
+  /** 방금 만든 계획처럼 상세 조회가 실패할 수 있을 때의 대비 값 */
+  대체입력?: {
+    사업명?: string | null;
+    확정비목?: string | null;
+    정규화?: Record<string, unknown> | null;
+    제목?: string | null;
+    용도?: string | null;
+    금액?: number | null;
+  };
+  onComplete: (판정된계획?: ExpensePlan) => void;
+  onFail?: (메시지: string) => void;
+}) {
   const [stage, setStage] = useState(0);
+  const [설명, set설명] = useState("");
+  const 진행중 = useRef<Promise<{ 계획: ExpensePlan }> | null>(null);
+
   useEffect(() => {
-    const first = window.setTimeout(() => setStage(1), 900);
-    const second = window.setTimeout(() => setStage(2), 1800);
-    const done = window.setTimeout(onComplete, 2700);
+    // ── 연출 경로 (백엔드 없음 / 계획 지정 안 함) ──
+    if (!planId || !API켜짐()) {
+      const first = window.setTimeout(() => setStage(1), 900);
+      const second = window.setTimeout(() => setStage(2), 1800);
+      const done = window.setTimeout(() => onComplete(), 2700);
+      return () => {
+        window.clearTimeout(first);
+        window.clearTimeout(second);
+        window.clearTimeout(done);
+      };
+    }
+
+    // ── 진짜 판정 경로 ──
+    //
+    // 🔴 판정 1건이 GPU 호출이라 «한 번만» 부릅니다. 자동 재시도 없음.
+    //
+    // 🔴 개발 모드(`npm run dev`)에서 React 는 effect 를 «두 번» 실행합니다
+    //    (StrictMode: 마운트 → 정리 → 다시 마운트). 그래서
+    //      · 정리에서 요청을 끊으면  → 첫 호출이 죽고
+    //      · 「한 번만」 가드로 막으면 → 두 번째가 안 돌아
+    //    영원히 기다리게 됩니다. 그래서 «요청을 끊지 않고» 약속(Promise)을
+    //    보관해 두었다가, 다시 마운트되면 그 약속에 그대로 매답니다.
+    let 살아있음 = true;
+
+    if (!진행중.current) {
+      진행중.current = 판정실행(
+        planId,
+        {
+          진행: (문구) => {
+            // 언마운트 뒤 호출돼도 React 18+ 에서는 무해합니다 (경고 없음)
+            set설명(문구);
+            setStage((s) => Math.min(2, s + 1));
+          },
+        },
+        { 대체입력 },
+      );
+    }
+
+    // 🔴 안전장치 — 어떤 이유로도 «영원히» 도는 일이 없게 합니다.
+    //    실판정이 40초 안팎이라 3분이면 넉넉합니다.
+    const 시간초과 = window.setTimeout(() => {
+      if (!살아있음) return;
+      진행중.current = null;
+      onFail?.("점검이 예상보다 오래 걸립니다. 잠시 후 다시 시도해 주세요.");
+    }, 180000);
+
+    진행중.current
+      .then((r) => {
+        window.clearTimeout(시간초과);
+        if (살아있음) onComplete(r.계획);
+      })
+      .catch((e: unknown) => {
+        window.clearTimeout(시간초과);
+        if (!살아있음) return;
+        진행중.current = null;          // 다음 시도는 새로 부를 수 있게
+        const 메시지 = e instanceof Error ? e.message : "점검에 실패했습니다";
+        if (onFail) onFail(메시지);
+        else onComplete();
+      });
+
     return () => {
-      window.clearTimeout(first);
-      window.clearTimeout(second);
-      window.clearTimeout(done);
+      살아있음 = false;
+      window.clearTimeout(시간초과);
     };
-  }, [onComplete]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planId]);
   return (
     <div className="ai-checking-backdrop">
       <section className="ai-checking-modal" role="dialog" aria-modal="true" aria-labelledby="ai-checking-title">
@@ -1392,7 +1498,7 @@ function AiCheckingOverlay({ count, onComplete }: { count: number; onComplete: (
           <i className="ai-check-spark ai-check-spark-two"><Icon name="sparkSolid" size={7} /></i>
         </span>
         <h2 id="ai-checking-title">AI가 지출 계획{count > 1 ? ` ${count}건을` : "을"} 점검하고 있어요</h2>
-        <p>비목, 확인 항목, 필요 증빙을 정리하고 있습니다. 잠시만 기다려주세요.</p>
+        <p>{설명 || "비목, 확인 항목, 필요 증빙을 정리하고 있습니다. 잠시만 기다려주세요."}</p>
         <div className="ai-checking-steps">
           {["기본 정보 확인", "비목 분류", "확인 항목 정리"].map((label, index) => (
             <span className={index <= stage ? "active" : ""} key={label}><i /><b>{label}</b></span>
@@ -1415,10 +1521,15 @@ function PlanRecheckQuestionsModal({
 }) {
   const category = plan.category.split(" · ")[0];
   const feeSubtype = plan.category.split(" · ")[1] || "멘토링";
+  // 🔴 서버 비목 라벨(「기계장치」)도 질문표(「기계장치비」)에 맞게 찾습니다.
+  //    그냥 대괄호로 찾으면 못 찾고 «외주용역비 질문» 으로 조용히 떨어집니다.
+  const 찾은질문 = 질문찾기(category);
   const questions =
     category === "지급수수료"
       ? FEE_QUESTIONS[feeSubtype] || FEE_QUESTIONS["멘토링"]
-      : CATEGORY_QUESTIONS[category] || CATEGORY_QUESTIONS["외주용역비"];
+      : 찾은질문.length
+        ? 찾은질문
+        : CATEGORY_QUESTIONS["외주용역비"];
   return (
     <div className="ai-checking-backdrop" role="presentation">
       <section className="plan-recheck-modal" role="dialog" aria-modal="true" aria-labelledby="plan-recheck-title">
@@ -2014,6 +2125,13 @@ function NewPlanPage({
   const [questionsLoading, setQuestionsLoading] = useState(false);
   const [checking, setChecking] = useState(false);
   const [pendingPlan, setPendingPlan] = useState<ExpensePlan | null>(null);
+  // ── 서버 연동 상태 ──
+  const [서버비목, set서버비목] = useState<string[] | null>(null);
+  const [서버추천, set서버추천] = useState<string | null>(null);
+  const [서버정규화, set서버정규화] = useState<Record<string, unknown> | null>(null);
+  const [새planId, set새planId] = useState<string | null>(null);
+  const [저장중, set저장중] = useState(false);
+  const [연동오류, set연동오류] = useState<string | null>(null);
   const recommendation = useMemo(
     () =>
       name.includes("노트북") || name.includes("카메라")
@@ -2041,19 +2159,73 @@ function NewPlanPage({
                         : "외주용역비",
     [name],
   );
+  // 🔴 비목 라벨을 화면에 박아 넣지 않습니다 — `/api/vocab` 이 정본입니다.
+  //    (서버가 「기계장치」를 주고, 프론트의 「기계장치비」는 원문에 없는 말입니다)
+  useEffect(() => {
+    if (!API켜짐()) return;
+    let 살아있음 = true;
+    비목목록(현재사업)
+      .then((r) => {
+        if (살아있음 && Array.isArray(r.비목) && r.비목.length) set서버비목(r.비목);
+      })
+      .catch(() => {});
+    return () => {
+      살아있음 = false;
+    };
+  }, []);
+
+  const 비목선택지: readonly string[] = 서버비목 ?? EXPENSE_CATEGORIES;
+  const 표시추천 = 서버추천 ?? recommendation;
   const questions =
-    category === "지급수수료"
-      ? FEE_QUESTIONS[feeSubtype]
-      : CATEGORY_QUESTIONS[category];
+    category === "지급수수료" ? FEE_QUESTIONS[feeSubtype] : 질문찾기(category);
   useEffect(() => {
     if (!categoryLoading) return;
-    const timer = window.setTimeout(() => {
-      setCategory(recommendation);
-      setStep(2);
-      setCategoryLoading(false);
-    }, 1600);
-    return () => window.clearTimeout(timer);
-  }, [categoryLoading, recommendation]);
+
+    // ── 백엔드 없음 → 예전 연출 그대로 ──
+    if (!API켜짐()) {
+      const timer = window.setTimeout(() => {
+        setCategory(recommendation);
+        setStep(2);
+        setCategoryLoading(false);
+      }, 1600);
+      return () => window.clearTimeout(timer);
+    }
+
+    // ── 서버 정규화 ──
+    let 살아있음 = true;
+    set연동오류(null);
+    정규화하기({
+      품목: name,
+      금액: Number(amount.replace(/,/g, "")) || 0,
+      용도: purpose,
+      집행예정일: date || undefined,
+      거래처: vendor || undefined,
+      사업명: 현재사업,
+    })
+      .then((r) => {
+        if (!살아있음) return;
+        set서버정규화(r.정규화);
+        const 첫후보 = r.비목후보[0]?.비목;
+        // 🔴 후보가 «비어 있는 것도 정상» 입니다 (실서버 폼 경로). 그때는 사용자가 고릅니다.
+        if (첫후보) {
+          set서버추천(첫후보);
+          setCategory(첫후보);
+        }
+      })
+      .catch((e: unknown) => {
+        if (!살아있음) return;
+        set연동오류(e instanceof Error ? e.message : "정리에 실패했습니다");
+      })
+      .finally(() => {
+        if (!살아있음) return;
+        setStep(2);          // 실패해도 다음 단계로 — 사용자가 직접 고르면 됩니다
+        setCategoryLoading(false);
+      });
+    return () => {
+      살아있음 = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categoryLoading]);
   useEffect(() => {
     if (!questionsLoading) return;
     const timer = window.setTimeout(() => {
@@ -2096,11 +2268,54 @@ function NewPlanPage({
         : `${categoryLabel}로 분류했습니다. 입력한 목적과 금액을 바탕으로 결제 전 확인할 항목과 증빙을 정리했습니다.`,
     };
   };
+  /** 서버에 계획을 만들고 plan_id 를 돌려줍니다. */
+  const 서버에저장 = () =>
+    계획추가({
+      사업명: 현재사업,
+      품목: name,
+      금액: Number(amount.replace(/,/g, "")) || 0,
+      용도: purpose || "사업 수행을 위한 지출",
+      제목: name,
+      집행예정일: date || undefined,
+      거래처: vendor || undefined,
+      // 🔴 화면 9 에서 «사용자가 확정한» 비목입니다. 서버가 enum 10종으로 검증합니다.
+      확정비목: category.split(" · ")[0],
+      정규화: 서버정규화 ?? undefined,
+    });
+
   const submit = () => {
-    setPendingPlan(buildPlan(false));
-    setChecking(true);
+    if (!API켜짐()) {
+      setPendingPlan(buildPlan(false));
+      setChecking(true);
+      return;
+    }
+    set저장중(true);
+    set연동오류(null);
+    서버에저장()
+      .then((d) => {
+        set새planId(String(d.plan_id));
+        setPendingPlan(상세를계획으로(d));
+        setChecking(true);
+      })
+      .catch((e: unknown) => {
+        set연동오류(e instanceof Error ? e.message : "저장하지 못했습니다");
+      })
+      .finally(() => set저장중(false));
   };
-  const saveDraft = () => save(buildPlan(true), true);
+
+  const saveDraft = () => {
+    if (!API켜짐()) {
+      save(buildPlan(true), true);
+      return;
+    }
+    set저장중(true);
+    서버에저장()
+      .then((d) => save(상세를계획으로(d), true))
+      .catch((e: unknown) => {
+        set연동오류(e instanceof Error ? e.message : "임시저장하지 못했습니다");
+      })
+      .finally(() => set저장중(false));
+  };
   return (
     <div className="page narrow">
       <header className="detail-top new-plan-header">
@@ -2231,14 +2446,14 @@ function NewPlanPage({
               선택했습니다. 직접 변경할 수 있습니다.
             </p>
             <div className="category-grid">
-              {EXPENSE_CATEGORIES.map((item) => (
+              {비목선택지.map((item) => (
                 <button
                   key={item}
-                  className={`${category === item ? "selected" : ""} ${recommendation === item ? "recommended" : ""}`}
+                  className={`${category === item ? "selected" : ""} ${표시추천 === item ? "recommended" : ""}`}
                   onClick={() => setCategory(item)}
                 >
                   <span>{item}</span>
-                  {recommendation === item && (
+                  {표시추천 === item && (
                     <em>
                       <Icon name="sparkSolid" size={11} />
                       AI 추천
@@ -2301,6 +2516,11 @@ function NewPlanPage({
           </>
         )}
       </section>
+      {연동오류 && (
+        <p className="section-copy" style={{ color: "var(--red, #c23b3b)" }}>
+          {연동오류}
+        </p>
+      )}
       <footer className="form-actions">
         <button
           className="outline"
@@ -2309,12 +2529,12 @@ function NewPlanPage({
         >
           {step === 1 ? "취소" : "이전"}
         </button>
-        <button className="outline draft-save" onClick={saveDraft} disabled={categoryLoading || questionsLoading}>
+        <button className="outline draft-save" onClick={saveDraft} disabled={categoryLoading || questionsLoading || 저장중}>
           임시저장
         </button>
         <button
           className="primary"
-          disabled={categoryLoading || questionsLoading || (step === 1 && (!name || !purpose || !amount))}
+          disabled={categoryLoading || questionsLoading || 저장중 || (step === 1 && (!name || !purpose || !amount))}
           onClick={() => {
             if (step === 1) {
               setCategoryLoading(true);
@@ -2330,10 +2550,27 @@ function NewPlanPage({
         </button>
       </footer>
       {checking && pendingPlan && (
-        <AiCheckingOverlay count={1} onComplete={() => {
-          setChecking(false);
-          save(pendingPlan);
-        }} />
+        <AiCheckingOverlay
+          count={1}
+          planId={새planId ?? undefined}
+          대체입력={{
+            사업명: 현재사업,
+            확정비목: category.split(" · ")[0],
+            정규화: 서버정규화,
+            제목: name,
+            용도: purpose,
+            금액: Number(amount.replace(/,/g, "")) || 0,
+          }}
+          onFail={(메시지) => {
+            setChecking(false);
+            set연동오류(메시지);
+            save(pendingPlan);      // 저장은 됐으니 목록으로는 보냅니다
+          }}
+          onComplete={(판정된계획) => {
+            setChecking(false);
+            save(판정된계획 ?? pendingPlan);
+          }}
+        />
       )}
       {(categoryLoading || questionsLoading) && (
         <div className="category-analysis-backdrop">
@@ -2438,6 +2675,8 @@ function PlanDetail({
       </div>
     );
   const toggle = (group: "aiChecks" | "evidence", id: string) => {
+    const 이전 = plan;
+    const 켜짐 = !plan[group].find((item) => item.id === id)?.done;
     const items = plan[group].map((item) =>
       item.id === id ? { ...item, done: !item.done } : item,
     );
@@ -2453,7 +2692,14 @@ function PlanDetail({
               : plan.nextAction
           : plan.nextAction,
     };
+    // 화면은 «먼저» 바꿉니다 — 체크박스가 뻑뻑하면 안 됩니다.
     update(next);
+
+    // 그 다음 서버에 저장하고, 실패하면 되돌립니다.
+    체크저장(plan.id, id, 켜짐).catch((e: unknown) => {
+      update(이전);
+      notify(e instanceof Error ? e.message : "저장하지 못했습니다");
+    });
   };
   const saveScheduleChecks = (
     items: { id: string; label: string; date: string }[],
@@ -2983,18 +3229,28 @@ function PlanDetail({
       {rechecking && (
         <AiCheckingOverlay
           count={1}
-          onComplete={() => {
-            const status: PlanStatus =
-              plan.category.startsWith("광고선전비")
-                ? "특이사항 없음"
-                : "확인 필요";
-            update({
-              ...plan,
-              status,
-              previousStatus: undefined,
-              nextAction: status === "특이사항 없음" ? "집행 준비" : "추가정보 확인",
-              updatedAt: "2026.08.31 방금 전",
-            });
+          planId={API켜짐() ? plan.id : undefined}
+          onFail={(메시지) => {
+            setRechecking(false);
+            notify(메시지);
+          }}
+          onComplete={(판정된계획) => {
+            if (판정된계획) {
+              // 🔴 서버가 판정·할일·근거를 다 채워서 돌려준 계획입니다
+              update(판정된계획);
+            } else {
+              const status: PlanStatus =
+                plan.category.startsWith("광고선전비")
+                  ? "특이사항 없음"
+                  : "확인 필요";
+              update({
+                ...plan,
+                status,
+                previousStatus: undefined,
+                nextAction: status === "특이사항 없음" ? "집행 준비" : "추가정보 확인",
+                updatedAt: "2026.08.31 방금 전",
+              });
+            }
             setRechecking(false);
             notify("변경된 내용으로 AI 재점검을 완료했습니다.");
           }}
