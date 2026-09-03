@@ -14,7 +14,8 @@ import { 정규화하기 } from "../lib/normalize";
 import { 비목목록, 계획추가 } from "../lib/api";
 import { 체크저장 } from "../lib/tasks";
 import { 인증켜짐, 로그인 as supabase로그인, 로그아웃 as supabase로그아웃 } from "../lib/supabase";
-import { 상세를계획으로 } from "../lib/adapt";
+import { 상세를계획으로, 판정제목, 행동문구 } from "../lib/adapt";
+import { 데모시작, 데모종료, 데모중 } from "../lib/session";
 import { 선택사업, 사업저장, 사업선택지, 목록에맞추기, 기본사업 } from "../lib/program";
 import { 협약읽기, 협약쓰기, 값있음, 원, 날짜표기, type 협약정보 } from "../lib/profile";
 import { SendButton } from "./send-button";
@@ -203,6 +204,14 @@ function Icon({ name, size = 19 }: { name: string; size?: number }) {
     </svg>
   );
 }
+
+/**
+ * 🔴 AI 챗봇(화면 12)을 «끕니다» — 2026-09-03 백엔드 확정: 이번 제출 범위 밖입니다.
+ *    서버 엔드포인트 20개에 챗봇용이 없어서, 열어두면 심사위원이 화면에 박아 둔
+ *    답변을 «AI 답변으로» 읽게 됩니다. 그게 제일 나쁜 결과라는 데 양쪽이 동의했습니다.
+ *    나중에 API 가 생기면 이 한 줄만 true 로 되돌리면 화면이 그대로 살아납니다.
+ */
+const 챗봇_켬 = false;
 
 const navItems = [
   { page: "home", label: "홈", icon: "home" },
@@ -486,6 +495,12 @@ function BrandWord() {
 export default function CheckumaitApp() {
   const 사업 = use사업();
   const [signedIn, setSignedIn] = useState(false);
+  // 🔴 localStorage 를 첫 그림에서 읽으면 서버 HTML 과 어긋납니다 — 붙은 뒤에 읽습니다.
+  //    (`signedIn` 아래에 있어야 합니다 — 위에 두면 선언 전 참조로 터집니다)
+  const [데모기관, set데모기관] = useState<string | null>(null);
+  useEffect(() => {
+    set데모기관(데모중()?.기관명 ?? null);
+  }, [signedIn]);
   const [route, setRoute] = useState<AppRoute>({ page: "home" });
   const [plans, setPlans] = useState<ExpensePlan[]>(INITIAL_PLANS);
   const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
@@ -573,7 +588,9 @@ export default function CheckumaitApp() {
           <strong><BrandWord /></strong>
         </button>
         <nav className="side-nav" aria-label="주요 메뉴">
-          {navItems.map((item) => (
+          {navItems
+            .filter((item) => 챗봇_켬 || item.page !== "ai-chat")
+            .map((item) => (
             <button
               key={item.page}
               className={`${activePage === item.page ? "active" : ""} ${item.page === "rules" ? "nav-separated" : ""}`}
@@ -586,9 +603,10 @@ export default function CheckumaitApp() {
         </nav>
         <div className="side-bottom">
           <section className="project-mini">
-            <span>참여 중인 프로젝트</span>
+            <span>{데모기관 ? "둘러보기" : "참여 중인 프로젝트"}</span>
             <b>{사업}</b>
-            <small>건국대학교 창업지원센터 · D-129</small>
+            {/* 🔴 데모 세션은 «누를 때마다 새 기관» 입니다. 건국대로 보이면 안 됩니다. */}
+            <small>{데모기관 ?? "건국대학교 창업지원센터 · D-129"}</small>
           </section>
           <div className="account-row">
             <button
@@ -615,6 +633,7 @@ export default function CheckumaitApp() {
                   className="danger"
                   onClick={() => {
                     void supabase로그아웃();          // 설정이 없으면 아무것도 안 합니다
+                    데모종료();                        // 🔴 안 지우면 다음 사람이 그 기관으로 들어갑니다
                     window.sessionStorage.removeItem("checkumait-signed-in");
                     setSignedIn(false);
                     setAccountOpen(false);
@@ -707,7 +726,7 @@ export default function CheckumaitApp() {
             notify={notify}
           />
         )}
-        {route.page === "ai-chat" && <AiChat plans={plans} />}
+        {챗봇_켬 && route.page === "ai-chat" && <AiChat plans={plans} />}
         {route.page === "schedule" && (
           <SchedulePage
             plans={plans}
@@ -718,17 +737,19 @@ export default function CheckumaitApp() {
         )}
         {route.page === "rules" && <MyPage notify={notify} />}
       </main>
-      <button
-        className={`floating-ai ${route.page === "ai-chat" ? "is-collapsed" : ""}`}
-        onClick={() => setChatOpen((v) => !v)}
-        aria-label="AI에게 물어보기"
-      >
-        <span>
-          <Icon name="sparkSolid" size={18} />
-        </span>
-        <span className="floating-ai-label">AI에게 물어보기</span>
-      </button>
-      {chatOpen && (
+      {챗봇_켬 && (
+        <button
+          className={`floating-ai ${route.page === "ai-chat" ? "is-collapsed" : ""}`}
+          onClick={() => setChatOpen((v) => !v)}
+          aria-label="AI에게 물어보기"
+        >
+          <span>
+            <Icon name="sparkSolid" size={18} />
+          </span>
+          <span className="floating-ai-label">AI에게 물어보기</span>
+        </button>
+      )}
+      {챗봇_켬 && chatOpen && (
         <FloatingChat
           plans={plans}
           route={route}
@@ -802,6 +823,7 @@ function Login({
   onEnter: (destination: "home" | "plan-new") => void;
 }) {
   const [로그인중, set로그인중] = useState(false);
+  const [둘러보는중, set둘러보는중] = useState(false);
   const [로그인오류, set로그인오류] = useState<string | null>(null);
   const [step, setStep] = useState<
     "welcome" | "project" | "institution" | "upload" | "ready"
@@ -927,6 +949,30 @@ function Login({
                 disabled={!loginEmail.trim() || !loginPassword.trim() || 로그인중}
               >
                 {로그인중 ? "확인하는 중…" : "로그인"}
+              </button>
+              {/* 🔴 심사위원용 입구입니다. 계정을 안 만들고 들어옵니다.
+                  누를 때마다 «격리된 새 기관» 이 발급되므로, 두 명이 동시에 봐도
+                  서로의 지출계획이 섞이지 않습니다. (POST /api/demo/session) */}
+              <button
+                type="button"
+                className="outline large"
+                disabled={둘러보는중 || 로그인중}
+                onClick={async () => {
+                  set로그인오류(null);
+                  set둘러보는중(true);
+                  try {
+                    await 데모시작();
+                    onEnter("home");        // 온보딩을 건너뜁니다 — 샘플이 이미 들어 있습니다
+                  } catch (e) {
+                    set로그인오류(
+                      e instanceof Error ? e.message : "둘러보기를 시작하지 못했습니다.",
+                    );
+                  } finally {
+                    set둘러보는중(false);
+                  }
+                }}
+              >
+                {둘러보는중 ? "준비하는 중…" : "계정 없이 둘러보기"}
               </button>
               {로그인오류 && (
                 <small style={{ color: "var(--red, #c23b3b)" }}>{로그인오류}</small>
@@ -1146,7 +1192,10 @@ function Login({
               >
                 <input
                   type="file"
-                  accept=".pdf,.hwp,.hwpx,.doc,.docx"
+                  /* 🔴 서버가 .doc·.docx 를 415 로 «거부» 합니다 (파서가 없습니다).
+                     고를 수 있게 두면 반드시 실패하는 선택지를 주는 셈입니다.
+                     `routes_l3.py` 허용_확장자 = {pdf, hwpx, hwp} */
+                  accept=".pdf,.hwp,.hwpx"
                   onChange={(event) =>
                     setCriteriaFile(event.target.files?.[0]?.name || "")
                   }
@@ -1159,7 +1208,7 @@ function Login({
                   <small>
                     {criteriaFile
                       ? "업로드할 파일을 선택했습니다."
-                      : "선택사항 · PDF, HWP, HWPX, DOC, DOCX · 최대 20MB"}
+                      : "선택사항 · PDF, HWP, HWPX · 최대 30MB"}
                   </small>
                 </span>
                 <em>{criteriaFile ? "파일 변경" : "파일 찾기"}</em>
@@ -2978,12 +3027,21 @@ function PlanDetail({
             <div className="ai-verdict-row">
               <Status value={plan.status === "재점검 필요" ? plan.previousStatus || "확인 필요" : plan.status} />
               <div>
+                {/* 🔴 「조건부」와 「판단불가」는 같은 🟡 인데 할 일이 정반대입니다.
+                    판정을 받은 계획이면 판정별 문구를, 아니면 기존 문구를 씁니다. */}
                 <h3>
-                  {plan.category} 기준으로{" "}
-                  {plan.status === "특이사항 없음"
-                    ? "특이사항이 없습니다."
-                    : "추가 확인이 필요합니다."}
+                  {판정제목(plan.판정, plan.category) ??
+                    `${plan.category} 기준으로 ${
+                      plan.status === "특이사항 없음"
+                        ? "특이사항이 없습니다."
+                        : "추가 확인이 필요합니다."
+                    }`}
                 </h3>
+                {행동문구(plan.판정) && (
+                  <p className="ai-verdict-action">
+                    <b>{행동문구(plan.판정)}</b>
+                  </p>
+                )}
                 <p>
                   현재 입력된 내용을 기준으로 확인했으며, 안전한 집행을 위해
                   아래 항목을 추가로 점검해주세요.
@@ -2994,10 +3052,14 @@ function PlanDetail({
               <Icon name="spark" size={20} />
               <div>
                 <b>AI 해설</b>
+                {/* 🔴 여기는 «서버가 실제로 판단한 문장» 자리입니다.
+                    예전에는 화면에 박아 둔 문구라, 어떤 계획을 열어도 같은 해설이
+                    나왔습니다. 서버 요약이 있으면 그걸 보여줍니다. */}
                 <p>
-                  {plan.status === "특이사항 없음"
-                    ? "현재 조건에서는 주요 사전 준비가 확인됐습니다. 집행 후 증빙을 빠짐없이 보관하세요."
-                    : "사업계획과의 연관성은 확인됐습니다. 다만 계약 전에 과업 범위, 결과물, 검수 기준을 문서로 명확히 하고 금액 적정성과 특수관계 여부를 추가로 확인해야 합니다."}
+                  {plan.aiSummary ||
+                    (plan.status === "특이사항 없음"
+                      ? "현재 조건에서는 주요 사전 준비가 확인됐습니다. 집행 후 증빙을 빠짐없이 보관하세요."
+                      : "사업계획과의 연관성은 확인됐습니다. 다만 계약 전에 과업 범위, 결과물, 검수 기준을 문서로 명확히 하고 금액 적정성과 특수관계 여부를 추가로 확인해야 합니다.")}
                 </p>
               </div>
             </div>

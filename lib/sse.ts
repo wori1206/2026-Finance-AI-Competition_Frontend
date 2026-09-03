@@ -1,7 +1,7 @@
 "use client";
 
 import { 주소, 인증오류 } from "./http";
-import { 토큰 } from "./supabase";
+import { 현재토큰 as 토큰 } from "./session";   // 🔴 Supabase 토큰 + 데모 토큰을 한 곳에서 고릅니다
 
 /**
  * SSE over POST.

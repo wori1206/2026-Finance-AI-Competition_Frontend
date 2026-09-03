@@ -180,6 +180,7 @@ export async function 판정실행(
   const 계획: ExpensePlan = {
     ...바탕,
     status: 판정을상태로(최종판정),
+    판정: 최종판정,             // 🔴 조건부/판단불가를 화면에서 가르는 값
     aiSummary: 요약 || 바탕.aiSummary || 판정설명(최종판정),
     aiChecks: 바탕.aiChecks.length ? 바탕.aiChecks : 해야할일,
     rules: 바탕.rules.length ? 바탕.rules : 인용,

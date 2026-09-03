@@ -872,3 +872,17 @@ input[type="checkbox"],input[type="radio"]{border-color:var(--color-border-contr
 :where(.card-head,.panel-head,.expense-v5-card>header,.home-v3-panel>header,.home-v3-status>header,.schedule-v2-upcoming>header){border-bottom-color:var(--color-border-subtle)!important}
 
 @media(prefers-reduced-motion:reduce){:where(.primary,.outline,button,input,textarea,select){transition-duration:0ms!important}}
+
+/* 🔴 판정별 「그래서 무엇을 해야 하는가」 한 줄.
+   .ai-verdict-row p 가 12px 회색이라, 그대로 두면 안내문에 묻혀 안 읽힙니다. */
+.ai-verdict-row p.ai-verdict-action{
+  margin:0 0 8px;
+  padding:9px 12px;
+  border-left:3px solid var(--color-warning,#bd6500);
+  border-radius:0 6px 6px 0;
+  background:var(--color-warning-subtle,#fff6e9);
+  color:var(--color-text,#2c3330);
+  font-size:13px;
+  line-height:1.55;
+}
+.ai-verdict-row p.ai-verdict-action b{font-weight:650}

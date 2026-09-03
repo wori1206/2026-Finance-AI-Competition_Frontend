@@ -42,6 +42,46 @@ export function 판정설명(판정: 판정값): string {
   }
 }
 
+/**
+ * 배지 옆 «제목». 🟡 두 개가 여기서 갈립니다.
+ *
+ * 🔴 `status` 만 보면 「조건부」와 「판단불가」가 둘 다 “추가 확인이 필요합니다”가 됩니다.
+ *    사용자는 그 문장을 읽고 무엇을 해야 하는지 알 수 없습니다.
+ *    판정을 못 받은 계획(예시 데이터 등)은 `null` → 예전 문구로 돌아갑니다.
+ */
+export function 판정제목(판정: 판정값 | undefined, 비목: string): string | null {
+  const 앞 = 비목 ? `${비목} ` : "";
+  switch (판정) {
+    case "가능":
+      return `${앞}기준으로 특이사항이 없습니다.`;
+    case "조건부":
+      return `${앞}기준에서 확인할 조건이 있습니다.`;
+    case "판단불가":
+      return `${앞}기준만으로는 결론을 낼 수 없습니다.`;
+    case "불가":
+      return `${앞}기준에 어긋날 가능성이 높습니다.`;
+    default:
+      return null; // 화면이 기존 문구를 씁니다
+  }
+}
+
+/**
+ * «그래서 무엇을 해야 하는가». 배지에도 요약에도 안 들어 있는 정보입니다.
+ * 조건부는 사용자가 처리하고, 판단불가는 기관에 물어야 합니다 — 정반대입니다.
+ */
+export function 행동문구(판정: 판정값 | undefined): string | null {
+  switch (판정) {
+    case "조건부":
+      return "아래 조건을 채우면 집행할 수 있습니다.";
+    case "판단불가":
+      return "규정만으로는 결론이 나지 않습니다. 집행 전에 주관기관에 확인하세요.";
+    case "불가":
+      return "이대로 집행하면 환수 대상이 될 수 있습니다. 반드시 먼저 확인하세요.";
+    default:
+      return null; // 「가능」과 미점검은 따로 시킬 일이 없습니다
+  }
+}
+
 /** "2026-09-01T10:12:00+09:00" → "2026.09.01 10:12" */
 export function 시각표기(iso: string | null | undefined): string {
   if (!iso) return "";
@@ -80,6 +120,7 @@ export function 요약을계획으로(s: 계획요약): ExpensePlan {
     category: s.확정비목 ?? "",
     vendor: "",
     status: 판정을상태로(s.판정),
+    판정: s.판정 ?? null,       // 🔴 접히기 «전» 의 원래 값 (조건부/판단불가 구분용)
     nextAction: "",
     updatedAt: 시각표기(s.updated_at),
     aiSummary: "",

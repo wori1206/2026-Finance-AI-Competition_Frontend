@@ -1,7 +1,7 @@
 "use client";
 
 import { apiBase } from "./config";
-import { 토큰 } from "./supabase";
+import { 현재토큰 as 토큰 } from "./session";   // 🔴 Supabase 토큰 + 데모 토큰을 한 곳에서 고릅니다
 
 /**
  * 요청 주소를 만듭니다. **org_id 는 절대 붙지 않습니다.**

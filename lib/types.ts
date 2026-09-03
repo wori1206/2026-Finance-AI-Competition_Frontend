@@ -25,6 +25,13 @@ export type ExpensePlan = {
   category: string;
   vendor: string;
   status: PlanStatus;
+  /**
+   * 🔴 서버가 준 «원래» 판정입니다 — `status` 로는 못 가리는 것을 가립니다.
+   *    「조건부」와 「판단불가」가 둘 다 🟡 확인 필요로 접히는데,
+   *    사용자가 할 일은 정반대입니다 (조건 채우기 ↔ 주관기관 문의).
+   *    서버에서 온 계획에만 있습니다. 예시 데이터에는 없습니다(undefined).
+   */
+  판정?: "가능" | "조건부" | "불가" | "판단불가" | null;
   previousStatus?: Exclude<PlanStatus, "점검 전" | "재점검 필요">;
   nextAction: string;
   updatedAt: string;
