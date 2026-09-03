@@ -15,6 +15,8 @@ import { 비목목록, 계획추가 } from "../lib/api";
 import { 체크저장 } from "../lib/tasks";
 import { 인증켜짐, 로그인 as supabase로그인, 로그아웃 as supabase로그아웃 } from "../lib/supabase";
 import { 상세를계획으로 } from "../lib/adapt";
+import { 선택사업, 사업저장, 사업선택지, 목록에맞추기, 기본사업 } from "../lib/program";
+import { 협약읽기, 협약쓰기, 값있음, 원, 날짜표기, type 협약정보 } from "../lib/profile";
 import { SendButton } from "./send-button";
 import "./detail-refinement.css";
 
@@ -210,8 +212,28 @@ const navItems = [
   { page: "rules", label: "마이페이지", icon: "user" },
 ] as const;
 
-/** 🔴 서버는 「2026 」 연도 접두사를 알아서 벗깁니다 (corpus.programs 별칭). */
-const 현재사업 = "2026 초기창업패키지";
+/**
+ * 🔴 이제 상수가 아닙니다 — 온보딩에서 사용자가 «고른» 사업을 돌려줍니다.
+ *    (아무것도 안 골랐으면 「2026 초기창업패키지」. 서버는 연도 접두사를 별칭으로 벗깁니다)
+ *    쓰는 곳: 비목 조회 · 정규화 · 계획 저장 · AI 점검
+ */
+const 현재사업 = () => 선택사업();
+
+/**
+ * 화면에 「참여 중인 사업」을 «글자로» 보여줄 때 씁니다.
+ *
+ * 🔴 `현재사업()` 을 JSX 안에서 바로 부르면 안 됩니다.
+ *    서버에서 미리 그린 HTML 은 기본값인데 브라우저는 localStorage 값을 읽어서,
+ *    React 가 「서버와 화면이 다르다」고 경고(hydration mismatch)를 냅니다.
+ *    그래서 첫 그림은 기본값으로 그리고, 붙은 뒤에 바꿉니다.
+ */
+function use사업(): string {
+  const [값, set값] = useState(기본사업);
+  useEffect(() => {
+    set값(선택사업());
+  }, []);
+  return 값;
+}
 
 const EXPENSE_CATEGORIES = [
   "재료비",
@@ -462,6 +484,7 @@ function BrandWord() {
 }
 
 export default function CheckumaitApp() {
+  const 사업 = use사업();
   const [signedIn, setSignedIn] = useState(false);
   const [route, setRoute] = useState<AppRoute>({ page: "home" });
   const [plans, setPlans] = useState<ExpensePlan[]>(INITIAL_PLANS);
@@ -564,7 +587,7 @@ export default function CheckumaitApp() {
         <div className="side-bottom">
           <section className="project-mini">
             <span>참여 중인 프로젝트</span>
-            <b>2026 초기창업패키지</b>
+            <b>{사업}</b>
             <small>건국대학교 창업지원센터 · D-129</small>
           </section>
           <div className="account-row">
@@ -783,7 +806,8 @@ function Login({
   const [step, setStep] = useState<
     "welcome" | "project" | "institution" | "upload" | "ready"
   >("welcome");
-  const [program, setProgram] = useState("2026 초기창업패키지");
+  const [program, setProgram] = useState(선택사업);
+  const [서버사업, set서버사업] = useState<string[] | null>(null);
   const [institutionQuery, setInstitutionQuery] = useState("");
   const [institution, setInstitution] = useState("");
   const [criteriaFile, setCriteriaFile] = useState("");
@@ -797,7 +821,8 @@ function Login({
     0,
     setupSteps.indexOf(step as (typeof setupSteps)[number]),
   );
-  const programs = [
+  /** 서버가 못 줄 때만 쓰는 예비 목록입니다. */
+  const 예비사업목록 = [
     "2026 예비창업패키지",
     "2026 초기창업패키지",
     "2026 창업도약패키지",
@@ -807,6 +832,23 @@ function Login({
     "2026 초격차 스타트업 1000+",
     "2026 민관공동 창업자 발굴·육성",
   ];
+
+  // 🔴 사업 목록은 `/api/programs` 가 정본입니다 (「2026 」 접두사 없이 옵니다).
+  //    못 가져오면 조용히 예비 목록으로 갑니다 — 온보딩이 막히면 안 됩니다.
+  useEffect(() => {
+    let 살아있음 = true;
+    사업선택지().then((목록) => {
+      if (!살아있음 || !목록) return;
+      set서버사업(목록);
+      // 「2026 초기창업패키지」→「초기창업패키지」처럼 서버 문자열로 맞춥니다.
+      setProgram((이전) => 목록에맞추기(목록, 이전));
+    });
+    return () => {
+      살아있음 = false;
+    };
+  }, []);
+
+  const programs = 서버사업 ?? 예비사업목록;
 
   if (step === "welcome")
     return (
@@ -998,7 +1040,11 @@ function Login({
                 </button>
                 <button
                   className="primary large"
-                  onClick={() => setStep("institution")}
+                  onClick={() => {
+                    // 🔴 여기서 고른 사업이 이후 비목 조회·계획 저장·AI 점검에 그대로 쓰입니다.
+                    사업저장(program);
+                    setStep("institution");
+                  }}
                 >
                   다음
                 </button>
@@ -1197,6 +1243,7 @@ function HomePage({
   schedules: ScheduleItem[];
   go: (route: AppRoute) => void;
 }) {
+  const 사업 = use사업();
   const counts = {
     all: plans.length,
     safe: plans.filter((p) => p.status === "특이사항 없음").length,
@@ -1232,7 +1279,7 @@ function HomePage({
               <b>D-129</b>
             </div>
           </div>
-          <h2>2026 초기창업패키지</h2>
+          <h2>{사업}</h2>
           <p>건국대학교 창업지원센터 · 사업화 자금</p>
           <dl>
             <div>
@@ -2192,7 +2239,7 @@ function NewPlanPage({
   useEffect(() => {
     if (!API켜짐()) return;
     let 살아있음 = true;
-    비목목록(현재사업)
+    비목목록(현재사업())
       .then((r) => {
         if (살아있음 && Array.isArray(r.비목) && r.비목.length) set서버비목(r.비목);
       })
@@ -2228,7 +2275,7 @@ function NewPlanPage({
       용도: purpose,
       집행예정일: date || undefined,
       거래처: vendor || undefined,
-      사업명: 현재사업,
+      사업명: 현재사업(),
     })
       .then((r) => {
         if (!살아있음) return;
@@ -2299,7 +2346,7 @@ function NewPlanPage({
   /** 서버에 계획을 만들고 plan_id 를 돌려줍니다. */
   const 서버에저장 = () =>
     계획추가({
-      사업명: 현재사업,
+      사업명: 현재사업(),
       품목: name,
       금액: Number(amount.replace(/,/g, "")) || 0,
       용도: purpose || "사업 수행을 위한 지출",
@@ -2582,7 +2629,7 @@ function NewPlanPage({
           count={1}
           planId={새planId ?? undefined}
           대체입력={{
-            사업명: 현재사업,
+            사업명: 현재사업(),
             확정비목: category.split(" · ")[0],
             정규화: 서버정규화,
             제목: name,
@@ -2664,6 +2711,7 @@ function PlanDetail({
   back: () => void;
   notify: (message: string) => void;
 }) {
+  const 사업 = use사업();
   const [editing, setEditing] = useState(false);
   const [recheckPrompt, setRecheckPrompt] = useState(false);
   const [recheckQuestions, setRecheckQuestions] = useState(false);
@@ -2849,7 +2897,7 @@ function PlanDetail({
               value={plan.plannedDate.replaceAll("-", ".")}
             />
             <Info label="거래처" value={plan.vendor} />
-            <Info label="사업" value="2026 초기창업패키지" />
+            <Info label="사업" value={사업} />
             <Info label="사용 목적" value={plan.purpose} className="wide" />
             <div className="expense-v5-file-row">
               <span>첨부 파일</span>
@@ -3827,6 +3875,7 @@ function EditPlan({
 }
 
 function AiChat({ plans }: { plans: ExpensePlan[] }) {
+  const 사업 = use사업();
   const [messages, setMessages] = useState([
     {
       role: "ai",
@@ -3865,7 +3914,7 @@ function AiChat({ plans }: { plans: ExpensePlan[] }) {
       <section className="chat-workspace">
         <div className="chat-context">
           <span>현재 참조 범위</span>
-          <b>2026 초기창업패키지</b>
+          <b>{사업}</b>
           <p>작성한 지출 계획 {plans.length}건 · 최신 규정 안내</p>
         </div>
         <div className="conversation">
@@ -4770,7 +4819,7 @@ function RecommendModal({
 }
 
 function MyPage({ notify }: { notify: (message: string) => void }) {
-  const programs = [
+  const 예비사업목록 = [
     "2026 예비창업패키지",
     "2026 초기창업패키지",
     "2026 창업도약패키지",
@@ -4780,6 +4829,8 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
     "2026 초격차 스타트업 1000+",
     "2026 민관공동 창업자 발굴·육성",
   ];
+  const [서버사업, set서버사업] = useState<string[] | null>(null);
+  const programs = 서버사업 ?? 예비사업목록;
   const hostInstitutions = [
     "건국대학교 창업지원센터",
     "서울대학교 창업지원단",
@@ -4791,7 +4842,7 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
   const [profile, setProfile] = useState({
     email: "team@startup.kr",
     team: "체쿠메이트",
-    program: "2026 초기창업패키지",
+    program: 선택사업(),
     host: "건국대학교 창업지원센터",
     duplicateBenefit: "X",
   });
@@ -4799,6 +4850,40 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
   const [institutionFile, setInstitutionFile] = useState(
     "2026 건국대학교 초기창업패키지 사업비 집행 안내.pdf",
   );
+
+  /**
+   * 협약기간·사업비. 서버(`/api/profile` 의 f1)가 «값을 갖고 있을 때만» 덮어씁니다.
+   * 목 서버는 전부 0/null 로 오기 때문에, 그대로 받으면 화면이 「—」와 「0원」이 됩니다.
+   * 그래서 아래 시연 기본값을 두고, 실서버가 붙으면 자동으로 바뀝니다.
+   */
+  const [협약, set협약] = useState<협약정보>({
+    시작일: "2026-03-01",
+    종료일: "2026-12-31",
+    정부지원: 50000000,
+    자기부담: 0,
+  });
+  const [협약초안, set협약초안] = useState(협약);
+  const [협약저장중, set협약저장중] = useState(false);
+
+  useEffect(() => {
+    let 살아있음 = true;
+    사업선택지().then((목록) => {
+      if (!살아있음 || !목록) return;
+      set서버사업(목록);
+      const 맞춘값 = 목록에맞추기(목록, 선택사업());
+      setProfile((v) => ({ ...v, program: 맞춘값 }));
+      setProfileDraft((v) => ({ ...v, program: 맞춘값 }));
+    });
+    협약읽기().then((값) => {
+      if (!살아있음 || !값 || !값있음(값)) return; // 목 서버의 빈 값은 무시합니다
+      set협약(값);
+      set협약초안(값);
+    });
+    return () => {
+      살아있음 = false;
+    };
+  }, []);
+
   return (
     <div className="page my-page">
       <header className="page-heading">
@@ -4821,6 +4906,7 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
               className="outline small"
               onClick={() => {
                 setProfileDraft(profile);
+                set협약초안(협약);
                 setHostSearchOpen(false);
                 setEditingProfile(true);
               }}
@@ -4857,9 +4943,9 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
           </div>
         </div>
         <dl className="business-period-grid">
-          <div><dt>협약 시작일</dt><dd>2026.03.01</dd></div>
-          <div><dt>협약 종료일</dt><dd>2026.12.31</dd></div>
-          <div><dt>사업 지원비</dt><dd>50,000,000원</dd></div>
+          <div><dt>협약 시작일</dt><dd>{날짜표기(협약.시작일)}</dd></div>
+          <div><dt>협약 종료일</dt><dd>{날짜표기(협약.종료일)}</dd></div>
+          <div><dt>사업 지원비</dt><dd>{원(협약.정부지원 + 협약.자기부담)}</dd></div>
         </dl>
       </section>
       <section className="card rule-library">
@@ -5001,14 +5087,46 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
                   <option value="X">X</option>
                 </select>
               </label>
+              {/* 🔴 아래 4칸이 서버의 f1 입니다. AI 점검이 「협약기간 밖 지출」·
+                  「사업비 초과」를 판단할 때 전제로 씁니다. */}
+              <label>
+                <span>협약 시작일</span>
+                <input type="date" value={협약초안.시작일} onChange={(event) => set협약초안((v) => ({ ...v, 시작일: event.target.value }))} />
+              </label>
+              <label>
+                <span>협약 종료일</span>
+                <input type="date" value={협약초안.종료일} onChange={(event) => set협약초안((v) => ({ ...v, 종료일: event.target.value }))} />
+              </label>
+              <label>
+                <span>정부지원금 (원)</span>
+                <input inputMode="numeric" value={협약초안.정부지원.toLocaleString("ko-KR")} onChange={(event) => set협약초안((v) => ({ ...v, 정부지원: Number(event.target.value.replace(/[^0-9]/g, "")) || 0 }))} />
+              </label>
+              <label>
+                <span>자기부담금 (원)</span>
+                <input inputMode="numeric" value={협약초안.자기부담.toLocaleString("ko-KR")} onChange={(event) => set협약초안((v) => ({ ...v, 자기부담: Number(event.target.value.replace(/[^0-9]/g, "")) || 0 }))} />
+              </label>
             </div>
             <footer>
               <button className="outline" onClick={() => setEditingProfile(false)}>취소</button>
-              <button className="primary" disabled={!hostInstitutions.includes(profileDraft.host)} onClick={() => {
+              <button className="primary" disabled={!hostInstitutions.includes(profileDraft.host) || 협약저장중} onClick={() => {
+                // 화면은 먼저 바꿉니다 — 서버가 못 받아도 시연이 끊기면 안 됩니다.
                 setProfile(profileDraft);
-                setEditingProfile(false);
-                notify("내 정보를 수정했습니다.");
-              }}>저장</button>
+                set협약(협약초안);
+                사업저장(profileDraft.program);
+                set협약저장중(true);
+                협약쓰기(협약초안)
+                  .then((결과) => {
+                    setEditingProfile(false);
+                    notify(
+                      결과 === "저장됨"
+                        ? "내 정보를 저장했습니다."
+                        : 결과 === "서버가안받음"
+                          ? "내 정보를 수정했습니다. (현재 목 서버라 서버에는 저장되지 않습니다)"
+                          : "내 정보를 수정했지만 서버 저장에 실패했습니다.",
+                    );
+                  })
+                  .finally(() => set협약저장중(false));
+              }}>{협약저장중 ? "저장하는 중…" : "저장"}</button>
             </footer>
           </section>
         </div>
@@ -5130,6 +5248,7 @@ function ProfileModal({
 }: {
   close: () => void;
 }) {
+  const 사업 = use사업();
   return (
     <div className="modal-backdrop">
       <section className="modal">
@@ -5143,7 +5262,7 @@ function ProfileModal({
         <dl className="profile-list">
           <Info label="팀 이름" value="체쿠메이트" />
           <Info label="이메일" value="team@startup.kr" />
-          <Info label="선정사업" value="2026 초기창업패키지" />
+          <Info label="선정사업" value={사업} />
         </dl>
         <footer>
           <button className="outline" onClick={close}>
