@@ -121,3 +121,42 @@ export const 규정상태 = (docId: string) => GET(`/api/l3/${docId}`);
 
 export const 헬스 = () =>
   GET("/api/health") as Promise<{ ok: boolean; 모드: "mock" | "real" }>;
+
+/* ── GPU 상태 (2026-09-04) ────────────────────── */
+
+export type GPU상태값 = {
+  상태: "가동" | "중지" | "기동중";
+  유휴초: number;
+  종료예정초: number | null;
+  경고초: number;
+  유휴임계초: number;
+  제어가능: boolean;
+  /** 🔴 배포(v4) 전에는 이 응답에 아직 없을 수 있습니다 — 없으면 undefined 로 옵니다 */
+  오늘_깨움?: number;
+  일일깨우기캡?: number;
+  /**
+   * 🔴 `상태` 3값 계약과 별도입니다 — `상태:가동` 은 RunPod 팟 컨테이너만 보고 vLLM
+   *    프로세스 응답성은 안 봅니다. null=아직 미확인, true=vLLM /health 응답함,
+   *    false=응답 없음. **`상태:가동` + `vLLM_응답:false` 조합이 사각지대입니다** —
+   *    팟은 떠 있는데 모델이 죽어 판정이 전부 판단불가로 나가는 상태입니다.
+   *    (`server/gpu_watchdog.py:330-352`, ai-d7/Q1 실측 계기)
+   */
+  vLLM_응답?: boolean | null;
+};
+
+/**
+ * 🔴 캐시된 값을 돌려받습니다(`server/gpu_watchdog.py:516-523`) — 자주 불러도 RunPod
+ *    API 를 안 칩니다. 상태 어휘는 «가동|중지|기동중» 셋뿐이고 넷째는 서버가 「가동」으로
+ *    접습니다. `종료예정초` 가 null 이면 「모른다」입니다(끝났다는 뜻이 아닙니다).
+ */
+export const GPU상태 = () => GET("/api/gpu/status") as Promise<GPU상태값>;
+
+/**
+ * 🔴 **즉시 반환**합니다 — 실제 기동은 서버 백그라운드 스레드가 합니다
+ *    (`server/gpu_watchdog.py:559-569`). 이미 가동/기동중이면 아무 것도 새로 안 띄웁니다.
+ *    콜드부팅 실측 10~12분이 Cloud Run 타임아웃(300초)·`SUDDOE_GPU_START_SEC`(300초)를
+ *    넘기 때문에, 판정 요청(`/api/judge`) 안에서 기동을 기다리면 그 요청 자체가 끊깁니다
+ *    — 그래서 로그인 직후 이걸 먼저 쳐서 기동에 «머리 시작 시간»을 벌어 둡니다.
+ *    실패해도 조용히 넘어가면 됩니다 — 어차피 실제 판정 때 서버가 다시 기동을 시도합니다.
+ */
+export const GPU깨우기 = () => POST("/api/gpu/wake") as Promise<GPU상태값>;
