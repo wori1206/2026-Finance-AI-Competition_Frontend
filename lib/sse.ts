@@ -1,6 +1,7 @@
 "use client";
 
 import { 주소 } from "./http";
+import { 토큰 } from "./supabase";
 
 /**
  * SSE over POST.
@@ -13,6 +14,16 @@ import { 주소 } from "./http";
  */
 export type SSE핸들러 = (이벤트: string, 데이터: unknown) => void;
 
+async function SSE헤더(): Promise<Record<string, string>> {
+  const h: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "text/event-stream",
+  };
+  const t = await 토큰();
+  if (t) h.Authorization = `Bearer ${t}`;
+  return h;
+}
+
 export async function SSE(
   경로: string,
   바디: unknown,
@@ -21,7 +32,7 @@ export async function SSE(
 ): Promise<void> {
   const res = await fetch(주소(경로, 옵션?.쿼리), {
     method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+    headers: await SSE헤더(),
     body: JSON.stringify(바디),
     signal: 옵션?.signal,
   });

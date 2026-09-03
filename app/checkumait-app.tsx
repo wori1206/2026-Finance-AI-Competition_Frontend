@@ -13,6 +13,7 @@ import { 판정실행 } from "../lib/judge";
 import { 정규화하기 } from "../lib/normalize";
 import { 비목목록, 계획추가 } from "../lib/api";
 import { 체크저장 } from "../lib/tasks";
+import { 인증켜짐, 로그인 as supabase로그인, 로그아웃 as supabase로그아웃 } from "../lib/supabase";
 import { 상세를계획으로 } from "../lib/adapt";
 import { SendButton } from "./send-button";
 import "./detail-refinement.css";
@@ -590,6 +591,7 @@ export default function CheckumaitApp() {
                 <button
                   className="danger"
                   onClick={() => {
+                    void supabase로그아웃();          // 설정이 없으면 아무것도 안 합니다
                     window.sessionStorage.removeItem("checkumait-signed-in");
                     setSignedIn(false);
                     setAccountOpen(false);
@@ -776,6 +778,8 @@ function Login({
 }: {
   onEnter: (destination: "home" | "plan-new") => void;
 }) {
+  const [로그인중, set로그인중] = useState(false);
+  const [로그인오류, set로그인오류] = useState<string | null>(null);
   const [step, setStep] = useState<
     "welcome" | "project" | "institution" | "upload" | "ready"
   >("welcome");
@@ -783,8 +787,11 @@ function Login({
   const [institutionQuery, setInstitutionQuery] = useState("");
   const [institution, setInstitution] = useState("");
   const [criteriaFile, setCriteriaFile] = useState("");
-  const [loginEmail, setLoginEmail] = useState("demo@checkumait.kr");
-  const [loginPassword, setLoginPassword] = useState("checkumait");
+  // 🔴 Supabase 에 실제로 만들어 둔 계정과 «똑같아야» 합니다.
+  //    (Supabase → Authentication → Users 에서 보이는 이메일)
+  //    비밀번호는 코드에 넣지 않습니다. 시연 때 직접 입력하세요.
+  const [loginEmail, setLoginEmail] = useState("prototype@ssudo.kr");
+  const [loginPassword, setLoginPassword] = useState("");
   const setupSteps = ["project", "institution", "upload", "ready"] as const;
   const stepIndex = Math.max(
     0,
@@ -827,9 +834,27 @@ function Login({
             </p>
             <form
               className="onboarding-login-form"
-              onSubmit={(event) => {
+              onSubmit={async (event) => {
                 event.preventDefault();
-                if (loginEmail.trim() && loginPassword.trim()) setStep("project");
+                if (!loginEmail.trim() || !loginPassword.trim()) return;
+                // 🔴 Supabase 설정이 없으면 예전처럼 «통과» 시킵니다.
+                //    설정 전에 배포돼도 시연이 막히지 않게.
+                if (!인증켜짐) {
+                  setStep("project");
+                  return;
+                }
+                set로그인중(true);
+                set로그인오류(null);
+                try {
+                  await supabase로그인(loginEmail, loginPassword);
+                  setStep("project");
+                } catch (e: unknown) {
+                  set로그인오류(
+                    e instanceof Error ? e.message : "로그인하지 못했습니다.",
+                  );
+                } finally {
+                  set로그인중(false);
+                }
               }}
             >
               <div>
@@ -857,11 +882,14 @@ function Login({
               <button
                 type="submit"
                 className="primary large"
-                disabled={!loginEmail.trim() || !loginPassword.trim()}
+                disabled={!loginEmail.trim() || !loginPassword.trim() || 로그인중}
               >
-                로그인
+                {로그인중 ? "확인하는 중…" : "로그인"}
               </button>
-              <small>시연용 계정이 입력되어 있습니다.</small>
+              {로그인오류 && (
+                <small style={{ color: "var(--red, #c23b3b)" }}>{로그인오류}</small>
+              )}
+              <small>시연 계정 이메일이 입력되어 있습니다. 비밀번호를 입력해 주세요.</small>
             </form>
           </div>
           <OnboardingDemo />
