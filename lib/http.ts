@@ -62,7 +62,7 @@ export async function 인증헤더(): Promise<Record<string, string>> {
 
 export async function 응답처리(res: Response) {
   if (!res.ok) {
-    // 서버 계약: { "오류": "메시지", "상태": 404 } — 인증 거부는 { "detail": "..." } 로 옵니다
+    // 서버 계약: { "오류": "메시지", "상태": 404 }. FastAPI HTTPException 은 { "detail": "..." } 입니다
     const body = await res.json().catch(() => null);
     const 꺼내기 = (키: string) =>
       body && typeof body === "object" && 키 in body
@@ -82,7 +82,13 @@ export async function 응답처리(res: Response) {
       );
     }
 
-    throw new Error(꺼내기("오류") ?? `요청 실패 (${res.status})`);
+    // 🔴 `detail` 도 봅니다. FastAPI 의 `HTTPException` 은 «전부» detail 로 나갑니다.
+    //    규정 업로드가 그 자리입니다 —
+    //      415 ".docx 은 지원하지 않습니다. PDF·HWPX·HWP 로 올려 주세요."
+    //      415 "파일 내용이 .hwpx 가 아닙니다 (실제: xlsx)."
+    //      413 "파일이 너무 큽니다 (30MB 이하)."   400 "빈 파일입니다."
+    //    detail 을 안 보면 이 친절한 문구가 전부 「요청 실패 (415)」로 뭉개집니다.
+    throw new Error(꺼내기("오류") ?? 꺼내기("detail") ?? `요청 실패 (${res.status})`);
   }
   return res.status === 204 ? null : res.json();
 }
