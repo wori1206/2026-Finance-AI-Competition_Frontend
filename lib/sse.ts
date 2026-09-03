@@ -1,6 +1,6 @@
 "use client";
 
-import { 주소 } from "./http";
+import { 주소, 인증오류 } from "./http";
 import { 토큰 } from "./supabase";
 
 /**
@@ -14,6 +14,10 @@ import { 토큰 } from "./supabase";
  */
 export type SSE핸들러 = (이벤트: string, 데이터: unknown) => void;
 
+/**
+ * 🔴 게스트(비로그인)는 Authorization 을 «안» 보냅니다. 빈 헤더를 보내면 서버가
+ *    「헤더가 있으면 토큰으로 끝난다」 규칙에 따라 401 로 거부합니다.
+ */
 async function SSE헤더(): Promise<Record<string, string>> {
   const h: Record<string, string> = {
     "Content-Type": "application/json",
@@ -36,6 +40,17 @@ export async function SSE(
     body: JSON.stringify(바디),
     signal: 옵션?.signal,
   });
+  // 🔴 401/403 을 「요청에 실패했습니다」로 뭉개지 않습니다 — 판정 화면에서 로그인이
+  //    풀린 것과 서버가 죽은 것이 같은 문구로 보이면 원인을 못 찾습니다.
+  if (res.status === 401 || res.status === 403) {
+    console.warn("[auth] SSE", res.status, res.url);
+    throw new 인증오류(
+      res.status,
+      res.status === 401
+        ? "로그인이 만료되었습니다. 다시 로그인한 뒤 점검해 주세요."
+        : "이 계정으로는 점검할 수 없습니다. 기관 계정 등록을 확인해 주세요.",
+    );
+  }
   if (!res.ok || !res.body) throw new Error(`요청에 실패했습니다 (${res.status})`);
 
   const reader = res.body.getReader();

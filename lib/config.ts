@@ -8,7 +8,6 @@
 //    브라우저에는 `process.env` 가 없으니 그러면 «항상 빈 값» 이 됩니다.
 //    (2026-09-02 실제로 이 문제로 배포본이 목 데이터만 보여줬습니다.)
 const 빌드시_주소 = process.env.NEXT_PUBLIC_API_BASE;
-const 빌드시_ORG = process.env.NEXT_PUBLIC_ORG_ID;
 
 // 규칙:
 //   · 환경변수가 있으면            → 그 값이 항상 이깁니다
@@ -33,6 +32,11 @@ export function API켜짐(): boolean {
   return apiBase().length > 0;
 }
 
-export function orgId(): string {
-  return (빌드시_ORG ?? "").trim();
-}
+// 🔴 `orgId()` 와 `NEXT_PUBLIC_ORG_ID` 는 «없앴습니다» (2026-09-03).
+//    org_id 는 비밀이 아닙니다 — 백엔드가 `uuid5(uuid5(NAMESPACE_DNS,"suddoe.org"), 기관명)`
+//    으로 만들고 그 네임스페이스 문자열이 레포에 그대로 있어서, 기관명만 알면 재계산됩니다
+//    (백엔드 실측: 413행 중 411행이 이름만으로 재현). 그래서 「URL 에 실어도 UUID 라 아무도
+//    모른다」는 방어가 아니었고, `?org_id=` 자기신고가 열려 있는 동안은 남의 지출계획이
+//    열려 있었습니다.
+//    → 이제 기관은 «서버가» Authorization 토큰에서 정합니다. 프론트는 주장하지 않습니다.
+//    환경변수에서도 지웁니다 — 남겨두면 다음 사람이 다시 URL 에 붙입니다.

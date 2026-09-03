@@ -2,7 +2,7 @@
 
 // 화면이 부르는 함수는 전부 여기 있습니다. 주소를 아는 곳은 config.ts 하나입니다.
 
-import { GET, POST, PATCH, PUT } from "./http";
+import { GET, POST, PATCH, PUT, 인증헤더, 응답처리 } from "./http";
 import type {
   계획목록응답,
   계획상세 as 계획상세형,   // 아래 같은 이름의 «함수» 와 겹쳐서 별칭으로 받습니다
@@ -81,6 +81,17 @@ export const 프로필저장 = (p: { f1?: unknown; f3?: unknown[]; f4?: unknown[
 
 /* ── 기관 규정 업로드 (화면 4) ───────────────── */
 
+/**
+ * 🔴 여기만 `org_id` 를 아직 «본문(FormData)» 으로 보냅니다 — URL 이 아닙니다.
+ *    서버 `routes_l3.업로드` 가 `org_id: str = Form(...)` 로 «필수» 폼필드를 받고,
+ *    토큰 주입 미들웨어는 쿼리스트링만 갈아끼우지 멀티파트 본문은 안 건드립니다.
+ *    그래서 지금 빼면 업로드가 422 로 죽습니다.
+ *    → 서버가 폼필드 대신 토큰에서 org_id 를 읽게 바뀌면 이 인자도 지웁니다. (백엔드 몫)
+ *    URL·히스토리에는 남지 않으므로 이번 변경의 목적(주소창 누출 차단)에는 구멍이 없습니다.
+ *
+ * 🔴 이 함수는 `http.ts` 를 안 거치는 «직접 fetch» 라 그동안 Authorization 이
+ *    아예 안 붙었습니다. 붙입니다.
+ */
 export async function 규정업로드(파일: File, 기관명: string, orgId: string) {
   const fd = new FormData();
   fd.append("파일", 파일);
@@ -88,21 +99,23 @@ export async function 규정업로드(파일: File, 기관명: string, orgId: st
   fd.append("기관명", 기관명);
   // ⚠️ FormData 에는 Content-Type 을 직접 넣지 마세요 — 브라우저가 경계문자를 붙입니다
   const { apiBase } = await import("./config");
-  const res = await fetch(`${apiBase()}/api/l3/upload`, { method: "POST", body: fd });
-  if (!res.ok) throw new Error("업로드에 실패했습니다");
-  return res.json() as Promise<{
+  const res = await fetch(`${apiBase()}/api/l3/upload`, {
+    method: "POST",
+    headers: await 인증헤더(),          // 게스트면 빈 객체 — 헤더가 아예 안 붙습니다
+    body: fd,
+  });
+  return 응답처리(res) as Promise<{
     doc_id: string; 파일명: string; 확장자: string; 상태: string;
     조_건수: number; dangling: number; 메시지: string;
   }>;
 }
 
 /**
- * 🔴 2026-09-02 서버 변경 — org_id 를 «반드시» 실어야 합니다.
- *    빼면 주인에게도 404 이고 온보딩이 무한 스피너가 됩니다.
- *    업로드 때 넘긴 org_id 를 그대로 쓰세요.
+ * 🔴 2026-09-03 — `org_id` 인자를 «뺐습니다». 서버가 토큰에서 기관을 정합니다.
+ *    (그전에는 URL 에 `?org_id=` 로 실려 브라우저 히스토리에 남았습니다.)
+ *    로그인 없이 부르면 게스트로 조회되어 남의 문서는 보이지 않습니다.
  */
-export const 규정상태 = (docId: string, orgId: string) =>
-  GET(`/api/l3/${docId}`, { org_id: orgId });
+export const 규정상태 = (docId: string) => GET(`/api/l3/${docId}`);
 
 /* ── 서버 살았나 ─────────────────────────────── */
 
