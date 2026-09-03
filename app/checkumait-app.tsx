@@ -11,7 +11,8 @@ import type {
 import { API켜짐 } from "../lib/config";
 import { 판정실행 } from "../lib/judge";
 import { 정규화하기 } from "../lib/normalize";
-import { 비목목록, 계획추가 } from "../lib/api";
+import { 비목목록, 계획추가, GPU깨우기, GPU상태 } from "../lib/api";
+import type { GPU상태값 } from "../lib/api";
 import { 체크저장 } from "../lib/tasks";
 import { 인증켜짐, 로그인 as supabase로그인, 로그아웃 as supabase로그아웃 } from "../lib/supabase";
 import { 상세를계획으로, 판정제목, 행동문구 } from "../lib/adapt";
@@ -605,9 +606,10 @@ export default function CheckumaitApp() {
           <section className="project-mini">
             <span>{데모기관 ? "둘러보기" : "참여 중인 프로젝트"}</span>
             <b>{사업}</b>
-            {/* 🔴 데모 세션은 «누를 때마다 새 기관» 입니다. 건국대로 보이면 안 됩니다. */}
-            <small>{데모기관 ?? "건국대학교 창업지원센터 · D-129"}</small>
+            {/* 🔴 데모 세션은 «누를 때마다 새 기관» 입니다. 경상국립대로 고정 표기되면 안 됩니다. */}
+            <small>{데모기관 ?? "경상국립대학교 창업중심대학사업단 · D-129"}</small>
           </section>
+          <GPU상태배지 />
           <div className="account-row">
             <button
               className="account-main"
@@ -911,6 +913,9 @@ function Login({
                 set로그인오류(null);
                 try {
                   await supabase로그인(loginEmail, loginPassword);
+                  // 🔴 로그인 직후 GPU 기동에 «머리 시작 시간»을 벌어 둡니다. 실패해도
+                  //    조용히 넘어갑니다 — 실제 판정 때 서버가 다시 기동을 시도합니다.
+                  if (API켜짐()) GPU깨우기().catch(() => {});
                   setStep("project");
                 } catch (e: unknown) {
                   set로그인오류(
@@ -962,6 +967,7 @@ function Login({
                   set둘러보는중(true);
                   try {
                     await 데모시작();
+                    if (API켜짐()) GPU깨우기().catch(() => {});
                     onEnter("home");        // 온보딩을 건너뜁니다 — 샘플이 이미 들어 있습니다
                   } catch (e) {
                     set로그인오류(
@@ -1122,19 +1128,19 @@ function Login({
               <div className="institution-results">
                 <small>검색 결과</small>
                 {!institutionQuery ||
-                "건국대학교".includes(institutionQuery) ? (
+                "경상국립대학교".includes(institutionQuery) ? (
                   <button
-                    className={institution === "건국대학교" ? "selected" : ""}
+                    className={institution === "경상국립대학교" ? "selected" : ""}
                     onClick={() => {
-                      setInstitution("건국대학교");
-                      setInstitutionQuery("건국대학교");
+                      setInstitution("경상국립대학교");
+                      setInstitutionQuery("경상국립대학교");
                     }}
                   >
                     <span>
-                      <b>건국대학교</b>
-                      <small>서울특별시 광진구 · 창업지원단</small>
+                      <b>경상국립대학교</b>
+                      <small>경상남도 진주시 · 창업중심대학사업단</small>
                     </span>
-                    {institution === "건국대학교" ? (
+                    {institution === "경상국립대학교" ? (
                       <Icon name="check" size={18} />
                     ) : (
                       <Icon name="arrow" size={16} />
@@ -1329,7 +1335,7 @@ function HomePage({
             </div>
           </div>
           <h2>{사업}</h2>
-          <p>건국대학교 창업지원센터 · 사업화 자금</p>
+          <p>경상국립대학교 창업중심대학사업단 · 사업비 집행</p>
           <dl>
             <div>
               <Icon name="calendar" size={16} />
@@ -1544,6 +1550,13 @@ function AiCheckingOverlay({
   const [stage, setStage] = useState(0);
   const [설명, set설명] = useState("");
   const 진행중 = useRef<Promise<{ 계획: ExpensePlan }> | null>(null);
+  // 🔴 2026-09-04 — GPU 콜드 기동 대응. 마지막으로 「진행」 이벤트를 받은 시각을 기록합니다.
+  //    서버 워치독은 5초마다(SUDDOE_GPU_POLL_SEC) 기동 진행을 흘리므로, GPU 를 깨우는 동안은
+  //    이 시각이 계속 갱신됩니다. 절대시간 3분으로 끊으면 GPU 콜드 기동(서버 자체 상한
+  //    SUDDOE_GPU_START_SEC 기본 300초) 도중에 「오래 걸린다」로 잘못 보고합니다 — 아래
+  //    타임아웃은 «마지막 진행 이후 무응답 시간» 을 잽니다.
+  const 진행시각 = useRef(Date.now());
+  const GPU기동중 = /서버를 깨우는 중|서버가 준비/.test(설명);
 
   useEffect(() => {
     // ── 연출 경로 (백엔드 없음 / 계획 지정 안 함) ──
@@ -1576,6 +1589,7 @@ function AiCheckingOverlay({
         {
           진행: (문구) => {
             // 언마운트 뒤 호출돼도 React 18+ 에서는 무해합니다 (경고 없음)
+            진행시각.current = Date.now();
             set설명(문구);
             setStage((s) => Math.min(2, s + 1));
           },
@@ -1585,20 +1599,25 @@ function AiCheckingOverlay({
     }
 
     // 🔴 안전장치 — 어떤 이유로도 «영원히» 도는 일이 없게 합니다.
-    //    실판정이 40초 안팎이라 3분이면 넉넉합니다.
-    const 시간초과 = window.setTimeout(() => {
+    //    절대시간이 아니라 «마지막 진행 이후 무응답» 을 잽니다 — GPU 콜드 기동은
+    //    5초마다 진행 이벤트를 흘려서 계속 갱신되고, 실판정 구간(무응답 최대 실측
+    //    약 97초)도 이 안에 들어옵니다. 150초 무응답이면 그때는 정말 멈춘 것입니다.
+    const 무응답한도 = 150000;
+    const 시간초과 = window.setInterval(() => {
       if (!살아있음) return;
+      if (Date.now() - 진행시각.current < 무응답한도) return;
+      window.clearInterval(시간초과);
       진행중.current = null;
       onFail?.("점검이 예상보다 오래 걸립니다. 잠시 후 다시 시도해 주세요.");
-    }, 180000);
+    }, 5000);
 
     진행중.current
       .then((r) => {
-        window.clearTimeout(시간초과);
+        window.clearInterval(시간초과);
         if (살아있음) onComplete(r.계획);
       })
       .catch((e: unknown) => {
-        window.clearTimeout(시간초과);
+        window.clearInterval(시간초과);
         if (!살아있음) return;
         진행중.current = null;          // 다음 시도는 새로 부를 수 있게
         const 메시지 = e instanceof Error ? e.message : "점검에 실패했습니다";
@@ -1608,7 +1627,7 @@ function AiCheckingOverlay({
 
     return () => {
       살아있음 = false;
-      window.clearTimeout(시간초과);
+      window.clearInterval(시간초과);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [planId]);
@@ -1628,8 +1647,78 @@ function AiCheckingOverlay({
             <span className={index <= stage ? "active" : ""} key={label}><i /><b>{label}</b></span>
           ))}
         </div>
-        <small>보통 5초 정도 소요됩니다.</small>
+        {/* 🔴 GPU 가 꺼져 있으면 몇 분씩 걸릴 수 있습니다 — 「5초」를 그때도 보여주면
+            팀원이 「고장」으로 봅니다. 서버가 보낸 문구로 기동 중임을 압니다(고정값 아님). */}
+        <small>
+          {GPU기동중
+            ? "AI 서버를 새로 켜는 중입니다. 몇 분 정도 걸릴 수 있어요."
+            : "보통 5초 정도 소요됩니다."}
+        </small>
       </section>
+    </div>
+  );
+}
+
+/**
+ * 사이드바 GPU 상태 표시 — 화면 Q6 ㄴ.
+ *
+ * 🔴 `GET /api/gpu/status` 는 캐시값을 돌려줍니다 — 20초 폴링이 RunPod API 를 직접 치지
+ *    않습니다(`server/gpu_watchdog.py:516-523`). `종료예정초` 는 null 일 수 있고, 그건
+ *    「곧 끝난다」가 아니라 «모른다» 입니다 — 그때는 남은 시간을 안 보여줍니다.
+ * 🔴 `vLLM_응답` 은 v4 배포 전에는 응답에 아예 없을 수 있습니다(undefined) — 그때는
+ *    이 필드를 못 본 걸로 취급합니다(옛 계약대로 「상태」만 봅니다).
+ *    `상태:가동` + `vLLM_응답:false` 는 팟은 떠 있는데 모델이 죽은 사각지대입니다
+ *    (2026-09-04, ai-d7/Q1 실측 계기) — 「사용 중」이 아니라 「기동 준비 중」으로 보여줍니다.
+ *    이 배지는 판정을 막지 않습니다 — 실제 게이트는 서버 `_실_판정`/`_실_정규화` 안에 있습니다.
+ */
+function GPU상태배지() {
+  const [상태, set상태] = useState<GPU상태값 | null>(null);
+
+  useEffect(() => {
+    if (!API켜짐()) return;
+    let 살아있음 = true;
+    const 조회 = () => {
+      GPU상태()
+        .then((v) => {
+          if (살아있음) set상태(v);
+        })
+        .catch(() => {
+          /* 상태 조회 실패는 조용히 넘어갑니다 — 판정을 막는 자리가 아닙니다 */
+        });
+    };
+    조회();
+    const 주기 = window.setInterval(조회, 20000);
+    return () => {
+      살아있음 = false;
+      window.clearInterval(주기);
+    };
+  }, []);
+
+  if (!상태) return null;
+
+  const 남은분 =
+    상태.종료예정초 != null ? Math.max(1, Math.round(상태.종료예정초 / 60)) : null;
+  // 🔴 vLLM_응답 이 명시적으로 false 일 때만 사각지대로 봅니다. undefined(필드 없음)·
+  //    null(아직 미확인)·true(응답함)는 전부 「상태」값을 그대로 믿습니다.
+  const 모델죽음 = 상태.상태 === "가동" && 상태.vLLM_응답 === false;
+
+  // 🔴 「가동 중이고 종료 예정도 모른다」는 평상시라 아무것도 안 보여줍니다.
+  //    기동중·중지·모델죽음은 항상 보여줍니다. 가동인데 종료예정초 가 있으면(=유휴
+  //    카운트다운 진행 중) 그것도 보여줍니다 — 이게 「사용 중 남은 시간」 표시입니다.
+  if (상태.상태 === "가동" && 남은분 == null && !모델죽음) return null;
+
+  return (
+    <div className="gpu-status-pill" role="status">
+      {모델죽음 ? (
+        <span>AI 서버 기동 준비 중 · 판정은 정상 응답합니다</span>
+      ) : (
+        <>
+          {상태.상태 === "기동중" && <span>AI 서버 기동 중</span>}
+          {상태.상태 === "중지" && <span>AI 서버 꺼짐 · 판정 요청 시 자동으로 켭니다</span>}
+          {상태.상태 === "가동" && <span>AI 서버 사용 중</span>}
+        </>
+      )}
+      {남은분 != null && !모델죽음 && <small>약 {남은분}분 뒤 정리 예정</small>}
     </div>
   );
 }
@@ -4893,24 +4982,22 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
   ];
   const [서버사업, set서버사업] = useState<string[] | null>(null);
   const programs = 서버사업 ?? 예비사업목록;
-  const hostInstitutions = [
-    "건국대학교 창업지원센터",
-    "서울대학교 창업지원단",
-    "한양대학교 창업지원단",
-    "성균관대학교 창업지원단",
-  ];
+  // 🔴 2026-09-04 — 데모 기관을 경상국립대 1건으로 줄였다(중앙 승인). `/api/orgs` 는 420건이라
+  //    드롭다운에 그대로 넣으려면 검색 UX 가 필요하고 오늘 범위가 아니다. 목록에 여러 기관을
+  //    남겨 두면 QA 팀원이 다른 기관을 눌러 보고 「빈 화면」을 버그로 올린다.
+  const hostInstitutions = ["경상국립대학교 창업중심대학사업단"];
   const [editingProfile, setEditingProfile] = useState(false);
   const [hostSearchOpen, setHostSearchOpen] = useState(false);
   const [profile, setProfile] = useState({
     email: "team@startup.kr",
     team: "체쿠메이트",
     program: 선택사업(),
-    host: "건국대학교 창업지원센터",
+    host: "경상국립대학교 창업중심대학사업단",
     duplicateBenefit: "X",
   });
   const [profileDraft, setProfileDraft] = useState(profile);
   const [institutionFile, setInstitutionFile] = useState(
-    "2026 건국대학교 초기창업패키지 사업비 집행 안내.pdf",
+    "2026 경상국립대학교 창업중심대학사업 사업비 집행 안내.pdf",
   );
 
   /**
@@ -5020,7 +5107,7 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
         <article>
           <span className="auto-badge">자동 반영</span>
           <div>
-            <b>2026년 초기창업패키지 창업기업 모집공고·사업화 자금 범위</b>
+            <b>2026년 창업중심대학사업 운영관리기준·사업비 집행 범위</b>
             <small>중소벤처기업부·창업진흥원 · 현재 사업 기준</small>
           </div>
         </article>
