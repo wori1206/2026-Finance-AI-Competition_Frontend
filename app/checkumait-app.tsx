@@ -11,9 +11,11 @@ import type {
 import { API켜짐 } from "../lib/config";
 import { 판정실행 } from "../lib/judge";
 import { 정규화하기 } from "../lib/normalize";
-import { 비목목록, 계획추가, GPU깨우기, GPU상태 } from "../lib/api";
+import { 비목목록, 계획추가, 계획상세, GPU깨우기, GPU상태 } from "../lib/api";
 import type { GPU상태값 } from "../lib/api";
-import { 체크저장 } from "../lib/tasks";
+import { 체크저장, 일정변경저장 } from "../lib/tasks";
+import { 기관검색, 사업요약, 예비기관, type 기관 } from "../lib/orgs";
+import { 첨부보관, 첨부읽기, 첨부쓰기, 파일을첨부로, type 첨부 } from "../lib/attachments";
 import { 인증켜짐, 로그인 as supabase로그인, 로그아웃 as supabase로그아웃 } from "../lib/supabase";
 import { 상세를계획으로, 판정제목, 행동문구 } from "../lib/adapt";
 import { 데모시작, 데모종료, 데모중 } from "../lib/session";
@@ -541,8 +543,21 @@ export default function CheckumaitApp() {
     void planService.savePlans(next);
   };
   const persistSchedules = (next: ScheduleItem[]) => {
+    const 이전 = schedules;
     setSchedules(next);
     void planService.saveSchedules(next);
+    // 🔴 집행 일정은 그동안 «어디에도» 저장되지 않았습니다 — 완료 체크가 새로고침하면
+    //    사라졌습니다. 서버에서 온 일정(숫자 id)은 이제 상태를 진짜로 저장합니다.
+    void 일정변경저장(이전, next).then(({ 실패, 없음 }) => {
+      if (실패.length) {
+        setSchedules(이전);
+        notify("일정 상태를 저장하지 못했습니다. 잠시 뒤 다시 시도해 주세요.");
+        return;
+      }
+      if (없음.length) {
+        notify("일부 일정은 서버에 없어 이 화면에서만 바뀝니다.");
+      }
+    });
   };
   const deletePlan = (ids: string | string[], skipConfirm = false) => {
     const targets = Array.isArray(ids) ? ids : [ids];
@@ -833,6 +848,10 @@ function Login({
   const [program, setProgram] = useState(선택사업);
   const [서버사업, set서버사업] = useState<string[] | null>(null);
   const [institutionQuery, setInstitutionQuery] = useState("");
+  // 🔴 주관기관은 서버(`GET /api/orgs`)가 정본입니다. 예전에는 화면에 1건이 박혀 있어서
+  //    검색도 수정도 안 됐습니다. 서버가 안 되면 예비 1건으로 조용히 내려갑니다.
+  const [기관목록, set기관목록] = useState<기관[]>([예비기관]);
+  const [기관찾는중, set기관찾는중] = useState(false);
   const [institution, setInstitution] = useState("");
   const [criteriaFile, setCriteriaFile] = useState("");
   // 🔴 Supabase 에 실제로 만들어 둔 계정과 «똑같아야» 합니다.
@@ -873,6 +892,24 @@ function Login({
   }, []);
 
   const programs = 서버사업 ?? 예비사업목록;
+
+  // 🔴 입력할 때마다 서버를 치지 않도록 250ms 기다립니다. 온보딩 2단계에서만 돕니다.
+  useEffect(() => {
+    if (step !== "institution") return;
+    let 살아있음 = true;
+    set기관찾는중(true);
+    const 타이머 = window.setTimeout(() => {
+      기관검색(institutionQuery, { 크기: 20 }).then((r) => {
+        if (!살아있음) return;
+        set기관목록(r.항목.length ? r.항목 : []);
+        set기관찾는중(false);
+      });
+    }, 250);
+    return () => {
+      살아있음 = false;
+      window.clearTimeout(타이머);
+    };
+  }, [institutionQuery, step]);
 
   if (step === "welcome")
     return (
@@ -1127,26 +1164,28 @@ function Login({
               </label>
               <div className="institution-results">
                 <small>검색 결과</small>
-                {!institutionQuery ||
-                "경상국립대학교".includes(institutionQuery) ? (
-                  <button
-                    className={institution === "경상국립대학교" ? "selected" : ""}
-                    onClick={() => {
-                      setInstitution("경상국립대학교");
-                      setInstitutionQuery("경상국립대학교");
-                    }}
-                  >
-                    <span>
-                      <b>경상국립대학교</b>
-                      <small>경상남도 진주시 · 창업중심대학사업단</small>
-                    </span>
-                    {institution === "경상국립대학교" ? (
-                      <Icon name="check" size={18} />
-                    ) : (
-                      <Icon name="arrow" size={16} />
-                    )}
-                  </button>
-                ) : (
+                {기관찾는중 && 기관목록.length === 0 && <p>찾는 중…</p>}
+                {기관목록.map((기관) => {
+                  const 고름 = institution === 기관.기관명;
+                  const 부제 = 사업요약(기관);
+                  return (
+                    <button
+                      key={기관.slug || 기관.기관명}
+                      className={고름 ? "selected" : ""}
+                      onClick={() => {
+                        setInstitution(기관.기관명);
+                        setInstitutionQuery(기관.기관명);
+                      }}
+                    >
+                      <span>
+                        <b>{기관.기관명}</b>
+                        {부제 && <small>{부제}</small>}
+                      </span>
+                      {고름 ? <Icon name="check" size={18} /> : <Icon name="arrow" size={16} />}
+                    </button>
+                  );
+                })}
+                {!기관찾는중 && 기관목록.length === 0 && (
                   <p>일치하는 주관기관이 없습니다.</p>
                 )}
               </div>
@@ -2496,6 +2535,16 @@ function NewPlanPage({
       정규화: 서버정규화 ?? undefined,
     });
 
+  /**
+   * 🔴 계획을 목록으로 넘기기 «직전» 에 첨부파일을 그 계획 id 로 옮깁니다.
+   *    예전에는 `attachments` 를 화면에서 보여주기만 하고 저장할 때 그냥 버렸습니다
+   *    — 붙인 파일이 상세에서 사라지던 이유입니다.
+   */
+  const 저장 = (계획: ExpensePlan, 임시?: boolean) => {
+    첨부보관(계획.id, attachments);
+    save(계획, 임시);
+  };
+
   const submit = () => {
     if (!API켜짐()) {
       setPendingPlan(buildPlan(false));
@@ -2518,12 +2567,12 @@ function NewPlanPage({
 
   const saveDraft = () => {
     if (!API켜짐()) {
-      save(buildPlan(true), true);
+      저장(buildPlan(true), true);
       return;
     }
     set저장중(true);
     서버에저장()
-      .then((d) => save(상세를계획으로(d), true))
+      .then((d) => 저장(상세를계획으로(d), true))
       .catch((e: unknown) => {
         set연동오류(e instanceof Error ? e.message : "임시저장하지 못했습니다");
       })
@@ -2611,9 +2660,14 @@ function NewPlanPage({
                       type="file"
                       multiple
                       onChange={(event) => {
+                        // 🔴 상세 화면과 같은 한도(개별 3MB · 최대 10개)를 여기서도 겁니다.
+                        //    여기서 안 막으면 상세에서 못 다루는 파일이 들어옵니다.
                         const selectedFiles = Array.from(event.target.files || []);
-                        if (selectedFiles.length) {
-                          setAttachments((current) => [...current, ...selectedFiles]);
+                        const 넘김 = selectedFiles.filter((f) => f.size > 3 * 1024 * 1024);
+                        const 통과 = selectedFiles.filter((f) => f.size <= 3 * 1024 * 1024);
+                        if (넘김.length) set연동오류("첨부파일은 개별 3MB 이하만 올릴 수 있습니다.");
+                        if (통과.length) {
+                          setAttachments((current) => [...current, ...통과].slice(0, 10));
                         }
                         event.target.value = "";
                       }}
@@ -2777,11 +2831,11 @@ function NewPlanPage({
           onFail={(메시지) => {
             setChecking(false);
             set연동오류(메시지);
-            save(pendingPlan);      // 저장은 됐으니 목록으로는 보냅니다
+            저장(pendingPlan);      // 저장은 됐으니 목록으로는 보냅니다
           }}
           onComplete={(판정된계획) => {
             setChecking(false);
-            save(판정된계획 ?? pendingPlan);
+            저장(판정된계획 ?? pendingPlan);
           }}
         />
       )}
@@ -2859,16 +2913,20 @@ function PlanDetail({
     "aiChecks" | "evidence" | null
   >(null);
   const [draft, setDraft] = useState(plan);
-  const [planFiles, setPlanFiles] = useState<
-    { id: string; name: string; size: string; file?: File }[]
-  >(() =>
-    plan
-      ? [
-          { id: "estimate", name: `${plan.name} 견적서.pdf`, size: "245KB" },
-          { id: "reference", name: `${plan.category} 참고자료.pdf`, size: "312KB" },
-        ]
-      : [],
+  // 🔴 2026-09-04 — 여기에 「○○ 견적서.pdf」·「○○ 참고자료.pdf」 두 건을 «지어내고»
+  //    있었습니다. 이제 «사용자가 실제로 붙인» 파일만 보여줍니다
+  //    (새 지출 계획에서 붙인 것 + 이 화면에서 추가한 것).
+  const [planFiles, setPlanFiles] = useState<첨부[]>(() =>
+    plan ? 첨부읽기(plan.id) : [],
   );
+  // 다른 계획을 열면 그 계획의 첨부로 갈아 끼웁니다.
+  useEffect(() => {
+    setPlanFiles(plan ? 첨부읽기(plan.id) : []);
+  }, [plan?.id]);
+  // 이 화면에서 추가·삭제한 결과를 보관함에 되돌려 놓습니다 — 나갔다 와도 남게.
+  useEffect(() => {
+    if (plan?.id) 첨부쓰기(plan.id, planFiles);
+  }, [plan?.id, planFiles]);
   const [evidenceFiles, setEvidenceFiles] = useState<Record<string, File>>({});
   const [actualDate, setActualDate] = useState(plan?.actualDate || plan?.plannedDate || "");
   const [actualAmount, setActualAmount] = useState(
@@ -2910,10 +2968,28 @@ function PlanDetail({
     update(next);
 
     // 그 다음 서버에 저장하고, 실패하면 되돌립니다.
-    체크저장(plan.id, id, 켜짐).catch((e: unknown) => {
-      update(이전);
-      notify(e instanceof Error ? e.message : "저장하지 못했습니다");
-    });
+    //
+    // 🔴 서버가 「할일 123 을(를) 찾을 수 없습니다」(404) 를 주는 경우가 있습니다.
+    //    고장이 아니라 «화면이 들고 있는 목록이 서버보다 낡은» 상태입니다
+    //    (재판정으로 할일이 새로 깔리면 옛 task_id 가 사라집니다).
+    //    그 문구를 그대로 띄우면 사용자는 버그로 읽습니다 — 조용히 다시 읽어 맞춥니다.
+    체크저장(plan.id, id, 켜짐)
+      .then((결과) => {
+        if (결과 !== "없음") return;
+        return 계획상세(plan.id)
+          .then((d) => {
+            update(상세를계획으로(d));
+            notify("항목이 바뀌어서 최신 내용으로 다시 불러왔습니다.");
+          })
+          .catch(() => {
+            update(이전);
+            notify("이 항목을 저장하지 못했습니다. 잠시 뒤 다시 시도해 주세요.");
+          });
+      })
+      .catch((e: unknown) => {
+        update(이전);
+        notify(e instanceof Error ? e.message : "저장하지 못했습니다");
+      });
   };
   const saveScheduleChecks = (
     items: { id: string; label: string; date: string }[],
@@ -3040,6 +3116,11 @@ function PlanDetail({
             <div className="expense-v5-file-row">
               <span>첨부 파일</span>
               <div>
+                {planFiles.length === 0 && (
+                  <p className="expense-v5-file-empty">
+                    첨부한 파일이 없습니다. 견적서·과업자료가 있으면 올려 두세요.
+                  </p>
+                )}
                 <ul>
                   {planFiles.map((file) => (
                     <li key={file.id}>
@@ -4982,10 +5063,11 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
   ];
   const [서버사업, set서버사업] = useState<string[] | null>(null);
   const programs = 서버사업 ?? 예비사업목록;
-  // 🔴 2026-09-04 — 데모 기관을 경상국립대 1건으로 줄였다(중앙 승인). `/api/orgs` 는 420건이라
-  //    드롭다운에 그대로 넣으려면 검색 UX 가 필요하고 오늘 범위가 아니다. 목록에 여러 기관을
-  //    남겨 두면 QA 팀원이 다른 기관을 눌러 보고 「빈 화면」을 버그로 올린다.
-  const hostInstitutions = ["경상국립대학교 창업중심대학사업단"];
+  // 🔴 2026-09-04 저녁 — 검색을 붙였습니다. 그전에는 1건이 박혀 있어서 「검색도 수정도
+  //    안 된다」는 QA 지적이 나왔습니다. 이제 `GET /api/orgs` 에 물어봅니다(420건, 부분일치).
+  //    서버가 안 되면 예비 1건으로 조용히 내려갑니다 — 온보딩과 같은 규칙입니다.
+  const [기관목록, set기관목록] = useState<기관[]>([예비기관]);
+  const [기관찾는중, set기관찾는중] = useState(false);
   const [editingProfile, setEditingProfile] = useState(false);
   const [hostSearchOpen, setHostSearchOpen] = useState(false);
   const [profile, setProfile] = useState({
@@ -5013,6 +5095,24 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
   });
   const [협약초안, set협약초안] = useState(협약);
   const [협약저장중, set협약저장중] = useState(false);
+
+  // 🔴 기관 검색 — 편집창이 열려 있을 때만, 250ms 늦춰서 서버를 칩니다.
+  useEffect(() => {
+    if (!editingProfile) return;
+    let 살아있음 = true;
+    set기관찾는중(true);
+    const 타이머 = window.setTimeout(() => {
+      기관검색(profileDraft.host, { 크기: 20 }).then((r) => {
+        if (!살아있음) return;
+        set기관목록(r.항목);
+        set기관찾는중(false);
+      });
+    }, 250);
+    return () => {
+      살아있음 = false;
+      window.clearTimeout(타이머);
+    };
+  }, [editingProfile, profileDraft.host]);
 
   useEffect(() => {
     let 살아있음 = true;
@@ -5198,28 +5298,25 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
                 </div>
                 {hostSearchOpen && (
                   <div className="my-host-results" id="my-host-results" role="listbox">
-                    {hostInstitutions
-                      .filter((host) =>
-                        host.toLowerCase().includes(profileDraft.host.toLowerCase()),
-                      )
-                      .map((host) => (
-                        <button
-                          type="button"
-                          role="option"
-                          aria-selected={profileDraft.host === host}
-                          key={host}
-                          onClick={() => {
-                            setProfileDraft((value) => ({ ...value, host }));
-                            setHostSearchOpen(false);
-                          }}
-                        >
-                          <span>{host}</span>
-                          {profileDraft.host === host && <Icon name="check" size={15} />}
-                        </button>
-                      ))}
-                    {hostInstitutions.filter((host) =>
-                      host.toLowerCase().includes(profileDraft.host.toLowerCase()),
-                    ).length === 0 && <p>일치하는 주관기관이 없습니다.</p>}
+                    {기관목록.map((기관) => (
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={profileDraft.host === 기관.기관명}
+                        key={기관.slug || 기관.기관명}
+                        onClick={() => {
+                          setProfileDraft((value) => ({ ...value, host: 기관.기관명 }));
+                          setHostSearchOpen(false);
+                        }}
+                      >
+                        <span>{기관.기관명}</span>
+                        {profileDraft.host === 기관.기관명 && <Icon name="check" size={15} />}
+                      </button>
+                    ))}
+                    {기관찾는중 && 기관목록.length === 0 && <p>찾는 중…</p>}
+                    {!기관찾는중 && 기관목록.length === 0 && (
+                      <p>일치하는 주관기관이 없습니다.</p>
+                    )}
                   </div>
                 )}
               </label>
@@ -5257,7 +5354,7 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
             </div>
             <footer>
               <button className="outline" onClick={() => setEditingProfile(false)}>취소</button>
-              <button className="primary" disabled={!hostInstitutions.includes(profileDraft.host) || 협약저장중} onClick={() => {
+              <button className="primary" disabled={!profileDraft.host.trim() || 협약저장중} onClick={() => {
                 // 화면은 먼저 바꿉니다 — 서버가 못 받아도 시연이 끊기면 안 됩니다.
                 setProfile(profileDraft);
                 set협약(협약초안);
