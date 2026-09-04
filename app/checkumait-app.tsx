@@ -1827,6 +1827,7 @@ function PlansPage({
   remove: (ids: string | string[], skipConfirm?: boolean) => boolean;
   update: (plan: ExpensePlan) => void;
 }) {
+  const [점검오류, set점검오류] = useState<string | null>(null);
   const [filter, setFilter] = useState<"전체" | ReturnType<typeof displayPlanStatus>>("전체");
   const [filterOpen, setFilterOpen] = useState(false);
   const [amountOpen, setAmountOpen] = useState(false);
@@ -2134,6 +2135,9 @@ function PlansPage({
               <Icon name="spark" size={15} />
               {selected.length > 1 ? "AI 점검은 1건만 가능" : "선택 항목 AI 점검"}
             </button>
+            {점검오류 && (
+              <small style={{ color: "var(--red, #c23b3b)" }}>{점검오류}</small>
+            )}
             {selected.length > 0 && (
               <>
                 <button
@@ -2306,10 +2310,25 @@ function PlansPage({
         </footer>
       </section>
       {checking && (
-        <AiCheckingOverlay count={selected.length} onComplete={() => {
-          setChecking(false);
-          setBulkComplete(true);
-        }} />
+        // 🔴 2026-09-04 — 여기에 `planId` 를 «안 넘기고» 있었습니다. 그러면
+        //    AiCheckingOverlay 가 2.7초짜리 «연출만» 하고 끝납니다
+        //    (`if (!planId || !API켜짐())` 분기). 목록에서 「선택 항목 AI 점검」을
+        //    눌러도 서버 판정이 한 번도 안 돌았고, 그래서 상태가 계속 「점검전」
+        //    이었습니다. 상세 화면은 넘기고 있어서 거기서만 진짜로 돌았습니다.
+        <AiCheckingOverlay
+          count={selected.length}
+          planId={API켜짐() ? selected[0] : undefined}
+          onFail={(메시지) => {
+            setChecking(false);
+            setBulkComplete(false);
+            set점검오류(메시지);
+          }}
+          onComplete={(판정된계획) => {
+            setChecking(false);
+            if (판정된계획) update(판정된계획);   // 목록의 배지가 바로 바뀝니다
+            setBulkComplete(true);
+          }}
+        />
       )}
       {questionPlan && (
         <PlanRecheckQuestionsModal
