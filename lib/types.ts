@@ -44,6 +44,12 @@ export type ExpensePlan = {
 export type ScheduleItem = {
   id: string;
   planId: string;
+  /**
+   * 🔴 이 일정이 «어느 할일에서 나왔는가» (서버 task_id).
+   *    상세의 체크박스와 집행 일정의 완료 체크가 같은 것을 가리키게 하는 열쇠입니다.
+   *    사용자가 손으로 만든 일정에는 없습니다.
+   */
+  taskId?: string;
   title: string;
   date: string;
   type: "사전승인" | "사전 확인" | "비교견적" | "계약" | "집행" | "증빙" | "기타";

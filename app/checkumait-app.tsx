@@ -11,7 +11,7 @@ import type {
 import { API켜짐 } from "../lib/config";
 import { 판정실행 } from "../lib/judge";
 import { 정규화하기 } from "../lib/normalize";
-import { 비목목록, 계획추가, 계획상세, GPU깨우기, GPU상태 } from "../lib/api";
+import { 비목목록, 계획추가, GPU깨우기, GPU상태 } from "../lib/api";
 import type { GPU상태값 } from "../lib/api";
 import { 체크저장, 일정변경저장 } from "../lib/tasks";
 import { 기관검색, 사업요약, 예비기관, type 기관 } from "../lib/orgs";
@@ -559,6 +559,73 @@ export default function CheckumaitApp() {
       }
     });
   };
+  /**
+   * 🔴 상세의 체크박스와 집행 일정의 완료 체크를 «한 몸» 으로 묶습니다.
+   *
+   *    둘은 사실 같은 것(서버 `plan_tasks` 한 행)인데 화면 상태가 둘로 갈려 있어서,
+   *    한쪽에서 체크해도 다른 쪽은 그대로였습니다. 이제 어느 쪽을 눌러도 두 화면이
+   *    같이 바뀌고, 서버에는 «한 번만» 저장합니다.
+   *
+   *    `taskId` 가 이어주는 열쇠입니다 — 상세에서 「일정에 추가」로 만든 일정과
+   *    서버에서 받아온 일정 둘 다 이 값을 답니다. 사용자가 손으로 만든 일정에는
+   *    없으므로 그런 건 예전처럼 화면 안에서만 움직입니다.
+   */
+  const 할일동기화 = (planId: string, taskId: string, 완료: boolean) => {
+    const 이전계획 = plans;
+    const 이전일정 = schedules;
+
+    const 다음계획 = plans.map((p) => {
+      if (p.id !== planId) return p;
+      const aiChecks = p.aiChecks.map((c) =>
+        c.id === taskId ? { ...c, done: 완료 } : c,
+      );
+      const evidence = p.evidence.map((c) =>
+        c.id === taskId ? { ...c, done: 완료 } : c,
+      );
+      return {
+        ...p,
+        aiChecks,
+        evidence,
+        nextAction: aiChecks.every((c) => c.done)
+          ? "확인 완료"
+          : p.nextAction === "확인 완료"
+            ? "확인사항 확인"
+            : p.nextAction,
+      };
+    });
+
+    const 다음일정 = schedules.map((s) =>
+      (s.taskId ?? s.id) === taskId && s.planId === planId
+        ? {
+            ...s,
+            state: (완료
+              ? "완료"
+              : s.type === "집행"
+                ? "집행 예정"
+                : "준비 필요") as ScheduleItem["state"],
+          }
+        : s,
+    );
+
+    setPlans(다음계획);
+    setSchedules(다음일정);
+    void planService.savePlans(다음계획);
+    void planService.saveSchedules(다음일정);
+
+    // 🔴 서버 저장은 «한 번» 입니다 — 두 화면이 각자 PATCH 하면 경합합니다.
+    체크저장(planId, taskId, 완료)
+      .then((결과) => {
+        if (결과 !== "없음") return;
+        console.warn("[할일] 서버에 없음 — plan_id=%s task_id=%s", planId, taskId);
+        notify("이 항목은 서버에 없어 화면에서만 바뀝니다.");
+      })
+      .catch((e: unknown) => {
+        setPlans(이전계획);
+        setSchedules(이전일정);
+        notify(e instanceof Error ? e.message : "저장하지 못했습니다");
+      });
+  };
+
   const deletePlan = (ids: string | string[], skipConfirm = false) => {
     const targets = Array.isArray(ids) ? ids : [ids];
     const target = plans.find((plan) => plan.id === targets[0]);
@@ -735,6 +802,7 @@ export default function CheckumaitApp() {
               )
             }
             addSchedules={(items) => persistSchedules([...schedules, ...items])}
+            할일동기화={할일동기화}
             remove={() => {
               const target = plans.find((plan) => plan.id === route.id);
               if (target && deletePlan(target.id)) go({ page: "plans" });
@@ -749,6 +817,7 @@ export default function CheckumaitApp() {
             plans={plans}
             schedules={schedules}
             save={persistSchedules}
+            할일동기화={할일동기화}
             notify={notify}
           />
         )}
@@ -2931,6 +3000,7 @@ function PlanDetail({
   allPlans,
   update,
   addSchedules,
+  할일동기화,
   remove,
   back,
   notify,
@@ -2939,6 +3009,8 @@ function PlanDetail({
   allPlans: ExpensePlan[];
   update: (plan: ExpensePlan) => void;
   addSchedules: (items: ScheduleItem[]) => void;
+  /** 🔴 체크박스는 이걸로 바꿉니다 — 집행 일정까지 같이 움직이고 서버 저장도 여기서. */
+  할일동기화: (planId: string, taskId: string, 완료: boolean) => void;
   remove: () => void;
   back: () => void;
   notify: (message: string) => void;
@@ -2987,55 +3059,12 @@ function PlanDetail({
       </div>
     );
   const toggle = (group: "aiChecks" | "evidence", id: string) => {
-    const 이전 = plan;
     const 켜짐 = !plan[group].find((item) => item.id === id)?.done;
-    const items = plan[group].map((item) =>
-      item.id === id ? { ...item, done: !item.done } : item,
-    );
-    const next = {
-      ...plan,
-      [group]: items,
-      nextAction:
-        group === "aiChecks"
-          ? items.every((item) => item.done)
-            ? "확인 완료"
-            : plan.nextAction === "확인 완료"
-              ? "확인사항 확인"
-              : plan.nextAction
-          : plan.nextAction,
-    };
-    // 화면은 «먼저» 바꿉니다 — 체크박스가 뻑뻑하면 안 됩니다.
-    update(next);
-
-    // 그 다음 서버에 저장하고, 실패하면 되돌립니다.
-    //
-    // 🔴 서버가 「할일 123 을(를) 찾을 수 없습니다」(404) 를 주는 경우가 있습니다.
-    //    고장이 아니라 «화면이 들고 있는 목록이 서버보다 낡은» 상태입니다
-    //    (재판정으로 할일이 새로 깔리면 옛 task_id 가 사라집니다).
-    //    그 문구를 그대로 띄우면 사용자는 버그로 읽습니다 — 조용히 다시 읽어 맞춥니다.
-    체크저장(plan.id, id, 켜짐)
-      .then((결과) => {
-        if (결과 !== "없음") return;
-        // 🔴 서버에 그 할일이 없습니다. 원인을 짚을 수 있게 콘솔에 남깁니다.
-        console.warn("[할일] 서버에 없음 — plan_id=%s task_id=%s", plan.id, id);
-        return 계획상세(plan.id)
-          .then((d) => {
-            update(상세를계획으로(d));
-            notify("항목이 바뀌어서 최신 내용으로 다시 불러왔습니다.");
-          })
-          .catch((e2: unknown) => {
-            // 🔴 되돌리지 «않습니다». 체크 표시는 사용자가 방금 한 행동이고,
-            //    그걸 취소하면서 경고까지 띄우면 화면이 고장 난 것처럼 보입니다.
-            //    서버에 없는 항목이면 이 화면에서만 유지하는 편이 낫습니다.
-            console.warn("[할일] 상세 재조회도 실패", e2);
-            notify("이 항목은 서버에 없어 화면에서만 바뀝니다.");
-          });
-      })
-      .catch((e: unknown) => {
-        update(이전);
-        notify(e instanceof Error ? e.message : "저장하지 못했습니다");
-      });
+    // 🔴 상세 체크박스와 집행 일정의 완료 체크는 «같은 것» 입니다 (서버 plan_tasks 한 행).
+    //    한 곳에서 처리해 두 화면이 같이 바뀌고, 서버 저장도 한 번만 나갑니다.
+    할일동기화(plan.id, id, 켜짐);
   };
+
   const saveScheduleChecks = (
     items: { id: string; label: string; date: string }[],
   ) => {
@@ -3043,6 +3072,9 @@ function PlanDetail({
     addSchedules(
       items.map((item, index) => ({
         id: `schedule-${stamp}-${index}`,
+        // 🔴 어느 할일에서 나왔는지 남깁니다. 이게 있어야 집행 일정에서 완료를
+        //    누를 때 상세의 체크박스도 같이 켜집니다.
+        taskId: item.id,
         planId: plan.id,
         title: item.label,
         date: item.date,
@@ -4257,11 +4289,14 @@ function SchedulePage({
   plans,
   schedules,
   save,
+  할일동기화,
   notify,
 }: {
   plans: ExpensePlan[];
   schedules: ScheduleItem[];
   save: (items: ScheduleItem[]) => void;
+  /** 🔴 서버 할일에서 온 일정이면 이걸로 바꿉니다 — 상세 체크박스까지 같이 움직입니다. */
+  할일동기화: (planId: string, taskId: string, 완료: boolean) => void;
   notify: (message: string) => void;
 }) {
   const [modal, setModal] = useState(false);
@@ -4322,21 +4357,35 @@ function SchedulePage({
         ? current.filter((groupId) => groupId !== id)
         : [...current, id],
     );
-  const toggleDone = (id: string) =>
+  const toggleDone = (id: string) => {
+    const 대상 = schedules.find((item) => item.id === id);
+    if (!대상) return;
+    const 완료 = 대상.state !== "완료";
+
+    // 🔴 서버 할일에서 온 일정이면 «상세 체크박스와 같이» 움직입니다.
+    //    (그쪽에서 서버 저장까지 한 번에 합니다)
+    const taskId = 대상.taskId;
+    if (taskId && 대상.planId) {
+      할일동기화(대상.planId, taskId, 완료);
+      return;
+    }
+
+    // 사용자가 손으로 만든 일정 — 이어질 할일이 없어 화면 안에서만 움직입니다.
     save(
       schedules.map((item) =>
         item.id === id
           ? {
               ...item,
-              state: (item.state === "완료"
-                ? item.type === "집행"
+              state: (완료
+                ? "완료"
+                : item.type === "집행"
                   ? "집행 예정"
-                  : "준비 필요"
-                : "완료") as ScheduleItem["state"],
+                  : "준비 필요") as ScheduleItem["state"],
             }
           : item,
       ),
     );
+  };
   return (
     <div className="page schedule-v2">
       <header className="schedule-v2-heading">
@@ -4769,11 +4818,16 @@ function SchedulePage({
                     : "준비 필요"
                   : "완료",
             };
-            save(
-              schedules.map((schedule) =>
-                schedule.id === viewing.id ? updated : schedule,
-              ),
-            );
+            // 🔴 상세 모달에서 눌러도 같은 규칙 — 서버 할일이면 체크박스까지 같이.
+            if (viewing.taskId && viewing.planId) {
+              할일동기화(viewing.planId, viewing.taskId, updated.state === "완료");
+            } else {
+              save(
+                schedules.map((schedule) =>
+                  schedule.id === viewing.id ? updated : schedule,
+                ),
+              );
+            }
             setViewing(updated);
             notify(updated.state === "완료" ? "일정을 완료 처리했습니다." : "일정을 미완료로 변경했습니다.");
           }}

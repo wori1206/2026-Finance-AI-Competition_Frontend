@@ -169,6 +169,7 @@ const 상태표: Record<string, ScheduleItem["state"]> = {
 export function 할일을일정으로(t: 할일): ScheduleItem {
   return {
     id: String(t.task_id),
+    taskId: String(t.task_id),      // 🔴 상세 체크박스와 이어지는 열쇠
     planId: t.plan_id === null ? "" : String(t.plan_id),
     title: t.항목,
     date: t.due_date ?? "",
