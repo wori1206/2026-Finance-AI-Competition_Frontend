@@ -119,11 +119,18 @@ export async function 데모시작(): Promise<데모세션> {
 let 메모리: 데모세션 | null = null;
 
 /**
- * 🔴 요청에 실을 토큰. 데모 세션이 «먼저» 입니다 —
- *    둘러보기 중에 예전 로그인 토큰이 남아 있으면 엉뚱한 기관으로 조회됩니다.
+ * 🔴 요청에 실을 토큰. **로그인한 사람이 먼저입니다.**
+ *
+ *    2026-09-04 뒤집었습니다. 전에는 데모 토큰을 먼저 썼는데, 예전에 「계정 없이
+ *    둘러보기」를 한 번 누른 적이 있으면 그 토큰이 localStorage 에 2시간 남아서
+ *    «로그인한 뒤에도» 데모 기관으로 조회됐습니다. 그러면 목록은 데모 기관 것이
+ *    보이는데 그 사이 데모 org 가 정리되면 같은 계획을 열 때 404 가 납니다
+ *    (「지출계획 23412 을(를) 찾을 수 없습니다」).
+ *    로그인은 사용자가 «명시적으로» 한 행동이므로 그쪽을 믿습니다.
  */
 export async function 현재토큰(): Promise<string | null> {
+  const 로그인 = await supabase토큰();
+  if (로그인) return 로그인;
   const d = 읽기() ?? (메모리 && Date.now() + 여유_ms < 메모리.만료 ? 메모리 : null);
-  if (d) return d.access_token;
-  return supabase토큰();
+  return d ? d.access_token : null;
 }

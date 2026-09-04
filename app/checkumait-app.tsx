@@ -2318,6 +2318,20 @@ function PlansPage({
         <AiCheckingOverlay
           count={selected.length}
           planId={API켜짐() ? selected[0] : undefined}
+          // 🔴 상세 조회가 404·500 이어도 판정을 포기하지 않습니다. 화면이 이미 들고
+          //    있는 값으로 대신 판정합니다 — 없으면 「지출계획 23412 을(를) 찾을 수
+          //    없습니다」가 그대로 사용자에게 튀어나옵니다.
+          대체입력={(() => {
+            const 대상 = plans.find((item) => item.id === selected[0]);
+            if (!대상) return undefined;
+            return {
+              사업명: 현재사업(),
+              확정비목: 대상.category.split(" · ")[0],
+              제목: 대상.name,
+              용도: 대상.purpose,
+              금액: 대상.amount,
+            };
+          })()}
           onFail={(메시지) => {
             setChecking(false);
             setBulkComplete(false);
@@ -3569,6 +3583,14 @@ function PlanDetail({
         <AiCheckingOverlay
           count={1}
           planId={API켜짐() ? plan.id : undefined}
+          // 🔴 상세가 404·500 이어도 화면이 든 값으로 판정합니다 (목록과 같은 규칙).
+          대체입력={{
+            사업명: 현재사업(),
+            확정비목: plan.category.split(" · ")[0],
+            제목: plan.name,
+            용도: plan.purpose,
+            금액: plan.amount,
+          }}
           onFail={(메시지) => {
             setRechecking(false);
             notify(메시지);

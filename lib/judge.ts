@@ -106,14 +106,23 @@ export async function 판정실행(
   let 저장됨 = false;
   let 서버오류: string | null = null;
 
-  await 판정SSE(
-    {
-      정규화: 정규화 as Record<string, unknown>,
-      확정비목: 이전.확정비목,
-      사업명: 이전.사업명,
-      plan_id: typeof planId === "string" ? Number(planId) : planId,
-    },
-    (이름, 값) => {
+  /**
+   * 🔴 `plan_id` 를 실으면 서버가 판정을 그 계획에 «저장» 합니다. 그런데 계획을
+   *    못 찾으면(데모 기관 정리·다른 org) 404 로 판정 자체가 통째로 실패합니다
+   *    — 「지출계획 23412 을(를) 찾을 수 없습니다」가 그것입니다.
+   *    저장은 부수 효과일 뿐이므로, 그 경우 **plan_id 없이 한 번 더** 판정합니다.
+   *    결과는 화면에 나오고 저장만 안 됩니다 — 아무것도 안 나오는 것보다 낫습니다.
+   */
+  const 없는계획 = (e: unknown) =>
+    e instanceof Error && /지출계획 .*찾을 수 없습니다/.test(e.message);
+
+  const 본문 = {
+    정규화: 정규화 as Record<string, unknown>,
+    확정비목: 이전.확정비목,
+    사업명: 이전.사업명,
+  };
+
+  const 흐름 = (이름: string, 값: unknown) => {
       const v = (값 ?? {}) as Record<string, unknown>;
       switch (이름) {
         case "진행":
@@ -160,10 +169,23 @@ export async function 판정실행(
           //    try/catch 만으로는 안 잡힙니다.
           서버오류 = 문자(v["메시지"], "점검에 실패했습니다");
           break;
-      }
-    },
-    { 목: 옵션?.목, signal: 옵션?.signal },
-  );
+    }
+  };
+
+  const 옵션들 = { 목: 옵션?.목, signal: 옵션?.signal };
+  const planNum = typeof planId === "string" ? Number(planId) : planId;
+  let 저장건너뜀 = false;
+
+  try {
+    await 판정SSE({ ...본문, plan_id: planNum }, 흐름, 옵션들);
+  } catch (e) {
+    if (!없는계획(e)) throw e;
+    // 계획을 못 찾았습니다 — 저장을 포기하고 판정만 받습니다.
+    console.warn("[판정] 계획을 못 찾아 저장 없이 진행합니다 — plan_id=%s", planId);
+    저장건너뜀 = true;
+    서버오류 = null;
+    await 판정SSE(본문, 흐름, 옵션들);
+  }
 
   if (서버오류) throw new Error(서버오류);
 
@@ -189,5 +211,5 @@ export async function 판정실행(
     updatedAt: 시각표기(new Date().toISOString()),
   };
 
-  return { 계획, 판정: 최종판정, 요약, 문의초안, 저장됨 };
+  return { 계획, 판정: 최종판정, 요약, 문의초안, 저장됨: 저장됨 && !저장건너뜀 };
 }
