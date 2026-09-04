@@ -1345,9 +1345,16 @@ function HomePage({
     risk: plans.filter((p) => p.status === "위험").length,
   };
   const totalAmount = plans.reduce((sum, plan) => sum + plan.amount, 0);
+  // 🔴 홈은 「지금 확인해주세요」라 «위험 먼저»가 맞습니다. 다만 그 안에서의 차례가
+  //    지출 계획 목록과 달라 같은 계획이 두 화면에서 뒤죽박죽으로 보였습니다.
+  //    목록의 기본 정렬(최근 수정순)을 2차 기준으로 써서 둘을 맞춥니다.
   const attentionPlans = plans
     .filter((p) => p.status !== "특이사항 없음")
-    .sort((a, b) => Number(b.status === "위험") - Number(a.status === "위험"));
+    .sort(
+      (a, b) =>
+        Number(b.status === "위험") - Number(a.status === "위험") ||
+        b.updatedAt.localeCompare(a.updatedAt, "ko"),
+    );
   return (
     <div className="page home-v3">
       <header className="home-v3-heading">
@@ -2976,14 +2983,19 @@ function PlanDetail({
     체크저장(plan.id, id, 켜짐)
       .then((결과) => {
         if (결과 !== "없음") return;
+        // 🔴 서버에 그 할일이 없습니다. 원인을 짚을 수 있게 콘솔에 남깁니다.
+        console.warn("[할일] 서버에 없음 — plan_id=%s task_id=%s", plan.id, id);
         return 계획상세(plan.id)
           .then((d) => {
             update(상세를계획으로(d));
             notify("항목이 바뀌어서 최신 내용으로 다시 불러왔습니다.");
           })
-          .catch(() => {
-            update(이전);
-            notify("이 항목을 저장하지 못했습니다. 잠시 뒤 다시 시도해 주세요.");
+          .catch((e2: unknown) => {
+            // 🔴 되돌리지 «않습니다». 체크 표시는 사용자가 방금 한 행동이고,
+            //    그걸 취소하면서 경고까지 띄우면 화면이 고장 난 것처럼 보입니다.
+            //    서버에 없는 항목이면 이 화면에서만 유지하는 편이 낫습니다.
+            console.warn("[할일] 상세 재조회도 실패", e2);
+            notify("이 항목은 서버에 없어 화면에서만 바뀝니다.");
           });
       })
       .catch((e: unknown) => {

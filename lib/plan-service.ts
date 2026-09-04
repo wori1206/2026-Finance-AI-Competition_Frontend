@@ -100,8 +100,15 @@ async function 서버계획목록_실제(): Promise<ExpensePlan[]> {
 
 async function 서버일정목록(): Promise<ScheduleItem[]> {
   try {
+    // 🔴 `일정만: true` 는 «due_date 가 있는» 할일만 줍니다. 시드 데이터에 날짜가
+    //    안 붙어 있으면 집행 일정 화면이 통째로 빕니다 — 그러면 사용자는 「기능이
+    //    안 된다」고 읽습니다. 0건이면 날짜 조건을 빼고 다시 물어봅니다.
     const r = await 할일목록({ 일정만: true });
-    return (r.항목 ?? []).map(할일을일정으로);
+    const 항목 = r.항목 ?? [];
+    if (항목.length) return 항목.map(할일을일정으로);
+
+    const 전부 = await 할일목록({});
+    return (전부.항목 ?? []).map(할일을일정으로);
   } catch (e) {
     console.warn("[CHECKUMAIT] 백엔드에 연결하지 못해 예시 일정으로 표시합니다.", e);
     return normalizeSchedules(read(SCHEDULE_KEY, INITIAL_SCHEDULES));
