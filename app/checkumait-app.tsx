@@ -14,6 +14,7 @@ import { 정규화하기 } from "../lib/normalize";
 import { 비목목록, 계획추가, GPU깨우기, GPU상태 } from "../lib/api";
 import type { GPU상태값 } from "../lib/api";
 import { 체크저장, 일정변경저장 } from "../lib/tasks";
+import { 적용규범 } from "../lib/norms";
 import { 기관검색, 사업요약, 예비기관, 기관저장, 선택기관, 기본기관명, 적용중_기준파일, type 기관 } from "../lib/orgs";
 import { 첨부보관, 첨부읽기, 첨부쓰기, 파일을첨부로, 크기표기, type 첨부 } from "../lib/attachments";
 import { 인증켜짐, 로그인 as supabase로그인, 로그아웃 as supabase로그아웃, 이메일 as supabase이메일 } from "../lib/supabase";
@@ -5615,25 +5616,19 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
             <p>CHECKUMAIT이 지출 사전점검에 우선 적용하는 기준입니다.</p>
           </div>
         </header>
-        {/* 🔴 사업별 세부관리기준은 «고른 사업» 을 키로 조회합니다. 예전에는 여기
-            제목이 「창업중심대학사업」으로 박혀 있어서, 다른 사업을 골라도 화면은
-            창업중심대학 기준을 보고 있는 것처럼 읽혔습니다.
-            🔴 문서의 «정식 제목» 은 서버가 알려주지 않으므로 지어내지 않습니다.
-            사업명 + 일반 명칭(세부관리기준)까지만 씁니다. */}
-        <article>
-          <span className="auto-badge">자동 반영</span>
-          <div>
-            <b>{profile.program} 세부관리기준 · 사업비 집행 범위</b>
-            <small>중소벤처기업부·창업진흥원 · 현재 사업 기준</small>
-          </div>
-        </article>
-        <article>
-          <span className="auto-badge">자동 반영</span>
-          <div>
-            <b>중소기업 창업지원사업 통합관리지침</b>
-            <small>사업비 집행의 공통 원칙과 제한 기준</small>
-          </div>
-        </article>
+        {/* 🔴 사업마다 적용 규범이 «다릅니다». 예전에는 「창업중심대학사업 운영관리기준」이
+            박혀 있어서, 다른 사업을 골라도 화면은 창업중심대학 기준을 보고 있는 것처럼
+            읽혔습니다. 초격차·모두의창업은 상위 규범이 통합관리지침이 아니라
+            운영요령까지 포함이라 줄 수도 달라집니다. (lib/norms.ts 참조) */}
+        {적용규범(profile.program).map((규범) => (
+          <article key={규범.제목}>
+            <span className="auto-badge">자동 반영</span>
+            <div>
+              <b>{규범.제목}</b>
+              <small>{규범.설명}</small>
+            </div>
+          </article>
+        ))}
       </section>
       <section className="card rule-library">
         <header className="card-head">
