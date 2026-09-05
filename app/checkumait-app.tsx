@@ -2453,35 +2453,24 @@ function PlansPage({
   const exportSelectedCsv = () => {
     const targets = plans.filter((plan) => selected.includes(plan.id));
     if (!targets.length) return;
+    // 🔴 금액은 따옴표를 안 씌웁니다. 씌우면 엑셀이 «문자» 로 읽어서 합계가 안 됩니다.
+    //    나머지는 쉼표·줄바꿈이 들어올 수 있으니 그대로 감쌉니다.
     const escape = (value: string | number) =>
-      `"${String(value).replaceAll('"', '""')}"`;
-    const header = [
-      "비목",
-      "세목",
-      "세세목",
-      "산출 근거",
-      "집행일",
-      "현금",
-      "현물",
-      "합계",
-      "현금신청 가능 금액",
-      "현물 신청 가능금액",
-    ];
-    const body = targets.map((plan) => {
-      const [category = "", subCategory = ""] = plan.category.split(" · ");
-      return [
-        category,
-        subCategory,
-        "",
-        plan.name,
-        plan.plannedDate,
-        plan.amount,
-        "",
-        plan.amount,
-        "",
-        "",
-      ];
-    });
+      typeof value === "number"
+        ? String(value)
+        : `"${String(value).replaceAll('"', '""')}"`;
+    // 🔴 예전 머리글은 사업비 정산표(비목/세목/세세목/현금/현물/신청가능금액…) 양식을
+    //    그대로 베낀 것이었는데, 우리가 가진 값이 그 칸의 절반도 안 됐습니다.
+    //    10칸 중 5칸이 «항상» 비었고, 「산출 근거」 칸에는 엉뚱하게 지출명이 들어가
+    //    있었습니다. 우리가 실제로 아는 것만 남깁니다.
+    const header = ["지출항목", "관련 비목", "사용 목적", "예상 지출일", "예상금액"];
+    const body = targets.map((plan) => [
+      plan.name,
+      plan.category,
+      plan.purpose,
+      plan.plannedDate,
+      plan.amount,
+    ]);
     const csv =
       "\uFEFF" +
       [header, ...body].map((row) => row.map(escape).join(",")).join("\r\n");
@@ -2490,7 +2479,7 @@ function PlansPage({
     );
     const link = document.createElement("a");
     link.href = url;
-    link.download = `CHECKUMAIT_지출계획_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `써도돼요_지출계획_${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };
