@@ -13,7 +13,7 @@ import { 판정실행 } from "../lib/judge";
 import { 정규화하기 } from "../lib/normalize";
 import { 비목목록, 계획추가, GPU깨우기, GPU상태 } from "../lib/api";
 import type { GPU상태값 } from "../lib/api";
-import { 체크저장, 일정변경저장 } from "../lib/tasks";
+import { 체크저장, 일정변경저장, 일정등록 } from "../lib/tasks";
 import { 적용규범 } from "../lib/norms";
 import { 기관검색, 사업요약, 예비기관, 기관저장, 선택기관, 기본기관명, 적용중_기준파일, type 기관 } from "../lib/orgs";
 import { 첨부보관, 첨부읽기, 첨부쓰기, 파일을첨부로, 크기표기, type 첨부 } from "../lib/attachments";
@@ -741,6 +741,31 @@ export default function CheckumaitApp() {
     setPlans(next);
     void planService.savePlans(next);
   };
+  /**
+   * 🔴 «새로 만든» 일정을 서버에 등록합니다 (2026-09-05 배선).
+   *
+   *    그동안 사용자가 추가한 일정은 화면에만 있고 새로고침하면 사라졌습니다.
+   *    서버에는 `POST /api/plans/{id}/tasks` 가 이미 있었는데 부르는 곳이 없었습니다.
+   *
+   * 🔴 낙관적으로 먼저 그립니다. 서버가 task_id 를 주면 화면의 임시 id 를 그 값으로
+   *    갈아끼웁니다 — 안 하면 그 일정의 «상태 변경» 이 영영 저장되지 않습니다
+   *    (`일정상태저장()` 은 숫자 id 만 서버 항목으로 봅니다).
+   */
+  const 일정추가하기 = (새항목: ScheduleItem[]) => {
+    if (!새항목.length) return;
+    setSchedules((이전) => [...이전, ...새항목]);
+    void 일정등록(새항목).then(({ 바뀐id, 실패 }) => {
+      if (바뀐id.size) {
+        setSchedules((이전) =>
+          이전.map((s) =>
+            바뀐id.has(s.id) ? { ...s, id: 바뀐id.get(s.id) as string } : s,
+          ),
+        );
+      }
+      if (실패) notify("일부 일정을 서버에 저장하지 못했습니다.");
+    });
+  };
+
   const persistSchedules = (next: ScheduleItem[]) => {
     const 이전 = schedules;
     setSchedules(next);
@@ -1008,7 +1033,7 @@ export default function CheckumaitApp() {
                 plans.map((row) => (row.id === plan.id ? plan : row)),
               )
             }
-            addSchedules={(items) => persistSchedules([...schedules, ...items])}
+            addSchedules={(items) => 일정추가하기(items)}
             할일동기화={할일동기화}
             remove={() => {
               const target = plans.find((plan) => plan.id === route.id);
@@ -1024,6 +1049,7 @@ export default function CheckumaitApp() {
             plans={plans}
             schedules={schedules}
             save={persistSchedules}
+            추가={(item) => 일정추가하기([item])}
             할일동기화={할일동기화}
             notify={notify}
           />
@@ -4999,12 +5025,15 @@ function SchedulePage({
   plans,
   schedules,
   save,
+  추가,
   할일동기화,
   notify,
 }: {
   plans: ExpensePlan[];
   schedules: ScheduleItem[];
   save: (items: ScheduleItem[]) => void;
+  /** 🔴 «새로 만든» 일정 전용. save 는 상태 변경만 서버에 보냅니다. */
+  추가: (item: ScheduleItem) => void;
   /** 🔴 서버 할일에서 온 일정이면 이걸로 바꿉니다 — 상세 체크박스까지 같이 움직입니다. */
   할일동기화: (planId: string, taskId: string, 완료: boolean) => void;
   notify: (message: string) => void;
@@ -5509,7 +5538,10 @@ function SchedulePage({
           plans={plans}
           close={() => setModal(false)}
           save={(item) => {
-            save([...schedules, item]);
+            // 🔴 «새로 만든» 일정이라 전체 목록 저장이 아니라 추가 경로로 보냅니다.
+            //    `save()`(=persistSchedules)는 상태 «변경» 만 서버에 보내므로
+            //    새 항목은 그 길로 가면 서버에 안 남습니다.
+            추가(item);
             setModal(false);
             notify("일정을 저장했습니다.");
           }}
@@ -5654,7 +5686,11 @@ function ScheduleFormModal({
                       {plan.name}
                     </option>
                   ))}
-                  <option value="other">기타</option>
+                  {/* 🔴 `plan_tasks.plan_id` 는 NULL 을 허용하지만 그런 행을 만드는 API
+                      경로가 없습니다 — 추가 라우트가 `/api/plans/{plan_id}/tasks` 라
+                      plan_id 가 «필수» 입니다. 그래서 이걸 고르면 서버에 안 남습니다.
+                      조용히 사라지게 두지 않고 라벨로 말합니다. */}
+                  <option value="other">기타 (이 브라우저에만 저장)</option>
                 </select>
               </label>
             </div>

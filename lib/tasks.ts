@@ -5,7 +5,7 @@
 // 🔴 `tasks:sync` 는 «부르지 않습니다». 판정 직후 서버가 자동으로 넣습니다.
 
 import { API켜짐 } from "./config";
-import { 할일수정 } from "./api";
+import { 할일수정, 할일추가 } from "./api";
 import type { ScheduleItem } from "./types";
 
 /** 숫자 id 만 서버의 진짜 task_id 입니다. 판정에서 갓 나온 항목은 `ai-0` 같은 임시 id 라 건너뜁니다. */
@@ -118,4 +118,121 @@ export async function 일정변경저장(
     }),
   );
   return { 실패, 없음 };
+}
+
+/* ── 일정 «새로» 만들기 ─────────────────────────────
+ *
+ * 🔴 2026-09-05 배선. 그동안 사용자가 집행 일정에서 직접 추가한 항목은
+ *    화면에만 있고 새로고침하면 사라졌습니다. 서버에는 `POST /api/plans/{id}/tasks`
+ *    가 «이미» 있었고(`routes_tasks.py:151`, 201) `lib/api.ts::할일추가` 래퍼도
+ *    있었는데 부르는 곳이 0곳이었습니다 — 없는 기능이 아니라 «안 부른» 것입니다.
+ */
+
+/** 화면의 일정 종류 → 서버 `plan_tasks.유형`. 🔴 세 값 밖은 DB CHECK 가 막습니다. */
+const 유형사전: Record<ScheduleItem["type"], "기타" | "계약" | "비교견적"> = {
+  계약: "계약",
+  비교견적: "비교견적",
+  사전승인: "기타",
+  "사전 확인": "기타",
+  집행: "기타",
+  증빙: "기타",
+  기타: "기타",
+};
+
+/**
+ * 화면의 일정 종류 → 서버 `구분`(결제전/결제후).
+ * 🔴 「집행·증빙」은 결제 «뒤» 에 하는 일입니다. 나머지는 결제 전 준비입니다.
+ *    잘못 넣으면 상세의 「집행 준비 / 결제 후 진행」 두 묶음이 서로 바뀝니다.
+ */
+function 구분추정(type: ScheduleItem["type"]): "결제전" | "결제후" {
+  return type === "집행" || type === "증빙" ? "결제후" : "결제전";
+}
+
+export type 일정생성결과 =
+  | { 결과: "저장됨"; taskId: string }
+  | { 결과: "건너뜀" | "없음" | "실패" };
+
+/**
+ * 사용자가 직접 만든 일정을 서버에 만듭니다.
+ *
+ * 🔴 성공하면 «서버가 준 task_id» 를 돌려줍니다. 호출부는 화면의 임시 id를 그 값으로
+ *    갈아끼워야 합니다 — 안 그러면 그 일정의 «상태 변경»이 영영 저장되지 않습니다
+ *    (`일정상태저장()` 이 숫자 id 만 서버 항목으로 봅니다).
+ *
+ * 🔴 계획에 매달린 일정만 만듭니다. `plan_tasks.plan_id` 는 NULL 을 허용하지만
+ *    (계획과 무관한 사용자 일정) 그걸 만드는 API 경로가 없습니다 — 추가 라우트가
+ *    `/api/plans/{plan_id}/tasks` 라 plan_id 가 필수입니다. 화면도 계획 선택을
+ *    필수로 두고 있어 지금은 어긋나지 않습니다.
+ */
+export async function 일정생성(item: ScheduleItem): Promise<일정생성결과> {
+  if (!API켜짐()) return { 결과: "건너뜀" };
+  // 계획이 서버 것이 아니면 만들 수 없습니다 (목 데이터 계획 등)
+  if (!서버항목인가(item.planId)) return { 결과: "건너뜀" };
+
+  try {
+    const r = (await 할일추가(item.planId, {
+      항목: item.title.trim(),
+      설명: item.memo?.trim() || undefined,
+      구분: 구분추정(item.type),
+      due_date: item.date || undefined,
+      유형: 유형사전[item.type],
+    })) as { task_id?: number | string };
+
+    const id = r?.task_id;
+    return id == null
+      ? { 결과: "실패" }
+      : { 결과: "저장됨", taskId: String(id) };
+  } catch (e) {
+    if (없음인가(e)) return { 결과: "없음" };
+    return { 결과: "실패" };
+  }
+}
+
+/**
+ * 화면이 만든 일정 목록을 서버에 반영합니다. **두 갈래로 갈립니다.**
+ *
+ * 🔴 이 구분이 이 함수의 존재 이유입니다. 섞으면 할일이 «중복» 됩니다.
+ *
+ *   taskId 있음  → 이미 서버에 있는 할일이다. 날짜만 PATCH 한다.
+ *                 (상세의 「확인사항·증빙을 일정에 등록」이 이 갈래 — 판정이 만든
+ *                  plan_tasks 행에 due_date 를 얹는 것이지 새 행이 아니다)
+ *   taskId 없음  → 사용자가 손으로 만든 일정이다. POST 로 «생성» 한다.
+ *
+ * 돌려주는 `바뀐id` 로 호출부가 화면의 임시 id 를 서버 task_id 로 갈아끼웁니다 —
+ * 안 하면 그 일정의 상태 변경이 영영 저장되지 않습니다.
+ */
+export async function 일정등록(
+  새항목: ScheduleItem[],
+): Promise<{ 바뀐id: Map<string, string>; 실패: number; 건너뜀: number }> {
+  const 바뀐id = new Map<string, string>();
+  let 실패 = 0;
+  let 건너뜀 = 0;
+  if (!API켜짐()) return { 바뀐id, 실패, 건너뜀: 새항목.length };
+
+  await Promise.all(
+    새항목.map(async (item) => {
+      if (!서버항목인가(item.planId)) {
+        건너뜀 += 1;
+        return;
+      }
+      // ── 갈래 ① 이미 있는 할일 — 날짜만 얹는다
+      if (item.taskId && 서버항목인가(item.taskId)) {
+        try {
+          await 할일수정(item.planId, item.taskId, {
+            due_date: item.date || undefined,
+          });
+        } catch (e) {
+          if (!없음인가(e)) 실패 += 1;
+          else 건너뜀 += 1;
+        }
+        return;
+      }
+      // ── 갈래 ② 사용자가 만든 일정 — 새로 만든다
+      const r = await 일정생성(item);
+      if (r.결과 === "저장됨") 바뀐id.set(item.id, r.taskId);
+      else if (r.결과 === "실패") 실패 += 1;
+      else 건너뜀 += 1;
+    }),
+  );
+  return { 바뀐id, 실패, 건너뜀 };
 }
