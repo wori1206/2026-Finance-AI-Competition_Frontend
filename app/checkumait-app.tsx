@@ -986,7 +986,7 @@ export default function CheckumaitApp() {
               {route.page === "plan-detail"
                 ? "지출 상세"
                 : navItems.find((item) => item.page === activePage)?.label ||
-                  "CHECKUMAIT"}
+                  "써도돼요"}
             </span>
           </div>
         </header>
@@ -1823,7 +1823,9 @@ function Login({
           {step === "ready" && (
             <>
               <p className="login-kicker">설정 완료</p>
-              <h1>준비됐어요. CHECKUMAIT을 둘러볼까요?</h1>
+              {/* 🔴 조사가 바뀝니다 — 「써도돼요」는 모음(ㅛ)으로 끝나서 «을» 이 아니라
+                  «를» 입니다. 이름만 갈아끼우면 「써도돼요을」이 됩니다. */}
+              <h1>준비됐어요. 써도돼요를 둘러볼까요?</h1>
               <p>
                 선택한 사업 기준으로 초기 설정을 완료했습니다. 지출 계획을 작성하면{" "}
                 {criteriaFile
@@ -6052,7 +6054,8 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
         <header className="card-head">
           <div>
             <h2>공통 관리 기준</h2>
-            <p>CHECKUMAIT이 지출 사전점검에 우선 적용하는 기준입니다.</p>
+            {/* 🔴 여기도 조사가 «이» → «가» 로 바뀝니다. */}
+            <p>써도돼요가 지출 사전점검에 우선 적용하는 기준입니다.</p>
           </div>
         </header>
         {/* 🔴 사업마다 적용 규범이 «다릅니다». 예전에는 「창업중심대학사업 운영관리기준」이
@@ -6300,7 +6303,7 @@ function FloatingChat({
             <Icon name="sparkSolid" />
           </span>
           <div>
-            <b>CHECKUMAIT AI</b>
+            <b>써도돼요 AI</b>
             <small>
               {current
                 ? `${current.name} 우선 참조`
