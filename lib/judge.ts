@@ -206,6 +206,9 @@ export async function 판정실행(
     aiSummary: 요약 || 바탕.aiSummary || 판정설명(최종판정),
     aiChecks: 바탕.aiChecks.length ? 바탕.aiChecks : 해야할일,
     rules: 바탕.rules.length ? 바탕.rules : 인용,
+    // 🔴 스트림으로 온 초안이 «먼저» 입니다. 목 서버는 판정을 저장하지 않아
+    //    상세를 다시 읽어도 판정상세가 비어 있습니다.
+    문의초안: 문의초안 ?? 바탕.문의초안 ?? null,
     nextAction:
       바탕.nextAction || (해야할일[0]?.label ?? ""),
     updatedAt: 시각표기(new Date().toISOString()),

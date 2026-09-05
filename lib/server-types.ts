@@ -65,6 +65,8 @@ export type 판정상세 = {
   버전스탬프?: string | null;
   인용?: 인용[];
   전제?: unknown[];
+  /** 🔴 「판단불가」일 때만 실립니다. 아니면 키 자체가 없습니다. */
+  문의초안?: string | null;
   [k: string]: unknown;
 } | null;
 

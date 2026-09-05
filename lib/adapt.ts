@@ -151,6 +151,9 @@ export function 상세를계획으로(d: 계획상세): ExpensePlan {
     aiChecks: (결제전.length ? 결제전 : 할일들).map(할일을체크로),
     evidence: 결제후.map(할일을체크로),
     rules: 인용들.map(인용을규정으로),
+    // 🔴 판정 전문에 같이 저장됩니다. 이걸 안 읽으면 새로고침하는 순간 초안이 사라져
+    //    「아까 있던 문의 글이 어디 갔나」가 됩니다.
+    문의초안: typeof 상세?.문의초안 === "string" ? 상세.문의초안 : null,
   };
 }
 

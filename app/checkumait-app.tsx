@@ -2995,6 +2995,79 @@ function Question({
   );
 }
 
+/**
+ * 「판단불가」일 때 서버가 함께 보내주는 «주관기관에 보낼 문의 초안».
+ *
+ * 🔴 서버가 LLM 을 한 번도 더 부르지 않고 판정이 이미 쥔 값(품목·금액·인용·전제)으로
+ *    조립합니다(`server/inquiry.py`). 값이 없으면 키 자체가 안 오므로, 부르는 쪽에서
+ *    `plan.문의초안` 이 있을 때만 그립니다.
+ *
+ * 🔴 접어 둡니다. 판정 결과를 보러 온 사람에게 긴 메일 본문이 먼저 펼쳐져 있으면
+ *    「AI 점검 결과」가 안 읽힙니다. 필요한 사람만 폅니다.
+ */
+function 문의초안카드({
+  초안,
+  notify,
+}: {
+  초안: string;
+  notify: (message: string) => void;
+}) {
+  const [복사됨, set복사됨] = useState(false);
+
+  const 복사 = async () => {
+    try {
+      // 🔴 clipboard API 는 https / localhost 에서만 됩니다. 막히면 조용히 실패하지
+      //    않고 «선택해서 복사하세요» 로 안내합니다 — 눌렀는데 아무 일도 안 나는 게
+      //    제일 나쁩니다.
+      await navigator.clipboard.writeText(초안);
+      set복사됨(true);
+      window.setTimeout(() => set복사됨(false), 2000);
+    } catch {
+      notify("복사하지 못했습니다. 아래 글을 직접 선택해 복사해주세요.");
+    }
+  };
+
+  return (
+    <details className="ai-inquiry">
+      <summary>
+        <div className="ai-inquiry-title">
+          <Icon name="fileText" size={20} />
+          <div>
+            <b>주관기관에 보낼 문의 초안</b>
+            <small>규정만으로 결론이 안 나서, 물어볼 내용을 정리했습니다.</small>
+          </div>
+        </div>
+        {/* 🔴 열림/닫힘 글자는 CSS 로 바꿉니다. details 의 open 을 React state 로
+            따로 들면 사용자가 직접 접었다 편 것과 어긋나기 쉽습니다. */}
+        <span className="ai-inquiry-toggle">
+          <span className="when-closed">펼치기</span>
+          <span className="when-open">접기</span>
+          <Icon name="arrow" size={14} />
+        </span>
+      </summary>
+      <div className="ai-inquiry-body">
+        <div className="ai-inquiry-head">
+          <small>그대로 복사해서 메일로 보내면 됩니다.</small>
+          <button
+            type="button"
+            className="outline small"
+            onClick={복사}
+            aria-live="polite"
+          >
+            {복사됨 ? "복사됨" : "복사"}
+          </button>
+        </div>
+        {/* 🔴 서버가 준 글자를 «한 글자도 안 고칩니다». 줄바꿈만 살립니다. */}
+        <pre className="ai-inquiry-text">{초안}</pre>
+        <p className="ai-inquiry-notice">
+          <span>ⓘ</span>초안입니다. 보내기 전에 기관명·담당자·사업명이 맞는지
+          확인해주세요.
+        </p>
+      </div>
+    </details>
+  );
+}
+
 function PlanDetail({
   plan,
   allPlans,
@@ -3367,6 +3440,10 @@ function PlanDetail({
                 ))}
               </div>
             </section>
+            {/* 🔴 「판단불가」의 결말입니다. 배지와 해설은 «못 정했다» 까지만 말하고,
+                「그래서 뭐라고 물어보나」는 여기 있습니다. 서버가 준 값이 있을 때만
+                나옵니다 — 없으면 통째로 안 그립니다(빈 카드를 남기지 않습니다). */}
+            {plan.문의초안 && <문의초안카드 초안={plan.문의초안} notify={notify} />}
             <p className="ai-result-notice">
               <span>ⓘ</span>AI 점검 결과는 참고용이며, 최종 판단과 책임은
               담당기관의 최신 안내를 확인해주세요.

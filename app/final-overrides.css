@@ -894,3 +894,69 @@ input[type="checkbox"],input[type="radio"]{border-color:var(--color-border-contr
   font-size:12px;
   line-height:1.6;
 }
+
+/* ── 「판단불가」 문의 초안 아코디언 (AI 점검 결과 · 적용 근거 아래) ──────────
+   🔴 접어 둡니다. 판정을 보러 온 사람에게 메일 본문이 먼저 펼쳐져 있으면
+      「AI 점검 결과」가 안 읽힙니다. 필요한 사람만 폅니다. */
+.ai-result-frame details.ai-inquiry{
+  margin:0 0 12px;
+  border:1px solid var(--color-border-subtle,#e2e6e3);
+  border-radius:10px;
+  background:var(--color-surface,#fff);
+  overflow:hidden;
+}
+.ai-result-frame details.ai-inquiry[open]{
+  border-color:var(--color-warning,#bd6500);
+}
+.ai-result-frame details.ai-inquiry>summary{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:13px 14px;
+  cursor:pointer;
+  list-style:none;
+  background:var(--color-warning-subtle,#fff6e9);
+}
+.ai-result-frame details.ai-inquiry>summary::-webkit-details-marker{display:none}
+.ai-result-frame details.ai-inquiry>summary:hover{filter:brightness(.985)}
+.ai-inquiry-title{display:flex;align-items:flex-start;gap:10px;min-width:0}
+.ai-inquiry-title>svg{flex:none;margin-top:1px;color:var(--color-warning,#bd6500)}
+.ai-inquiry-title b{display:block;font-size:14px;font-weight:650;color:var(--color-text,#2c3330)}
+.ai-inquiry-title small{display:block;margin-top:2px;font-size:12px;line-height:1.5;color:var(--color-text-muted,#6c736f)}
+.ai-inquiry-toggle{
+  flex:none;display:inline-flex;align-items:center;gap:4px;
+  font-size:12px;color:var(--color-text-muted,#6c736f);white-space:nowrap;
+}
+.ai-inquiry-toggle>svg{transform:rotate(90deg);transition:transform .15s ease}
+.ai-result-frame details.ai-inquiry[open]>summary .ai-inquiry-toggle>svg{transform:rotate(-90deg)}
+.ai-inquiry-toggle .when-open{display:none}
+.ai-result-frame details.ai-inquiry[open]>summary .ai-inquiry-toggle .when-open{display:inline}
+.ai-result-frame details.ai-inquiry[open]>summary .ai-inquiry-toggle .when-closed{display:none}
+
+.ai-inquiry-body{padding:14px;border-top:1px solid var(--color-border-subtle,#e2e6e3)}
+.ai-inquiry-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:9px}
+.ai-inquiry-head small{font-size:12px;color:var(--color-text-muted,#6c736f)}
+/* 🔴 서버가 준 글자를 그대로 씁니다 — 줄바꿈만 살리고 폰트는 본문과 맞춥니다.
+      pre 기본 monospace 로 두면 「메일 본문」이 아니라 「코드」로 읽힙니다. */
+pre.ai-inquiry-text{
+  margin:0;
+  padding:14px;
+  border:1px solid var(--color-border-subtle,#e2e6e3);
+  border-radius:8px;
+  background:var(--color-surface-subtle,#f7f8f7);
+  color:var(--color-text,#2c3330);
+  font:inherit;
+  font-size:13px;
+  line-height:1.75;
+  white-space:pre-wrap;
+  word-break:break-word;
+  user-select:text;
+}
+.ai-inquiry-notice{
+  display:flex;gap:6px;margin:10px 0 0;
+  font-size:12px;line-height:1.6;color:var(--color-text-muted,#6c736f);
+}
+.ai-inquiry-notice>span{flex:none}
+
+@media (max-width:640px){
+  .ai-inquiry-toggle{display:none}
+  .ai-inquiry-head{flex-direction:column;align-items:flex-start;gap:8px}
+}
