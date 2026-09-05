@@ -328,10 +328,21 @@ function use협약(재조회?: unknown): 협약정보 {
  *    직후 한 프레임 동안 「체쿠메이트」가 번쩍입니다.
  */
 function use팀이름(재조회?: unknown): string {
-  const [값, set값] = useState("체쿠메이트");
+  /**
+   * 🔴 **모르면 «빈 문자열» 을 돌려줍니다. 기본 표기를 여기서 만들지 않습니다.**
+   *
+   *    2026-09-05 사고. 전에는 이 훅이 못 찾으면 「체쿠메이트」를 «값처럼» 돌려줬습니다.
+   *    마이페이지가 그 값을 「서버가 알려준 이름」으로 알고 profile 에 덮어써서,
+   *    사용자가 팀 이름을 고쳐 저장해도 저장 직후 곧바로 「체쿠메이트」로 되돌아갔습니다
+   *    — 화면에서는 «수정이 아예 안 되는» 것으로 보였습니다. 하드코딩처럼 보인 이유가
+   *    이것입니다. 「모른다」와 「기본값이 이것이다」를 한 값으로 뭉치면 안 됩니다.
+   *
+   *    → 표기 기본값은 «그리는 쪽» 이 정합니다 (`|| "체쿠메이트"`).
+   */
+  const [값, set값] = useState("");
   useEffect(() => {
     let 살아있음 = true;
-    set값(기억된팀이름() || "체쿠메이트");
+    set값(기억된팀이름());
     supabase팀이름()
       .then((서버) => {
         if (!살아있음 || !서버) return;
@@ -339,7 +350,7 @@ function use팀이름(재조회?: unknown): string {
         팀이름기억(서버);   // 다음 진입에서 깜빡임 없이 바로 그리도록
       })
       .catch(() => {
-        /* 메타데이터가 없는 옛 계정 — 로컬 기억이나 기본 표기로 둡니다 */
+        /* 메타데이터가 없는 옛 계정 — 로컬 기억이나 빈 값으로 둡니다 */
       });
     return () => {
       살아있음 = false;
@@ -686,7 +697,7 @@ export default function CheckumaitApp() {
   // 🔴 사업도 마찬가지입니다 — 안 그러면 사이드바만 예전 사업이 남습니다.
   const 사업 = use사업(signedIn);
   const 기관 = use기관(signedIn);
-  const 팀이름 = use팀이름(signedIn);
+  const 팀이름 = use팀이름(signedIn) || "체쿠메이트";
   const 협약 = use협약(signedIn);
   const [데모기관, set데모기관] = useState<string | null>(null);
   useEffect(() => {
@@ -5880,9 +5891,15 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
   //    어느 계정으로 들어와도 team@startup.kr 이 보였습니다.
   const 로그인이메일 = use이메일();
   // 🔴 팀 이름도 같은 규칙입니다 — Supabase 계정에 붙은 값이 정본입니다.
-  const 계정팀이름 = use팀이름();
+  /**
+   * 🔴 저장한 뒤 «다시 읽어야» 합니다. 훅은 마운트할 때 한 번만 읽는데,
+   *    저장 직후 아래 effect 가 도는 시점에는 아직 옛 값을 들고 있어서
+   *    방금 저장한 이름을 도로 덮었습니다. 저장이 끝나면 이 열쇠를 올립니다.
+   */
+  const [팀갱신, set팀갱신] = useState(0);
+  const 계정팀이름 = use팀이름(팀갱신);
   const [profile, setProfile] = useState({
-    team: "체쿠메이트",   // 🔴 `use팀이름()` 이 Supabase 값으로 덮습니다
+    team: "체쿠메이트",   // 🔴 표기 기본값. 이름을 «알아냈을 때만» 덮습니다
     program: 선택사업(),
     // 🔴 온보딩에서 고른 기관입니다. 예전엔 여기 한 줄이 박혀 있어서 다른 기관을
     //    골라도 마이페이지는 늘 경상국립대로 보였습니다.
@@ -6179,8 +6196,12 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
                 setProfile(profileDraft);
                 // 🔴 팀 이름은 Supabase 계정에 붙여야 다음 로그인에도 남습니다.
                 //    실패해도 «막지 않습니다» — 화면 표기일 뿐입니다.
+                //    쓰기가 끝난 «뒤» 다시 읽습니다. 안 그러면 아래 effect 가
+                //    옛 값으로 방금 저장한 이름을 덮습니다.
                 팀이름기억(profileDraft.team.trim());
-                supabase팀이름쓰기(profileDraft.team).catch(() => {});
+                supabase팀이름쓰기(profileDraft.team)
+                  .catch(() => false)
+                  .finally(() => set팀갱신((n) => n + 1));
                 set협약(협약초안);
                 사업저장(profileDraft.program);
                 set협약저장중(true);
@@ -6320,7 +6341,7 @@ function ProfileModal({
 }) {
   const 사업 = use사업();
   const 이메일 = use이메일();
-  const 팀이름 = use팀이름();
+  const 팀이름 = use팀이름() || "체쿠메이트";
   return (
     <div className="modal-backdrop">
       <section className="modal">
