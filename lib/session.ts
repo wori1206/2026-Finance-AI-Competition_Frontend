@@ -143,10 +143,38 @@ export function 기억된이메일(): string {
   }
 }
 
+/* ── 팀 이름 ────────────────────────────────────────────────
+ * 🔴 회원가입에서 받은 팀 이름. 서버에 계정을 만드는 경로가 아직 없어서
+ *    이 탭에만 적어 둡니다. 마이페이지·사이드바가 「체쿠메이트」로 고정
+ *    표기되지 않게 하려는 것이 전부입니다.
+ *    가입 API 가 붙으면 이 값도 서버가 정본이 됩니다. */
+const 팀KEY = "checkumait-팀이름";
+
+export function 팀이름기억(이름: string): void {
+  if (typeof window === "undefined") return;
+  const 값 = (이름 ?? "").trim();
+  if (!값) return;
+  try {
+    window.sessionStorage.setItem(팀KEY, 값);
+  } catch {
+    /* 무시 */
+  }
+}
+
+export function 기억된팀이름(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return window.sessionStorage.getItem(팀KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
 export function 이메일잊기(): void {
   if (typeof window === "undefined") return;
   try {
     window.sessionStorage.removeItem(이메일KEY);
+    window.sessionStorage.removeItem(팀KEY);
   } catch {
     /* 무시 */
   }

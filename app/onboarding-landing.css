@@ -37,3 +37,59 @@
 /* Onboarding alignment refinements */
 .onboarding-hero{align-items:start}
 .onboarding-hero-copy>p:not(.login-kicker){margin-bottom:52px}
+
+/* ══ 회원가입 ═══════════════════════════════════════════════════════
+   🔴 온보딩 단계 화면과 «같은 껍데기»(setup-shell → setup-content)를 씁니다.
+      4단계 스테퍼만 뺐습니다 — 가입은 그 4단계 밖이라 붙이면 「1/4」가 두 번
+      도는 것처럼 보입니다. */
+.signup-content{width:min(560px,100%)}
+.signup-content:not(.setup-ready){min-height:auto}
+
+.signup-form{display:grid;gap:20px;margin-top:4px}
+.signup-form>label,.signup-row>label{display:grid;gap:7px}
+.signup-form label>span{color:var(--text);font-size:12px;font-weight:650}
+.signup-form input:not([type=checkbox]){
+  height:48px;padding:0 14px;
+  border:1px solid var(--line);border-radius:6px;background:var(--white);
+  color:var(--text);font-size:14px;
+}
+.signup-form input:not([type=checkbox]):focus{
+  outline:none;border-color:var(--brand);
+}
+.signup-form input::placeholder{color:#9aa29e}
+.signup-form label>small{color:var(--sub);font-size:11px;line-height:1.5}
+.signup-form label>small.signup-warn{color:var(--red,#c23b3b)}
+
+.signup-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+
+/* 약관 — 필수 두 줄. 체크박스를 글자와 같은 줄 머리에 맞춥니다. */
+.signup-agree{
+  display:grid;gap:12px;
+  padding:16px;border:1px solid var(--line);border-radius:7px;background:var(--white);
+}
+.signup-agree>label{
+  display:grid;grid-template-columns:16px minmax(0,1fr);align-items:start;gap:11px;
+  cursor:pointer;
+}
+.signup-agree input[type=checkbox]{width:16px;height:16px;margin-top:2px;accent-color:var(--brand)}
+.signup-agree b{display:block;font-size:12.5px;font-weight:650;color:var(--text)}
+.signup-agree small{display:block;margin-top:4px;color:var(--sub);font-size:11px;line-height:1.55}
+
+.signup-error{
+  margin:0;padding:11px 13px;border-radius:6px;
+  background:#fdeeee;color:var(--red,#c23b3b);font-size:12px;line-height:1.6;
+}
+
+.signup-content .onboarding-actions{margin-top:8px;padding-top:0}
+.signup-content .onboarding-actions button{min-width:132px}
+.signup-next{
+  margin-top:22px!important;padding-top:18px;border-top:1px solid var(--line);
+  text-align:center;
+}
+.signup-next b{color:var(--text);font-weight:650}
+
+@media(max-width:620px){
+  .signup-row{grid-template-columns:1fr}
+  .signup-content .onboarding-actions{width:100%}
+  .signup-content .onboarding-actions>*{flex:1}
+}

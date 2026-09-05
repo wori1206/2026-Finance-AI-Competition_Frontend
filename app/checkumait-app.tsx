@@ -19,7 +19,9 @@ import { 기관검색, 사업요약, 예비기관, 기관저장, 선택기관, �
 import { 첨부보관, 첨부읽기, 첨부쓰기, 파일을첨부로, 크기표기, type 첨부 } from "../lib/attachments";
 import { 인증켜짐, 로그인 as supabase로그인, 로그아웃 as supabase로그아웃, 이메일 as supabase이메일 } from "../lib/supabase";
 import { 상세를계획으로, 판정제목, 행동문구, 시각표기 } from "../lib/adapt";
-import { 데모시작, 데모종료, 데모중, 이메일기억, 기억된이메일, 이메일잊기 } from "../lib/session";
+// 🔴 `데모종료` 는 남깁니다 — 「계정 없이 둘러보기」를 없앴어도 예전에 받아 둔
+//    데모 토큰이 브라우저에 2시간 남아 있을 수 있고, 그게 로그인 조회를 가로챕니다.
+import { 데모종료, 데모중, 이메일기억, 기억된이메일, 이메일잊기, 팀이름기억, 기억된팀이름 } from "../lib/session";
 import { 초안전부지우기 } from "../lib/inquiry-store";
 import { 선택사업, 사업저장, 사업선택지, 목록에맞추기, 기본사업 } from "../lib/program";
 import { 협약읽기, 협약쓰기, 값있음, 원, 날짜표기, 기간표기, 디데이표기, 시연협약, 협약기억, 기억된협약, type 협약정보 } from "../lib/profile";
@@ -313,6 +315,16 @@ function use협약(재조회?: unknown): 협약정보 {
   return 값;
 }
 
+/** 회원가입에서 받은 팀 이름. 없으면 예전 표기를 그대로 씁니다. */
+function use팀이름(재조회?: unknown): string {
+  const [값, set값] = useState("체쿠메이트");
+  useEffect(() => {
+    set값(기억된팀이름() || "체쿠메이트");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [재조회]);
+  return 값;
+}
+
 /**
  * 지금 로그인한 사람의 이메일. 화면 세 곳(사이드바·내 정보·마이페이지)이 같은 값을 씁니다.
  *
@@ -598,6 +610,7 @@ export default function CheckumaitApp() {
   // 🔴 사업도 마찬가지입니다 — 안 그러면 사이드바만 예전 사업이 남습니다.
   const 사업 = use사업(signedIn);
   const 기관 = use기관(signedIn);
+  const 팀이름 = use팀이름(signedIn);
   const 협약 = use협약(signedIn);
   const [데모기관, set데모기관] = useState<string | null>(null);
   useEffect(() => {
@@ -802,9 +815,9 @@ export default function CheckumaitApp() {
               className="account-main"
               onClick={() => setProfileOpen(true)}
             >
-              <span className="avatar">체</span>
+              <span className="avatar">{팀이름.slice(0, 1)}</span>
               <span>
-                <b>체쿠메이트</b>
+                <b>{팀이름}</b>
                 <small>{이메일 || "로그인 정보 없음"}</small>
               </span>
             </button>
@@ -1016,10 +1029,9 @@ function Login({
   onEnter: (destination: "home" | "plan-new") => void;
 }) {
   const [로그인중, set로그인중] = useState(false);
-  const [둘러보는중, set둘러보는중] = useState(false);
   const [로그인오류, set로그인오류] = useState<string | null>(null);
   const [step, setStep] = useState<
-    "welcome" | "project" | "institution" | "upload" | "ready"
+    "welcome" | "signup" | "project" | "institution" | "upload" | "ready"
   >("welcome");
   const [program, setProgram] = useState(선택사업);
   const [서버사업, set서버사업] = useState<string[] | null>(null);
@@ -1043,6 +1055,20 @@ function Login({
   //    비밀번호는 코드에 넣지 않습니다. 시연 때 직접 입력하세요.
   const [loginEmail, setLoginEmail] = useState("prototype@ssudo.kr");
   const [loginPassword, setLoginPassword] = useState("");
+  /**
+   * 회원가입 — 🔴 **화면만** 입니다. 아직 서버에 계정을 만들지 않습니다.
+   *    가입을 마치면 온보딩 1단계로 이어지고, 입력한 이메일·팀 이름은 이 탭이
+   *    기억해 사이드바·마이페이지에 그대로 보입니다.
+   *    서버가 붙으면 `가입하기` 안의 «한 곳» 만 실제 호출로 바꾸면 됩니다.
+   */
+  const [가입, set가입] = useState({
+    이메일: "",
+    비밀번호: "",
+    비밀번호확인: "",
+    팀이름: "",
+  });
+  const [가입약관, set가입약관] = useState({ 서비스: false, 개인정보: false });
+  const [가입오류, set가입오류] = useState<string | null>(null);
   const setupSteps = ["project", "institution", "upload", "ready"] as const;
   const stepIndex = Math.max(
     0,
@@ -1099,6 +1125,164 @@ function Login({
       window.clearTimeout(타이머);
     };
   }, [institutionQuery, step, program]);
+
+  /* ── 회원가입 ────────────────────────────────────────────────
+     🔴 온보딩과 «같은 껍데기»(setup-shell → setup-content)를 씁니다. 다만 4단계
+        스테퍼는 안 붙입니다 — 가입은 그 4단계 밖이고, 붙이면 「1/4」가 두 번
+        도는 것처럼 보입니다. 대신 위쪽에 가입 → 설정 흐름을 한 줄로 말합니다. */
+  if (step === "signup") {
+    const 비번짧음 = 가입.비밀번호.length > 0 && 가입.비밀번호.length < 8;
+    const 비번다름 = 가입.비밀번호확인.length > 0 && 가입.비밀번호 !== 가입.비밀번호확인;
+    const 채워짐 =
+      가입.이메일.trim().includes("@") &&
+      가입.비밀번호.length >= 8 &&
+      가입.비밀번호 === 가입.비밀번호확인 &&
+      가입.팀이름.trim().length > 0 &&
+      가입약관.서비스 &&
+      가입약관.개인정보;
+
+    const 가입하기 = () => {
+      if (!채워짐) return;
+      set가입오류(null);
+      // 🔴 여기가 나중에 실제 가입 호출이 들어갈 «한 곳» 입니다.
+      //    지금은 화면만이므로 입력값을 이 탭에 기억하고 온보딩으로 넘깁니다.
+      이메일기억(가입.이메일.trim());
+      팀이름기억(가입.팀이름.trim());
+      setLoginEmail(가입.이메일.trim());
+      setStep("project");
+    };
+
+    return (
+      <main className="onboarding-setup">
+        <header className="onboarding-nav">
+          <div className="login-brand static">
+            <span>
+              <Icon name="check" size={25} />
+            </span>
+            <BrandWord />
+          </div>
+          <button className="outline" onClick={() => setStep("welcome")}>
+            로그인으로
+          </button>
+        </header>
+        <section className="setup-shell">
+          <section className="setup-content signup-content">
+            <p className="login-kicker">회원가입</p>
+            <h1>계정을 만들어 주세요.</h1>
+            <p>
+              가입을 마치면 참여 중인 지원사업과 주관기관을 설정하고 바로 지출
+              계획을 점검할 수 있습니다.
+            </p>
+
+            <form
+              className="signup-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                가입하기();
+              }}
+            >
+              <label>
+                <span>이메일</span>
+                <input
+                  type="email"
+                  value={가입.이메일}
+                  onChange={(e) => set가입((v) => ({ ...v, 이메일: e.target.value }))}
+                  placeholder="업무용 이메일을 입력하세요"
+                  autoComplete="email"
+                />
+                <small>이 주소로 로그인합니다.</small>
+              </label>
+
+              <div className="signup-row">
+                <label>
+                  <span>비밀번호</span>
+                  <input
+                    type="password"
+                    value={가입.비밀번호}
+                    onChange={(e) => set가입((v) => ({ ...v, 비밀번호: e.target.value }))}
+                    placeholder="8자 이상"
+                    autoComplete="new-password"
+                  />
+                  <small className={비번짧음 ? "signup-warn" : undefined}>
+                    {비번짧음 ? "8자 이상으로 입력해 주세요." : "영문·숫자를 섞어 8자 이상"}
+                  </small>
+                </label>
+                <label>
+                  <span>비밀번호 확인</span>
+                  <input
+                    type="password"
+                    value={가입.비밀번호확인}
+                    onChange={(e) => set가입((v) => ({ ...v, 비밀번호확인: e.target.value }))}
+                    placeholder="다시 한 번 입력하세요"
+                    autoComplete="new-password"
+                  />
+                  <small className={비번다름 ? "signup-warn" : undefined}>
+                    {비번다름 ? "비밀번호가 서로 다릅니다." : "\u00a0"}
+                  </small>
+                </label>
+              </div>
+
+              <label>
+                <span>팀 이름</span>
+                <input
+                  value={가입.팀이름}
+                  onChange={(e) => set가입((v) => ({ ...v, 팀이름: e.target.value }))}
+                  placeholder="사업에 참여 중인 팀·기업 이름"
+                  autoComplete="organization"
+                />
+                <small>지출 계획과 집행 내역이 이 팀 단위로 관리됩니다.</small>
+              </label>
+
+              {/* 🔴 판정에 필요 없는 개인 식별 정보는 «입력 칸 자체를 만들지 않습니다».
+                  담당자 이름·연락처를 받지 않는 것은 설계 결정입니다. */}
+              <div className="signup-agree">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={가입약관.서비스}
+                    onChange={(e) => set가입약관((v) => ({ ...v, 서비스: e.target.checked }))}
+                  />
+                  <span>
+                    <b>[필수] 서비스 이용약관에 동의합니다.</b>
+                    <small>AI 점검 결과는 참고 정보이며 기관의 승인을 대신하지 않습니다.</small>
+                  </span>
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={가입약관.개인정보}
+                    onChange={(e) => set가입약관((v) => ({ ...v, 개인정보: e.target.checked }))}
+                  />
+                  <span>
+                    <b>[필수] 개인정보 수집·이용에 동의합니다.</b>
+                    <small>이메일과 팀 이름만 수집하며, 지출 점검 목적으로만 사용합니다.</small>
+                  </span>
+                </label>
+              </div>
+
+              {가입오류 && (
+                <p className="signup-error">{가입오류}</p>
+              )}
+
+              <div className="onboarding-actions">
+                <button type="button" className="outline large" onClick={() => setStep("welcome")}>
+                  이전
+                </button>
+                <button type="submit" className="primary large" disabled={!채워짐}>
+                  가입하고 시작하기
+                </button>
+              </div>
+            </form>
+
+            <p className="onboarding-notice signup-next">
+              가입 후 <b>사업 선택 → 주관기관 선택 → 기관 기준 확인</b> 순서로
+              초기 설정이 이어집니다.
+            </p>
+          </section>
+        </section>
+      </main>
+    );
+  }
 
   if (step === "welcome")
     return (
@@ -1183,35 +1367,22 @@ function Login({
               >
                 {로그인중 ? "확인하는 중…" : "로그인"}
               </button>
-              {/* 🔴 심사위원용 입구입니다. 계정을 안 만들고 들어옵니다.
-                  누를 때마다 «격리된 새 기관» 이 발급되므로, 두 명이 동시에 봐도
-                  서로의 지출계획이 섞이지 않습니다. (POST /api/demo/session) */}
+              {/* 계정이 없는 사람의 입구. 가입을 마치면 온보딩으로 이어집니다. */}
               <button
                 type="button"
                 className="outline large"
-                disabled={둘러보는중 || 로그인중}
-                onClick={async () => {
+                disabled={로그인중}
+                onClick={() => {
                   set로그인오류(null);
-                  set둘러보는중(true);
-                  try {
-                    await 데모시작();
-                    if (API켜짐()) GPU깨우기().catch(() => {});
-                    onEnter("home");        // 온보딩을 건너뜁니다 — 샘플이 이미 들어 있습니다
-                  } catch (e) {
-                    set로그인오류(
-                      e instanceof Error ? e.message : "둘러보기를 시작하지 못했습니다.",
-                    );
-                  } finally {
-                    set둘러보는중(false);
-                  }
+                  setStep("signup");
                 }}
               >
-                {둘러보는중 ? "준비하는 중…" : "계정 없이 둘러보기"}
+                회원가입
               </button>
               {로그인오류 && (
                 <small style={{ color: "var(--red, #c23b3b)" }}>{로그인오류}</small>
               )}
-              <small>시연 계정 이메일이 입력되어 있습니다. 비밀번호를 입력해 주세요.</small>
+              <small>계정이 없으신가요? 회원가입 후 참여 사업을 설정하면 바로 이용할 수 있습니다.</small>
             </form>
           </div>
           <OnboardingDemo />
@@ -5494,7 +5665,7 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
   //    어느 계정으로 들어와도 team@startup.kr 이 보였습니다.
   const 로그인이메일 = use이메일();
   const [profile, setProfile] = useState({
-    team: "체쿠메이트",
+    team: "체쿠메이트",   // 🔴 가입에서 받은 값으로 아래 effect 가 덮습니다
     program: 선택사업(),
     // 🔴 온보딩에서 고른 기관입니다. 예전엔 여기 한 줄이 박혀 있어서 다른 기관을
     //    골라도 마이페이지는 늘 경상국립대로 보였습니다.
@@ -5525,6 +5696,12 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
       setProfile((v) => ({ ...v, program: 맞춘값 }));
       setProfileDraft((v) => ({ ...v, program: 맞춘값 }));
     });
+    // 회원가입에서 받은 팀 이름을 반영합니다.
+    const 팀 = 기억된팀이름();
+    if (팀) {
+      setProfile((v) => ({ ...v, team: 팀 }));
+      setProfileDraft((v) => ({ ...v, team: 팀 }));
+    }
     // 온보딩에서 고른 기관을 반영합니다.
     const 기관 = 선택기관();
     setProfile((v) => ({ ...v, host: 기관 }));
@@ -5920,6 +6097,7 @@ function ProfileModal({
 }) {
   const 사업 = use사업();
   const 이메일 = use이메일();
+  const 팀이름 = use팀이름();
   return (
     <div className="modal-backdrop">
       <section className="modal">
@@ -5931,7 +6109,7 @@ function ProfileModal({
           <button onClick={close}>×</button>
         </header>
         <dl className="profile-list">
-          <Info label="팀 이름" value="체쿠메이트" />
+          <Info label="팀 이름" value={팀이름} />
           <Info label="이메일" value={이메일 || "로그인 정보 없음"} />
           <Info label="선정사업" value={사업} />
         </dl>
