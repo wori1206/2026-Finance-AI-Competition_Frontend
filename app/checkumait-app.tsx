@@ -16,9 +16,9 @@ import type { GPU상태값 } from "../lib/api";
 import { 체크저장, 일정변경저장 } from "../lib/tasks";
 import { 기관검색, 사업요약, 예비기관, type 기관 } from "../lib/orgs";
 import { 첨부보관, 첨부읽기, 첨부쓰기, 파일을첨부로, type 첨부 } from "../lib/attachments";
-import { 인증켜짐, 로그인 as supabase로그인, 로그아웃 as supabase로그아웃 } from "../lib/supabase";
-import { 상세를계획으로, 판정제목, 행동문구 } from "../lib/adapt";
-import { 데모시작, 데모종료, 데모중 } from "../lib/session";
+import { 인증켜짐, 로그인 as supabase로그인, 로그아웃 as supabase로그아웃, 이메일 as supabase이메일 } from "../lib/supabase";
+import { 상세를계획으로, 판정제목, 행동문구, 시각표기 } from "../lib/adapt";
+import { 데모시작, 데모종료, 데모중, 이메일기억, 기억된이메일, 이메일잊기 } from "../lib/session";
 import { 선택사업, 사업저장, 사업선택지, 목록에맞추기, 기본사업 } from "../lib/program";
 import { 협약읽기, 협약쓰기, 값있음, 원, 날짜표기, type 협약정보 } from "../lib/profile";
 import { SendButton } from "./send-button";
@@ -232,6 +232,31 @@ const navItems = [
 const 현재사업 = () => 선택사업();
 
 /**
+ * 받침이 있으면 「을」, 없으면 「를」.
+ *
+ * 🔴 사업명이 서버에서 오는 값이라 조사를 고정할 수 없습니다. 「초기창업패키지을(를)」
+ *    처럼 나오면 화면이 대충 만든 것으로 읽힙니다.
+ */
+function 을를(말: string): string {
+  const 끝 = (말 ?? "").trim().slice(-1);
+  const 코드 = 끝.charCodeAt(0);
+  if (!끝 || Number.isNaN(코드) || 코드 < 0xac00 || 코드 > 0xd7a3) return "를";
+  return (코드 - 0xac00) % 28 ? "을" : "를";
+}
+
+/**
+ * "2026-10-02" → "10/2". 날짜가 없으면 **「0/0」 대신 「—」**.
+ *
+ * 🔴 예전에는 `Number("".slice(5,7))` 가 그대로 0 이 되어 집행 일정에 「0/0」이
+ *    찍혔습니다. 서버 할일에 due_date 가 없을 때 나던 증상입니다.
+ */
+function 월일표기(date: string): string {
+  const m = Number(date?.slice(5, 7));
+  const d = Number(date?.slice(8, 10));
+  return m && d ? `${m}/${d}` : "—";
+}
+
+/**
  * 화면에 「참여 중인 사업」을 «글자로» 보여줄 때 씁니다.
  *
  * 🔴 `현재사업()` 을 JSX 안에서 바로 부르면 안 됩니다.
@@ -244,6 +269,33 @@ function use사업(): string {
   useEffect(() => {
     set값(선택사업());
   }, []);
+  return 값;
+}
+
+/**
+ * 지금 로그인한 사람의 이메일. 화면 세 곳(사이드바·내 정보·마이페이지)이 같은 값을 씁니다.
+ *
+ * 🔴 순서: Supabase 세션 → 이 탭이 기억한 로그인 이메일 → 데모(계정 없음).
+ *    `use사업` 과 같은 이유로 첫 그림은 비워 두고 붙은 뒤에 채웁니다(hydration).
+ */
+function use이메일(재조회?: unknown): string {
+  const [값, set값] = useState("");
+  useEffect(() => {
+    let 살아있음 = true;
+    supabase이메일()
+      .catch(() => null)
+      .then((e) => {
+        if (!살아있음) return;
+        if (e) return set값(e);
+        const 기억 = 기억된이메일();
+        if (기억) return set값(기억);
+        set값(데모중() ? "둘러보기 · 계정 없음" : "");
+      });
+    return () => {
+      살아있음 = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [재조회]);
   return 값;
 }
 
@@ -500,6 +552,8 @@ export default function CheckumaitApp() {
   const [signedIn, setSignedIn] = useState(false);
   // 🔴 localStorage 를 첫 그림에서 읽으면 서버 HTML 과 어긋납니다 — 붙은 뒤에 읽습니다.
   //    (`signedIn` 아래에 있어야 합니다 — 위에 두면 선언 전 참조로 터집니다)
+  // 🔴 로그인 «뒤에» 다시 물어야 합니다 — 첫 마운트 때는 아직 세션이 없습니다.
+  const 이메일 = use이메일(signedIn);
   const [데모기관, set데모기관] = useState<string | null>(null);
   useEffect(() => {
     set데모기관(데모중()?.기관명 ?? null);
@@ -685,13 +739,15 @@ export default function CheckumaitApp() {
           ))}
         </nav>
         <div className="side-bottom">
+          {/* 🔴 순서를 바꿨습니다 — 「지금 서버가 되는가」가 먼저고,
+              「어느 사업인가」는 그 아래입니다 (QA 0905). */}
+          <GPU상태배지 />
           <section className="project-mini">
             <span>{데모기관 ? "둘러보기" : "참여 중인 프로젝트"}</span>
             <b>{사업}</b>
             {/* 🔴 데모 세션은 «누를 때마다 새 기관» 입니다. 경상국립대로 고정 표기되면 안 됩니다. */}
             <small>{데모기관 ?? "경상국립대학교 창업중심대학사업단 · D-129"}</small>
           </section>
-          <GPU상태배지 />
           <div className="account-row">
             <button
               className="account-main"
@@ -700,7 +756,7 @@ export default function CheckumaitApp() {
               <span className="avatar">체</span>
               <span>
                 <b>체쿠메이트</b>
-                <small>team@startup.kr</small>
+                <small>{이메일 || "로그인 정보 없음"}</small>
               </span>
             </button>
             <button
@@ -718,6 +774,7 @@ export default function CheckumaitApp() {
                   onClick={() => {
                     void supabase로그아웃();          // 설정이 없으면 아무것도 안 합니다
                     데모종료();                        // 🔴 안 지우면 다음 사람이 그 기관으로 들어갑니다
+                  이메일잊기();
                     window.sessionStorage.removeItem("checkumait-signed-in");
                     setSignedIn(false);
                     setAccountOpen(false);
@@ -921,6 +978,8 @@ function Login({
   //    검색도 수정도 안 됐습니다. 서버가 안 되면 예비 1건으로 조용히 내려갑니다.
   const [기관목록, set기관목록] = useState<기관[]>([예비기관]);
   const [기관찾는중, set기관찾는중] = useState(false);
+  /** 🔴 고른 사업으로 걸렀더니 0건이라 필터를 풀었는가. 그러면 화면이 말해야 합니다. */
+  const [사업필터해제, set사업필터해제] = useState(false);
   const [institution, setInstitution] = useState("");
   const [criteriaFile, setCriteriaFile] = useState("");
   // 🔴 Supabase 에 실제로 만들어 둔 계정과 «똑같아야» 합니다.
@@ -963,14 +1022,19 @@ function Login({
   const programs = 서버사업 ?? 예비사업목록;
 
   // 🔴 입력할 때마다 서버를 치지 않도록 250ms 기다립니다. 온보딩 2단계에서만 돕니다.
+  //
+  // 🔴 «1단계에서 고른 사업» 으로 거릅니다. 전에는 전체 420건이 그대로 나와서,
+  //    예비창업패키지를 고른 사람에게 창업중심대학 사업단이 같이 떴습니다.
+  //    그 사업으로 등록된 기관이 아직 없으면 `기관검색` 이 필터를 풀고 알려줍니다.
   useEffect(() => {
     if (step !== "institution") return;
     let 살아있음 = true;
     set기관찾는중(true);
     const 타이머 = window.setTimeout(() => {
-      기관검색(institutionQuery, { 크기: 20 }).then((r) => {
+      기관검색(institutionQuery, { 사업명: program, 크기: 20 }).then((r) => {
         if (!살아있음) return;
         set기관목록(r.항목.length ? r.항목 : []);
+        set사업필터해제(Boolean(r.필터해제));
         set기관찾는중(false);
       });
     }, 250);
@@ -978,7 +1042,7 @@ function Login({
       살아있음 = false;
       window.clearTimeout(타이머);
     };
-  }, [institutionQuery, step]);
+  }, [institutionQuery, step, program]);
 
   if (step === "welcome")
     return (
@@ -1012,6 +1076,7 @@ function Login({
                 // 🔴 Supabase 설정이 없으면 예전처럼 «통과» 시킵니다.
                 //    설정 전에 배포돼도 시연이 막히지 않게.
                 if (!인증켜짐) {
+                  이메일기억(loginEmail);   // 🔴 Supabase 에 안 남으므로 화면용으로만 기억
                   setStep("project");
                   return;
                 }
@@ -1019,6 +1084,7 @@ function Login({
                 set로그인오류(null);
                 try {
                   await supabase로그인(loginEmail, loginPassword);
+                  이메일기억(loginEmail);
                   // 🔴 로그인 직후 GPU 기동에 «머리 시작 시간»을 벌어 둡니다. 실패해도
                   //    조용히 넘어갑니다 — 실제 판정 때 서버가 다시 기동을 시도합니다.
                   if (API켜짐()) GPU깨우기().catch(() => {});
@@ -1215,8 +1281,16 @@ function Login({
               <h1>주관기관을 선택해주세요.</h1>
               <p>
                 기관별 사업비 집행기준을 함께 적용하기 위해 주관기관을
-                확인합니다.
+                확인합니다. <b>{program}</b>{을를(program)} 운영하는 기관만 보여드립니다.
               </p>
+              {/* 🔴 그 사업으로 등록된 기관이 서버에 아직 없으면 목록을 비우지 않고
+                  전체를 보여줍니다 — 대신 그 사실을 말해야 사용자가 오해하지 않습니다. */}
+              {사업필터해제 && (
+                <p className="onboarding-filter-notice">
+                  <span>ⓘ</span>
+                  {program}으로 등록된 주관기관이 아직 없어 전체 기관을 보여드립니다.
+                </p>
+              )}
               <label className="institution-search">
                 주관기관 검색
                 <span>
@@ -1255,7 +1329,7 @@ function Login({
                   );
                 })}
                 {!기관찾는중 && 기관목록.length === 0 && (
-                  <p>일치하는 주관기관이 없습니다.</p>
+                  <p>{program}{을를(program)} 운영하는 기관 중 일치하는 곳이 없습니다.</p>
                 )}
               </div>
               <div className="onboarding-actions">
@@ -1373,6 +1447,10 @@ function Login({
                 <span>
                   <b>시연용 예시 데이터가 준비되어 있어요.</b>
                   <small>홈에서 작성된 지출 계획과 연결된 집행 일정을 바로 확인할 수 있습니다.</small>
+                  {/* 🔴 온보딩에서 고른 사업·기관은 «이 브라우저에만» 저장됩니다.
+                      시연 계정의 데이터는 서버가 이미 갖고 있는 것이라 안 바뀝니다.
+                      이걸 안 말하면 「설정했는데 왜 그대로냐」는 오해가 납니다. */}
+                  <small>현재 온보딩에서 설정한 내용은 시연 계정에 적용되지 않습니다.</small>
                 </span>
               </div>
               <div className="ready-actions">
@@ -1644,10 +1722,16 @@ function AiCheckingOverlay({
   count,
   planId,
   대체입력,
+  제목,
   onComplete,
   onFail,
 }: {
   count: number;
+  /**
+   * 🔴 새 계획 작성 흐름에서만 문구가 다릅니다 (「AI가 지출계획을 작성하고 있어요」).
+   *    목록의 일괄 점검은 «이미 있는» 계획을 보는 것이라 기존 문구가 맞습니다.
+   */
+  제목?: string;
   /** 주면 «진짜» 판정을 부릅니다. 없으면 예전처럼 연출만 합니다. */
   planId?: string;
   /** 방금 만든 계획처럼 상세 조회가 실패할 수 있을 때의 대비 값 */
@@ -1755,7 +1839,9 @@ function AiCheckingOverlay({
           <i className="ai-check-spark ai-check-spark-one"><Icon name="sparkSolid" size={9} /></i>
           <i className="ai-check-spark ai-check-spark-two"><Icon name="sparkSolid" size={7} /></i>
         </span>
-        <h2 id="ai-checking-title">AI가 지출 계획{count > 1 ? ` ${count}건을` : "을"} 점검하고 있어요</h2>
+        <h2 id="ai-checking-title">
+          {제목 ?? `AI가 지출 계획${count > 1 ? ` ${count}건을` : "을"} 점검하고 있어요`}
+        </h2>
         <p>{설명 || "비목, 확인 항목, 필요 증빙을 정리하고 있습니다. 잠시만 기다려주세요."}</p>
         <div className="ai-checking-steps">
           {["기본 정보 확인", "비목 분류", "확인 항목 정리"].map((label, index) => (
@@ -2863,7 +2949,7 @@ function NewPlanPage({
         )}
         {step === 3 && (
           <>
-            <h2 className="additional-check-title">추가로 확인할게요</h2>
+            <h2 className="additional-check-title">몇 가지만 추가로 확인할게요</h2>
             <p className="section-copy additional-check-copy">
               {category === "지급수수료"
                 ? `${feeSubtype} 기준으로 필요한 정보만 확인합니다.`
@@ -2921,14 +3007,15 @@ function NewPlanPage({
           {step === 1
             ? "비목 확인하기"
             : step === 2
-              ? "추가 확인하기"
-              : "저장하고 AI 점검"}
+              ? "AI 점검하기"
+              : "결과 확인하기"}
         </button>
       </footer>
       {checking && pendingPlan && (
         <AiCheckingOverlay
           count={1}
           planId={새planId ?? undefined}
+          제목="AI가 지출계획을 작성하고 있어요."
           대체입력={{
             사업명: 현재사업(),
             확정비목: category.split(" · ")[0],
@@ -2962,7 +3049,7 @@ function NewPlanPage({
               <i className="analysis-spark analysis-spark-one"><Icon name="sparkSolid" size={8} /></i>
               <i className="analysis-spark analysis-spark-two"><Icon name="sparkSolid" size={6} /></i>
             </span>
-            <h2 id="category-analysis-title">{questionsLoading ? "추가 확인 항목을 준비하고 있어요" : "입력한 내용을 분석하고 있어요"}</h2>
+            <h2 id="category-analysis-title">{questionsLoading ? "AI가 내용을 점검하고 있어요." : "입력한 내용을 분석하고 있어요"}</h2>
             <p>{questionsLoading ? "선택한 비목에 맞는 추가 질문을 준비하고 있습니다." : "지출 항목과 사용 목적을 바탕으로 적합한 비목을 찾고 있습니다."}</p>
             <small>잠시만 기다려주세요.</small>
           </section>
@@ -3117,9 +3204,18 @@ function PlanDetail({
   const [actualAmount, setActualAmount] = useState(
     plan?.actualAmount ? String(plan.actualAmount) : "",
   );
-  const [paymentCompleted, setPaymentCompleted] = useState(
-    plan?.executionStatus === "결제 완료",
-  );
+  /**
+   * 🔴 「결제 완료」 체크박스를 없앴습니다. 체크와 등록 버튼이 따로 있어서
+   *    「체크만 하고 등록을 안 누른」 반쯤 등록된 상태가 만들어졌습니다.
+   *    이제 등록 버튼 하나가 확인 창을 띄우고, 누르면 그게 곧 결제 완료입니다.
+   *
+   *    등록한 뒤에는 «잠깁니다». 누적 집행액에 이미 반영된 값이라 아무 때나
+   *    바뀌면 안 됩니다 — 고치려면 「수정하기」로 명시적으로 풀어야 합니다.
+   */
+  const 집행등록됨 = plan?.executionStatus === "결제 완료";
+  const [집행수정중, set집행수정중] = useState(false);
+  const [집행확인, set집행확인] = useState<null | "등록" | "수정">(null);
+  const 집행잠김 = 집행등록됨 && !집행수정중;
   if (!plan || !draft)
     return (
       <div className="page">
@@ -3171,19 +3267,35 @@ function PlanDetail({
           : 0),
     0,
   );
-  const registerActualExpense = () => {
-    if (!actualDate || savedActualAmount <= 0 || !paymentCompleted) {
-      notify("실제 지출일과 금액을 입력하고 결제 완료를 확인해주세요.");
+  /** 버튼을 눌렀을 때 — 값만 검사하고 «확인 창» 을 엽니다. 저장은 창에서 합니다. */
+  const 집행확인열기 = (종류: "등록" | "수정") => {
+    if (!actualDate || savedActualAmount <= 0) {
+      notify("실제 지출일과 지출액을 입력해주세요.");
       return;
     }
+    set집행확인(종류);
+  };
+
+  const 집행저장 = () => {
+    const 종류 = 집행확인;
+    set집행확인(null);
+    if (!종류) return;
     update({
       ...plan,
       actualDate,
       actualAmount: savedActualAmount,
       executionStatus: "결제 완료",
-      updatedAt: "2026.08.31 방금 전",
+      updatedAt: 시각표기(new Date().toISOString()),
     });
-    notify("실제 집행 정보를 등록했습니다.");
+    set집행수정중(false);
+    notify(종류 === "등록" ? "실제 집행 정보를 등록했습니다." : "실제 집행 정보를 수정했습니다.");
+  };
+
+  /** 수정을 그만둘 때 — 등록돼 있던 값으로 되돌립니다. */
+  const 집행수정취소 = () => {
+    setActualDate(plan.actualDate || plan.plannedDate || "");
+    setActualAmount(plan.actualAmount ? String(plan.actualAmount) : "");
+    set집행수정중(false);
   };
   const formatSize = (size: number) =>
     size >= 1024 * 1024
@@ -3494,6 +3606,9 @@ function PlanDetail({
                 </button>
               </footer>
             </section>
+            {/* 🔴 1 결제 전 확인 / 2·3 결제 이후 — 세 카드가 한 덩어리로 붙어 있어
+                「지금 뭘 해야 하나」가 안 보였습니다. 결제를 기준으로 끊습니다. */}
+            <div className="expense-v5-prep-split" role="presentation" />
             <section className="expense-v5-execution-card">
               <header>
                 <div>
@@ -3502,10 +3617,15 @@ function PlanDetail({
                 </div>
                 {plan.executionStatus && <b>{plan.executionStatus}</b>}
               </header>
-              <div className="expense-v5-execution-form">
+              <div className={`expense-v5-execution-form ${집행잠김 ? "is-locked" : ""}`}>
                 <label>
                   <span>실제 지출일</span>
-                  <input type="date" value={actualDate} onChange={(event) => setActualDate(event.target.value)} />
+                  <input
+                    type="date"
+                    value={actualDate}
+                    disabled={집행잠김}
+                    onChange={(event) => setActualDate(event.target.value)}
+                  />
                 </label>
                 <label>
                   <span>실제 지출액 <small>부가세 포함</small></span>
@@ -3513,15 +3633,12 @@ function PlanDetail({
                     <input
                       inputMode="numeric"
                       placeholder="0"
+                      disabled={집행잠김}
                       value={actualAmount ? Number(actualAmount.replace(/[^0-9]/g, "")).toLocaleString("ko-KR") : ""}
                       onChange={(event) => setActualAmount(event.target.value.replace(/[^0-9]/g, ""))}
                     />
                     <b>원</b>
                   </div>
-                </label>
-                <label className="expense-v5-complete-check">
-                  <input type="checkbox" checked={paymentCompleted} onChange={(event) => setPaymentCompleted(event.target.checked)} />
-                  <span>결제 완료</span>
                 </label>
               </div>
               <div className="expense-v5-execution-summary">
@@ -3530,8 +3647,23 @@ function PlanDetail({
                 <span>누적 집행액 <b>{won(cumulativeActualAmount)}</b></span>
               </div>
               <footer>
-                <span>등록한 실제 지출액은 누적 집행액에 반영됩니다.</span>
-                <button className="primary small" onClick={registerActualExpense}>실제 지출 등록</button>
+                <span>
+                  {집행잠김
+                    ? "등록을 마쳐 잠겨 있습니다. 값을 바꾸려면 수정하기를 누르세요."
+                    : "등록한 실제 지출액은 누적 집행액에 반영됩니다."}
+                </span>
+                {/* 🔴 상태에 따라 버튼이 하나씩만 뜹니다 — 「등록」과 「수정」이 같이
+                    보이면 어느 것이 지금 할 일인지 안 보입니다. */}
+                {집행수정중 ? (
+                  <span className="expense-v5-execution-buttons">
+                    <button className="outline small" onClick={집행수정취소}>취소</button>
+                    <button className="primary small" onClick={() => 집행확인열기("수정")}>수정하기</button>
+                  </span>
+                ) : 집행등록됨 ? (
+                  <button className="outline small" onClick={() => set집행수정중(true)}>수정하기</button>
+                ) : (
+                  <button className="primary small" onClick={() => 집행확인열기("등록")}>실제 지출 등록</button>
+                )}
               </footer>
             </section>
             <section className="expense-v5-evidence-section">
@@ -3633,6 +3765,38 @@ function PlanDetail({
           </div>
         </section>
       </main>
+      {/* 🔴 누적 집행액에 들어가는 값이라 «되돌리기가 쉽지 않습니다». 한 번 묻습니다. */}
+      {집행확인 && (
+        <div className="modal-backdrop">
+          <section className="modal narrow execution-confirm-modal" role="dialog" aria-modal="true">
+            <header>
+              <div>
+                <h2>지출을 {집행확인}하시겠습니까?</h2>
+                <p>
+                  {집행확인 === "등록"
+                    ? "등록하면 누적 집행액에 반영되고, 이후에는 수정하기를 눌러야 값을 바꿀 수 있습니다."
+                    : "바꾼 금액으로 누적 집행액이 다시 계산됩니다."}
+                </p>
+              </div>
+              <button onClick={() => set집행확인(null)}>×</button>
+            </header>
+            <dl className="execution-confirm-list">
+              <div>
+                <dt>실제 지출일</dt>
+                <dd>{actualDate || "—"}</dd>
+              </div>
+              <div>
+                <dt>실제 지출액</dt>
+                <dd>{won(savedActualAmount)}</dd>
+              </div>
+            </dl>
+            <footer>
+              <button className="outline" onClick={() => set집행확인(null)}>취소</button>
+              <button className="primary" onClick={집행저장}>{집행확인}하기</button>
+            </footer>
+          </section>
+        </div>
+      )}
       {scheduleGroup && (
         <ScheduleCheckModal
           items={plan[scheduleGroup]}
@@ -4378,25 +4542,46 @@ function SchedulePage({
 }) {
   const [modal, setModal] = useState(false);
   const [view, setView] = useState<"calendar" | "list">("calendar");
-  const [month, setMonth] = useState<8 | 9 | 10>(9);
+  /**
+   * 🔴 달력이 2026년 8·9·10월에 «박혀» 있었고, 오늘 표시는 `month===8 && day===29` 로
+   *    고정이었습니다. 그래서 9월에 들어오면 오늘 동그라미가 아예 안 떴습니다.
+   *    이제 실제 오늘을 기준으로 「지난달·이번달·다음달」을 봅니다.
+   *
+   * 🔴 서버에서 미리 그린 HTML 과 어긋나지 않게(hydration) 첫 그림은 고정값으로
+   *    두고, 붙은 뒤에 오늘로 옮깁니다.
+   */
+  const [오늘, set오늘] = useState<{ y: number; m: number; d: number } | null>(null);
+  useEffect(() => {
+    const n = new Date();
+    set오늘({ y: n.getFullYear(), m: n.getMonth() + 1, d: n.getDate() });
+  }, []);
+  const 기준연 = 오늘?.y ?? 2026;
+  const 기준월 = 오늘?.m ?? 9;
+  const [월오프셋, set월오프셋] = useState(0);           // -1 지난달 · 0 이번달 · +1 다음달
+  const month = 기준월 + 월오프셋;
+  const 연 = month < 1 ? 기준연 - 1 : month > 12 ? 기준연 + 1 : 기준연;
+  const 표시월 = ((month - 1 + 12) % 12) + 1;
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [editing, setEditing] = useState<ScheduleItem | null>(null);
   const [viewing, setViewing] = useState<ScheduleItem | null>(null);
   const [upcomingView, setUpcomingView] = useState<"all" | "plans">("all");
   const [expandedPlans, setExpandedPlans] = useState<string[]>([]);
+  const 오늘문자 = 오늘
+    ? `${오늘.y}-${String(오늘.m).padStart(2, "0")}-${String(오늘.d).padStart(2, "0")}`
+    : "2026-08-29";
   const upcoming = [...schedules].sort((a, b) => a.date.localeCompare(b.date));
   const visibleUpcoming = upcoming.filter((item) => item.state !== "완료");
   const activeUpcoming = visibleUpcoming
-    .filter((item) => item.date >= "2026-08-29")
+    .filter((item) => item.date >= 오늘문자)
     .slice(0, 3);
   const dday = (date: string) =>
     Math.ceil(
       (new Date(`${date}T00:00:00`).getTime() -
-        new Date("2026-08-29T00:00:00").getTime()) /
+        new Date(`${오늘문자}T00:00:00`).getTime()) /
         86400000,
     );
-  const calendarStart = new Date(2026, month - 1, 1).getDay();
-  const calendarDays = new Date(2026, month, 0).getDate();
+  const calendarStart = new Date(연, 표시월 - 1, 1).getDay();
+  const calendarDays = new Date(연, 표시월, 0).getDate();
   const stats = {
     all: upcoming.length,
     need: upcoming.filter((s) => s.state === "준비 필요").length,
@@ -4532,23 +4717,23 @@ function SchedulePage({
           <header>
             <div className="schedule-month-nav">
               <button
-                disabled={month === 8}
-                onClick={() => setMonth((value) => (value - 1) as 8 | 9 | 10)}
+                disabled={월오프셋 <= -1}
+                onClick={() => set월오프셋((v) => v - 1)}
                 aria-label="이전 달"
               >
                 ‹
               </button>
-              <h2>2026년 {month}월</h2>
+              <h2>{연}년 {표시월}월</h2>
               <button
-                disabled={month === 10}
-                onClick={() => setMonth((value) => (value + 1) as 8 | 9 | 10)}
+                disabled={월오프셋 >= 1}
+                onClick={() => set월오프셋((v) => v + 1)}
                 aria-label="다음 달"
               >
                 ›
               </button>
             </div>
             <div>
-              <button className="outline small" onClick={() => setMonth(8)}>
+              <button className="outline small" onClick={() => set월오프셋(0)}>
                 오늘
               </button>
               <span className="schedule-v2-view">
@@ -4580,17 +4765,16 @@ function SchedulePage({
                 {Array.from({ length: 42 }, (_, i) => {
                   const day = i - calendarStart + 1;
                   const valid = day >= 1 && day <= calendarDays;
+                  const 날짜문자 = valid
+                    ? `${연}-${String(표시월).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+                    : "";
                   const items = valid
-                    ? upcoming.filter(
-                        (s) =>
-                          Number(s.date.slice(5, 7)) === month &&
-                          Number(s.date.slice(-2)) === day,
-                      )
+                    ? upcoming.filter((s) => s.date === 날짜문자)
                     : [];
                   return (
                     <div
                       key={i}
-                      className={`${month === 8 && day === 29 ? "today" : ""} ${!valid ? "outside" : ""}`}
+                      className={`${날짜문자 && 날짜문자 === 오늘문자 ? "today" : ""} ${!valid ? "outside" : ""}`}
                     >
                       <span>{valid ? day : ""}</span>
                       {items.slice(0, 2).map((item) => (
@@ -4706,8 +4890,7 @@ function SchedulePage({
                   >
                     <time>
                       <b>
-                        {Number(item.date.slice(5, 7))}/
-                        {Number(item.date.slice(8))}
+                        {월일표기(item.date)}
                       </b>
                       {past ? (
                         <small className="past-date">지남</small>
@@ -4822,8 +5005,7 @@ function SchedulePage({
                                 aria-label={`${item.title} 일정 내용 보기`}
                               >
                                 <time>
-                                  {Number(item.date.slice(5, 7))}/
-                                  {Number(item.date.slice(8))}
+                                  {월일표기(item.date)}
                                 </time>
                                 <span>
                                   <b>{item.title}</b>
@@ -5254,8 +5436,10 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
   const [기관찾는중, set기관찾는중] = useState(false);
   const [editingProfile, setEditingProfile] = useState(false);
   const [hostSearchOpen, setHostSearchOpen] = useState(false);
+  // 🔴 이메일은 «로그인한 사람» 의 것이어야 합니다 — 예전엔 여기 한 줄이 박혀 있어서
+  //    어느 계정으로 들어와도 team@startup.kr 이 보였습니다.
+  const 로그인이메일 = use이메일();
   const [profile, setProfile] = useState({
-    email: "team@startup.kr",
     team: "체쿠메이트",
     program: 선택사업(),
     host: "경상국립대학교 창업중심대학사업단",
@@ -5286,7 +5470,8 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
     let 살아있음 = true;
     set기관찾는중(true);
     const 타이머 = window.setTimeout(() => {
-      기관검색(profileDraft.host, { 크기: 20 }).then((r) => {
+      // 🔴 온보딩과 같은 규칙 — 지금 참여 중인 사업을 운영하는 기관만 봅니다.
+      기관검색(profileDraft.host, { 사업명: profileDraft.program, 크기: 20 }).then((r) => {
         if (!살아있음) return;
         set기관목록(r.항목);
         set기관찾는중(false);
@@ -5296,7 +5481,7 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
       살아있음 = false;
       window.clearTimeout(타이머);
     };
-  }, [editingProfile, profileDraft.host]);
+  }, [editingProfile, profileDraft.host, profileDraft.program]);
 
   useEffect(() => {
     let 살아있음 = true;
@@ -5331,7 +5516,7 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
             <span className="my-profile-avatar">{profile.team.slice(0, 1)}</span>
             <div>
               <h2>{profile.team}</h2>
-              <p>{profile.email}</p>
+              <p>{로그인이메일 || "로그인 정보 없음"}</p>
             </div>
           </div>
           <div className="my-profile-actions">
@@ -5351,7 +5536,7 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
         </header>
         <dl className="my-profile-grid">
           <Info label="팀 이름" value={profile.team} />
-          <Info label="이메일" value={profile.email} />
+          <Info label="이메일" value={로그인이메일 || "로그인 정보 없음"} />
           <Info label="선정 사업" value={profile.program} />
           <Info label="주관기관" value={profile.host} />
           <Info label="사업 중복 수혜 여부" value={profile.duplicateBenefit} />
@@ -5457,7 +5642,7 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
             <div className="my-profile-edit-grid">
               <label>
                 <span>이메일 <small className="profile-fixed-label">수정 불가</small></span>
-                <input value={profileDraft.email} readOnly aria-readonly="true" />
+                <input value={로그인이메일} readOnly aria-readonly="true" />
               </label>
               <label>
                 <span>팀 이름</span>
@@ -5679,6 +5864,7 @@ function ProfileModal({
   close: () => void;
 }) {
   const 사업 = use사업();
+  const 이메일 = use이메일();
   return (
     <div className="modal-backdrop">
       <section className="modal">
@@ -5691,7 +5877,7 @@ function ProfileModal({
         </header>
         <dl className="profile-list">
           <Info label="팀 이름" value="체쿠메이트" />
-          <Info label="이메일" value="team@startup.kr" />
+          <Info label="이메일" value={이메일 || "로그인 정보 없음"} />
           <Info label="선정사업" value={사업} />
         </dl>
         <footer>

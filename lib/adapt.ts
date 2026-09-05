@@ -169,13 +169,28 @@ const 상태표: Record<string, ScheduleItem["state"]> = {
   완료: "완료",
 };
 
+/**
+ * 🔴 서버 할일의 `due_date` 는 «없을 수 있습니다» — 체크리스트에만 있고 캘린더에는
+ *    안 올리겠다는 뜻입니다(서버 models.py 주석). 그런데 결제 전 확인이 하나도
+ *    일정으로 안 잡히면 화면이 통째로 비어서, 우리는 그럴 때 전체 할일로 채웁니다.
+ *    그 길로 들어온 항목은 날짜가 빈 문자열이라 목록·캘린더에 **「0/0」** 으로 찍혔습니다.
+ *
+ *    그래서 날짜가 없으면 시연용 기본값을 넣습니다 — 10월 초. 한 날에 몰리면
+ *    캘린더가 안 읽히므로 task_id 로 10/01~10/07 에 고르게 흩뿌립니다.
+ */
+function 기본마감일(task_id: number | string): string {
+  const n = Number(task_id);
+  const 일 = 1 + (Number.isFinite(n) ? Math.abs(Math.trunc(n)) % 7 : 0);
+  return `${new Date().getFullYear()}-10-${String(일).padStart(2, "0")}`;
+}
+
 export function 할일을일정으로(t: 할일): ScheduleItem {
   return {
     id: String(t.task_id),
     taskId: String(t.task_id),      // 🔴 상세 체크박스와 이어지는 열쇠
     planId: t.plan_id === null ? "" : String(t.plan_id),
     title: t.항목,
-    date: t.due_date ?? "",
+    date: t.due_date || 기본마감일(t.task_id),
     type: t.구분 === "집행" ? "집행" : (유형표[t.유형] ?? "기타"),
     state: 상태표[t.상태] ?? "준비 필요",
     memo: t.설명 ?? undefined,

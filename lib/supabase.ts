@@ -50,6 +50,18 @@ export async function 토큰(): Promise<string | null> {
   return data.session?.access_token ?? null;
 }
 
+/**
+ * 지금 로그인된 사람의 이메일. 없으면 null.
+ *
+ * 🔴 화면에 「team@startup.kr」 이 박혀 있어서, 어떤 계정으로 들어와도 같은 주소가
+ *    보였습니다. 계정을 바꿔 시연할 때 바로 들통나는 자리입니다.
+ */
+export async function 이메일(): Promise<string | null> {
+  if (!인증켜짐) return null;
+  const { data } = await supabase().auth.getSession();
+  return data.session?.user?.email ?? null;
+}
+
 export type 세션상태 = "인증미설정" | "게스트" | "로그인";
 
 /**

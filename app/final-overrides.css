@@ -960,3 +960,63 @@ pre.ai-inquiry-text{
   .ai-inquiry-toggle{display:none}
   .ai-inquiry-head{flex-direction:column;align-items:flex-start;gap:8px}
 }
+
+/* ── QA 0905 ─────────────────────────────────────────────────────── */
+
+/* 온보딩 2단계 — 사업으로 걸렀는데 0건이라 필터를 푼 경우의 안내. */
+.onboarding-filter-notice{
+  display:flex;gap:7px;
+  margin:0 0 4px;padding:10px 12px;
+  border-radius:7px;
+  background:var(--color-surface-subtle,#f4f6f5);
+  color:var(--color-text-muted,#5f6763);
+  font-size:12px;line-height:1.55;
+}
+.onboarding-filter-notice>span{flex:none;color:#3987c8}
+
+/* 온보딩 마지막 — 안내가 두 줄이 됐습니다. */
+.onboarding-demo-notice small+small{margin-top:3px}
+
+/* 🔴 집행 준비: 1(결제 전) 과 2·3(결제 이후) 을 결제 시점으로 끊습니다.
+   세 카드가 붙어 있어 「지금 뭘 해야 하나」가 안 보인다는 QA 지적. */
+.expense-v5-prep-grid>.expense-v5-prep-split{
+  height:1px;
+  margin:16px 0 12px;
+  background:#d5dcd8;
+}
+@media(max-width:680px){
+  .expense-v5-prep-grid>.expense-v5-prep-split{margin:12px 0 8px}
+}
+
+/* 「결제 완료」 체크박스를 뺐으니 세 번째 칸도 없앱니다 — 안 그러면 빈 칸이 남습니다. */
+.expense-v5 .expense-v5-execution-form{grid-template-columns:1fr 1.25fr!important}
+
+/* 등록을 마친 집행 정보는 잠깁니다 — 누적 집행액에 이미 들어간 값입니다.
+   🔴 `detail-refinement.css` 가 `.expense-v5 … input:not([type=checkbox])` 로
+      흰 배경을 칠하고 있어, 그보다 «구체적인» 선택자라야 이깁니다. */
+.expense-v5 .expense-v5-execution-form.is-locked input:not([type="checkbox"]),
+.expense-v5 .expense-v5-execution-form.is-locked .expense-v5-amount-input input{
+  background:#f1f4f2!important;
+  border-color:#dde3e0!important;
+  color:#6c736f!important;
+  cursor:not-allowed;
+}
+.expense-v5 .expense-v5-execution-form.is-locked .expense-v5-amount-input{
+  background:#f1f4f2!important;
+}
+.expense-v5-execution-buttons{display:inline-flex;gap:8px}
+
+/* 지출 등록·수정 확인 창 */
+.execution-confirm-modal{max-width:420px}
+.execution-confirm-modal .execution-confirm-list{
+  display:grid;gap:10px;margin:0;padding:16px 20px;
+}
+.execution-confirm-modal .execution-confirm-list>div{
+  display:flex;align-items:baseline;justify-content:space-between;gap:16px;
+}
+.execution-confirm-modal .execution-confirm-list dt{
+  color:var(--color-text-muted,#6c736f);font-size:12px;
+}
+.execution-confirm-modal .execution-confirm-list dd{
+  margin:0;font-size:14px;font-weight:650;
+}

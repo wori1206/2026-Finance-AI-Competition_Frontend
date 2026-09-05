@@ -118,6 +118,40 @@ export async function 데모시작(): Promise<데모세션> {
 /** localStorage 가 막힌 브라우저(사생활 보호 모드 등) 대비. */
 let 메모리: 데모세션 | null = null;
 
+/* ── 로그인한 이메일 ───────────────────────────────────────────────
+ * 🔴 Supabase 가 정본입니다. 다만 `인증켜짐=false` (설정 전 배포)일 때는
+ *    로그인이 «통과만» 하므로 Supabase 에 아무것도 안 남습니다. 그때도 화면에
+ *    실제 주소를 보여주려고, 로그인 폼이 넣은 값을 이 탭에만 적어 둡니다.
+ *    세션 저장소라 탭을 닫으면 사라집니다 — 남길 값이 아닙니다. */
+const 이메일KEY = "checkumait-로그인이메일";
+
+export function 이메일기억(email: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(이메일KEY, email.trim());
+  } catch {
+    /* 막혀도 Supabase 쪽이 있으면 그걸 씁니다 */
+  }
+}
+
+export function 기억된이메일(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return window.sessionStorage.getItem(이메일KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function 이메일잊기(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(이메일KEY);
+  } catch {
+    /* 무시 */
+  }
+}
+
 /**
  * 🔴 요청에 실을 토큰. **로그인한 사람이 먼저입니다.**
  *
