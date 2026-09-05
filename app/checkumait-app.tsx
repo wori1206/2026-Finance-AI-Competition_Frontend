@@ -5501,8 +5501,8 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
     duplicateBenefit: "X",
   });
   const [profileDraft, setProfileDraft] = useState(profile);
-  /** 🔴 판정에 «지금 적용 중인» 문서. 사용자가 올린 새 파일은 따로 표시합니다. */
-  const [대기중파일, set대기중파일] = useState<File | null>(null);
+  /** 주관기관 세부 안내 — 시연용 표시 값입니다(판정 엔진과는 연결되지 않습니다). */
+  const [institutionFile, setInstitutionFile] = useState(적용중_기준파일);
   const [교체확인, set교체확인] = useState<File | null>(null);
 
   /**
@@ -5661,21 +5661,12 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
           </label>
         </header>
         <article>
-          <span className="institution-badge">적용 중</span>
+          <span className="institution-badge">사용자 등록</span>
           <div>
-            <b>{적용중_기준파일}</b>
-            <small>판정에 반영되어 있는 기준 문서입니다.</small>
+            <b>{institutionFile}</b>
+            <small>2026.03.02 등록</small>
           </div>
         </article>
-        {대기중파일 && (
-          <article>
-            <span className="institution-badge pending">검토 대기</span>
-            <div>
-              <b>{대기중파일.name}</b>
-              <small>기관 검토 후 판정 기준에 반영됩니다. 그때까지는 위 문서가 적용됩니다.</small>
-            </div>
-          </article>
-        )}
       </section>
       <div className="rule-caution">
         <Icon name="alert" />
@@ -5705,23 +5696,22 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
                 <dd>{크기표기(교체확인.size)}</dd>
               </div>
               <div>
-                <dt>현재 적용 중</dt>
-                <dd>{적용중_기준파일}</dd>
+                <dt>현재 문서</dt>
+                <dd>{institutionFile}</dd>
               </div>
             </dl>
             <p className="file-replace-notice">
               <span>ⓘ</span>
-              올린 문서는 기관 검토를 거쳐 판정 기준에 반영됩니다. 그때까지는 현재
-              적용 중인 문서로 계속 점검합니다.
+              교체하면 기존 문서를 대신해 기관 세부기준으로 등록됩니다.
             </p>
             <footer>
               <button className="outline" onClick={() => set교체확인(null)}>취소</button>
               <button
                 className="primary"
                 onClick={() => {
-                  set대기중파일(교체확인);
+                  setInstitutionFile(교체확인.name);
                   set교체확인(null);
-                  notify("새 기준 문서를 등록했습니다. 검토 후 판정에 반영됩니다.");
+                  notify("주관기관 기준 파일을 교체했습니다.");
                 }}
               >
                 교체하기
