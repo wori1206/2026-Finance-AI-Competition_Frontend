@@ -49,7 +49,9 @@ export const 계획추가 = (입력: {
 
 export const 할일추가 = (planId: number | string, 입력: {
   항목: string; 설명?: string;
-  구분?: "결제전" | "결제후";
+  // 🔴 서버 `models.할일생성` 은 셋을 받습니다 (결제전·결제후·집행). 여기가 둘만
+  //    적어 두면 「집행」 일정이 조용히 「결제후」로 접혀 나갑니다.
+  구분?: "결제전" | "결제후" | "집행";
   due_date?: string;
   유형?: "기타" | "계약" | "비교견적";
 }) => POST(`/api/plans/${planId}/tasks`, 입력) as Promise<할일>;
