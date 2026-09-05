@@ -5,6 +5,7 @@
 
 import type { ExpensePlan, PlanStatus, ScheduleItem, ChecklistItem, RuleItem } from "./types";
 import type { 계획요약, 계획상세, 할일, 판정값 } from "./server-types";
+import { 초안읽기 } from "./inquiry-store";
 
 /**
  * 판정 4-way → 배지 3종.
@@ -151,9 +152,17 @@ export function 상세를계획으로(d: 계획상세): ExpensePlan {
     aiChecks: (결제전.length ? 결제전 : 할일들).map(할일을체크로),
     evidence: 결제후.map(할일을체크로),
     rules: 인용들.map(인용을규정으로),
-    // 🔴 판정 전문에 같이 저장됩니다. 이걸 안 읽으면 새로고침하는 순간 초안이 사라져
-    //    「아까 있던 문의 글이 어디 갔나」가 됩니다.
-    문의초안: typeof 상세?.문의초안 === "string" ? 상세.문의초안 : null,
+    /**
+     * 🔴 서버는 «아직» 초안을 안 돌려줍니다 — `_실_상세` 가 읽는 decisions 컬럼에
+     *    문의초안이 없습니다(판정 직후 SSE 로만 흘러갑니다). 그래서 이 탭이 받아 둔
+     *    값으로 메웁니다. 백엔드가 `판정상세.문의초안` 을 싣기 시작하면 그쪽이 이깁니다.
+     *
+     * 🔴 「판단불가」일 때만 씁니다. 재판정으로 「가능」이 되었는데 옛 초안이 남아
+     *    있으면, 지금 판정과 안 맞는 문의를 보내게 됩니다.
+     */
+    문의초안:
+      (typeof 상세?.문의초안 === "string" ? 상세.문의초안 : null) ??
+      (d.판정 === "판단불가" ? 초안읽기(d.plan_id) : null),
   };
 }
 

@@ -11,6 +11,7 @@
 import { 계획상세 } from "./api";
 import { 판정SSE } from "./sse";
 import { 상세를계획으로, 판정을상태로, 판정설명, 시각표기 } from "./adapt";
+import { 초안보관 } from "./inquiry-store";
 import type { ChecklistItem, RuleItem } from "./types";
 import type { ExpensePlan } from "./types";
 import type { 판정값 } from "./server-types";
@@ -199,6 +200,14 @@ export async function 판정실행(
   //    스트림으로 받은 값을 «항상 우선» 쓰고, 서버가 채워준 게 있으면 그것도 씁니다.
   const 최종판정: 판정값 = 판정 ?? 이후.판정 ?? null;
 
+  /**
+   * 🔴 초안은 «판단불가일 때만» 존재합니다. 재판정으로 「가능」이 되었는데
+   *    `바탕`(= 상세 → 보관함 폴백)이 아직 옛 초안을 들고 있으면, 지금 판정과
+   *    안 맞는 문의 글이 화면에 남습니다. 여기서 잘라냅니다.
+   */
+  const 최종초안: string | null =
+    최종판정 === "판단불가" ? (문의초안 ?? 바탕.문의초안 ?? null) : null;
+
   const 계획: ExpensePlan = {
     ...바탕,
     status: 판정을상태로(최종판정),
@@ -208,11 +217,17 @@ export async function 판정실행(
     rules: 바탕.rules.length ? 바탕.rules : 인용,
     // 🔴 스트림으로 온 초안이 «먼저» 입니다. 목 서버는 판정을 저장하지 않아
     //    상세를 다시 읽어도 판정상세가 비어 있습니다.
-    문의초안: 문의초안 ?? 바탕.문의초안 ?? null,
+    문의초안: 최종초안,
     nextAction:
       바탕.nextAction || (해야할일[0]?.label ?? ""),
     updatedAt: 시각표기(new Date().toISOString()),
   };
+
+  // 🔴 초안은 «이 스트림에만» 있습니다 — 서버가 저장도, 상세 조회로 돌려주지도
+  //    않습니다(`lib/inquiry-store.ts` 설명). 여기서 붙들어 두지 않으면 목록으로
+  //    나갔다 다시 들어오는 순간 사라져, 사용자에겐 「가끔 뜨는 카드」가 됩니다.
+  //    판단불가가 아니면 null 을 넘겨 옛 초안을 «지웁니다».
+  초안보관(planId, 최종초안);
 
   return { 계획, 판정: 최종판정, 요약, 문의초안, 저장됨: 저장됨 && !저장건너뜀 };
 }

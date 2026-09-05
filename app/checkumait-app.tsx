@@ -19,6 +19,7 @@ import { 첨부보관, 첨부읽기, 첨부쓰기, 파일을첨부로, type 첨�
 import { 인증켜짐, 로그인 as supabase로그인, 로그아웃 as supabase로그아웃, 이메일 as supabase이메일 } from "../lib/supabase";
 import { 상세를계획으로, 판정제목, 행동문구, 시각표기 } from "../lib/adapt";
 import { 데모시작, 데모종료, 데모중, 이메일기억, 기억된이메일, 이메일잊기 } from "../lib/session";
+import { 초안전부지우기 } from "../lib/inquiry-store";
 import { 선택사업, 사업저장, 사업선택지, 목록에맞추기, 기본사업 } from "../lib/program";
 import { 협약읽기, 협약쓰기, 값있음, 원, 날짜표기, type 협약정보 } from "../lib/profile";
 import { SendButton } from "./send-button";
@@ -775,6 +776,7 @@ export default function CheckumaitApp() {
                     void supabase로그아웃();          // 설정이 없으면 아무것도 안 합니다
                     데모종료();                        // 🔴 안 지우면 다음 사람이 그 기관으로 들어갑니다
                   이메일잊기();
+                  초안전부지우기();                  // 🔴 다음 사람이 앞사람의 문의 글을 보면 안 됩니다
                     window.sessionStorage.removeItem("checkumait-signed-in");
                     setSignedIn(false);
                     setAccountOpen(false);
