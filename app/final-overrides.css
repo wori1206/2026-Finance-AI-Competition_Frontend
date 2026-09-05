@@ -1020,3 +1020,48 @@ pre.ai-inquiry-text{
 .execution-confirm-modal .execution-confirm-list dd{
   margin:0;font-size:14px;font-weight:650;
 }
+
+/* ── 주관기관 기준 문서 (마이페이지) ─────────────────────────────
+   🔴 「적용 중」과 「검토 대기」를 눈으로 갈라 둡니다 — 올린 파일이 바로 판정에
+      쓰인다고 오해하면, 판정 결과를 잘못 믿게 됩니다. */
+/* 적용 중 = 초록(지금 판정에 쓰이는 것) · 검토 대기 = 주황(아직 아닌 것).
+   같은 색이면 둘을 가르는 의미가 사라집니다. */
+.institution-badge{
+  background:#eaf5f1!important;
+  color:#0d6b55!important;
+  border-color:#b9dccf!important;
+}
+.institution-badge.pending{
+  background:#fff6e9!important;
+  color:#a35c00!important;
+  border-color:#f0d3a8!important;
+}
+
+/* 기준 문서 교체 확인 창 */
+.file-replace-modal{max-width:460px}
+.file-replace-modal .file-replace-list{
+  display:grid;gap:10px;margin:0;padding:16px 20px 4px;
+}
+.file-replace-modal .file-replace-list>div{
+  display:flex;align-items:baseline;justify-content:space-between;gap:16px;
+}
+.file-replace-modal .file-replace-list dt{
+  flex:none;color:var(--color-text-muted,#6c736f);font-size:12px;
+}
+.file-replace-modal .file-replace-list dd{
+  margin:0;font-size:13px;font-weight:600;text-align:right;word-break:break-all;
+}
+.file-replace-modal .file-replace-notice{
+  display:flex;gap:7px;margin:6px 20px 16px;padding:11px 12px;
+  border-radius:7px;background:var(--color-surface-subtle,#f4f6f5);
+  color:var(--color-text-muted,#5f6763);font-size:12px;line-height:1.6;
+}
+.file-replace-modal .file-replace-notice>span{flex:none;color:#3987c8}
+
+/* 🔴 「수정 불가」 칸이 편집 가능한 칸과 똑같이 보이면 라벨을 안 읽고 입력을 시도합니다. */
+.my-profile-edit-grid input[readonly]{
+  background:#f1f4f2!important;
+  border-color:#dde3e0!important;
+  color:#6c736f!important;
+  cursor:not-allowed;
+}

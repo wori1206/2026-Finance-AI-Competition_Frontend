@@ -14,14 +14,14 @@ import { 정규화하기 } from "../lib/normalize";
 import { 비목목록, 계획추가, GPU깨우기, GPU상태 } from "../lib/api";
 import type { GPU상태값 } from "../lib/api";
 import { 체크저장, 일정변경저장 } from "../lib/tasks";
-import { 기관검색, 사업요약, 예비기관, type 기관 } from "../lib/orgs";
-import { 첨부보관, 첨부읽기, 첨부쓰기, 파일을첨부로, type 첨부 } from "../lib/attachments";
+import { 기관검색, 사업요약, 예비기관, 기관저장, 선택기관, 기본기관명, 적용중_기준파일, type 기관 } from "../lib/orgs";
+import { 첨부보관, 첨부읽기, 첨부쓰기, 파일을첨부로, 크기표기, type 첨부 } from "../lib/attachments";
 import { 인증켜짐, 로그인 as supabase로그인, 로그아웃 as supabase로그아웃, 이메일 as supabase이메일 } from "../lib/supabase";
 import { 상세를계획으로, 판정제목, 행동문구, 시각표기 } from "../lib/adapt";
 import { 데모시작, 데모종료, 데모중, 이메일기억, 기억된이메일, 이메일잊기 } from "../lib/session";
 import { 초안전부지우기 } from "../lib/inquiry-store";
 import { 선택사업, 사업저장, 사업선택지, 목록에맞추기, 기본사업 } from "../lib/program";
-import { 협약읽기, 협약쓰기, 값있음, 원, 날짜표기, type 협약정보 } from "../lib/profile";
+import { 협약읽기, 협약쓰기, 값있음, 원, 날짜표기, 기간표기, 디데이표기, 시연협약, 협약기억, 기억된협약, type 협약정보 } from "../lib/profile";
 import { SendButton } from "./send-button";
 import "./detail-refinement.css";
 
@@ -265,11 +265,50 @@ function 월일표기(date: string): string {
  *    React 가 「서버와 화면이 다르다」고 경고(hydration mismatch)를 냅니다.
  *    그래서 첫 그림은 기본값으로 그리고, 붙은 뒤에 바꿉니다.
  */
-function use사업(): string {
+function use사업(재조회?: unknown): string {
   const [값, set값] = useState(기본사업);
   useEffect(() => {
     set값(선택사업());
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [재조회]);
+  return 값;
+}
+
+/**
+ * 지금 참여 중인 «주관기관». 온보딩에서 고른 값입니다.
+ * 🔴 `use사업` 과 같은 이유로 첫 그림은 기본값, 붙은 뒤에 localStorage 를 읽습니다.
+ */
+function use기관(재조회?: unknown): string {
+  const [값, set값] = useState(기본기관명);
+  useEffect(() => {
+    set값(선택기관());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [재조회]);
+  return 값;
+}
+
+/**
+ * 협약 기간·사업비. 홈·사이드바·마이페이지가 «같은 값» 을 보게 하는 통로입니다.
+ *
+ * 🔴 순서: 서버(`/api/profile` f1) → 이 브라우저가 기억한 값 → 시연 기본값.
+ *    목 서버는 저장을 안 받으므로 서버만 믿으면 마이페이지에서 고친 값이 사라집니다.
+ */
+function use협약(재조회?: unknown): 협약정보 {
+  const [값, set값] = useState<협약정보>(시연협약);
+  useEffect(() => {
+    let 살아있음 = true;
+    const 기억 = 기억된협약();
+    if (기억 && 값있음(기억)) set값(기억);
+    협약읽기().then((v) => {
+      if (!살아있음 || !v || !값있음(v)) return;
+      set값(v);
+      협약기억(v);
+    });
+    return () => {
+      살아있음 = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [재조회]);
   return 값;
 }
 
@@ -549,12 +588,16 @@ function BrandWord() {
 }
 
 export default function CheckumaitApp() {
-  const 사업 = use사업();
   const [signedIn, setSignedIn] = useState(false);
   // 🔴 localStorage 를 첫 그림에서 읽으면 서버 HTML 과 어긋납니다 — 붙은 뒤에 읽습니다.
   //    (`signedIn` 아래에 있어야 합니다 — 위에 두면 선언 전 참조로 터집니다)
   // 🔴 로그인 «뒤에» 다시 물어야 합니다 — 첫 마운트 때는 아직 세션이 없습니다.
   const 이메일 = use이메일(signedIn);
+  // 온보딩을 마치고 들어오므로 로그인 상태가 바뀔 때 다시 읽습니다.
+  // 🔴 사업도 마찬가지입니다 — 안 그러면 사이드바만 예전 사업이 남습니다.
+  const 사업 = use사업(signedIn);
+  const 기관 = use기관(signedIn);
+  const 협약 = use협약(signedIn);
   const [데모기관, set데모기관] = useState<string | null>(null);
   useEffect(() => {
     set데모기관(데모중()?.기관명 ?? null);
@@ -746,8 +789,12 @@ export default function CheckumaitApp() {
           <section className="project-mini">
             <span>{데모기관 ? "둘러보기" : "참여 중인 프로젝트"}</span>
             <b>{사업}</b>
-            {/* 🔴 데모 세션은 «누를 때마다 새 기관» 입니다. 경상국립대로 고정 표기되면 안 됩니다. */}
-            <small>{데모기관 ?? "경상국립대학교 창업중심대학사업단 · D-129"}</small>
+            {/* 🔴 데모 세션은 «누를 때마다 새 기관» 입니다. 고정 표기되면 안 됩니다.
+                로그인 사용자는 온보딩에서 고른 기관과 실제 협약 종료일을 씁니다. */}
+            <small>
+              {데모기관 ??
+                `${기관}${디데이표기(협약.종료일) ? ` · ${디데이표기(협약.종료일)}` : ""}`}
+            </small>
           </section>
           <div className="account-row">
             <button
@@ -983,7 +1030,13 @@ function Login({
   /** 🔴 고른 사업으로 걸렀더니 0건이라 필터를 풀었는가. 그러면 화면이 말해야 합니다. */
   const [사업필터해제, set사업필터해제] = useState(false);
   const [institution, setInstitution] = useState("");
-  const [criteriaFile, setCriteriaFile] = useState("");
+  /**
+   * 🔴 판정 엔진에 «이미 적재되어 있는» 기준 파일을 기본값으로 보여줍니다.
+   *    사용자가 다른 파일을 올려도 엔진에 반영할 길이 없어(업로드 → 파싱 → 재적재는
+   *    MVP 범위 밖), 여기서 바꾼 값은 서비스 어디에도 연결하지 않습니다.
+   *    화면은 «지금 실제로 적용 중인 파일» 을 그대로 말합니다.
+   */
+  const [criteriaFile, setCriteriaFile] = useState(적용중_기준파일);
   // 🔴 Supabase 에 실제로 만들어 둔 계정과 «똑같아야» 합니다.
   //    (Supabase → Authentication → Users 에서 보이는 이메일)
   //    비밀번호는 코드에 넣지 않습니다. 시연 때 직접 입력하세요.
@@ -1344,7 +1397,11 @@ function Login({
                 <button
                   className="primary large"
                   disabled={!institution}
-                  onClick={() => setStep("upload")}
+                  onClick={() => {
+                    // 🔴 여기서 고른 기관이 사이드바·홈·마이페이지에 그대로 쓰입니다.
+                    기관저장(institution);
+                    setStep("upload");
+                  }}
                 >
                   다음
                 </button>
@@ -1354,10 +1411,10 @@ function Login({
           {step === "upload" && (
             <>
               <p className="login-kicker">기관 세부기준 등록</p>
-              <h1>주관기관의 세부기준을 등록해주세요.</h1>
+              <h1>주관기관의 세부기준을 확인해주세요.</h1>
               <p>
-                기관에서 받은 사업비 집행기준이나 운영지침이 있다면
-                업로드해주세요.
+                선택한 주관기관의 사업비 집행기준이 이미 등록되어 있습니다. 다른
+                문서를 쓰려면 아래에서 파일을 바꿀 수 있습니다.
               </p>
               <dl className="onboarding-standards">
                 <div>
@@ -1396,17 +1453,21 @@ function Login({
                 <span>
                   <b>{criteriaFile || "기관 세부기준 파일 선택"}</b>
                   <small>
-                    {criteriaFile
-                      ? "업로드할 파일을 선택했습니다."
-                      : "선택사항 · PDF, HWP, HWPX · 최대 30MB"}
+                    {criteriaFile === 적용중_기준파일
+                      ? "현재 판정에 적용 중인 기준 문서입니다."
+                      : criteriaFile
+                        ? "업로드할 파일을 선택했습니다."
+                        : "선택사항 · PDF, HWP, HWPX · 최대 30MB"}
                   </small>
                 </span>
                 <em>{criteriaFile ? "파일 변경" : "파일 찾기"}</em>
               </label>
+              {/* 🔴 바꾼 파일이 판정에 쓰인다고 오해하지 않게 «지금 적용 중인 것» 을 밝힙니다.
+                  올린 문서를 엔진에 넣으려면 파싱·재적재가 필요한데 MVP 범위 밖입니다. */}
               <p className="onboarding-notice">
-                {criteriaFile
-                  ? "등록한 문서는 기관별 금액 기준, 사전승인·심의 조건, 필요 증빙 판단에 사용됩니다."
-                  : "파일 없이 계속하면 사업 공통 규정을 우선 적용하며, 기관별 기준은 이후 추가할 수 있습니다."}
+                {criteriaFile === 적용중_기준파일
+                  ? "등록된 문서는 기관별 금액 기준, 사전승인·심의 조건, 필요 증빙 판단에 사용됩니다."
+                  : "새로 올린 문서는 기관 검토 후 판정 기준에 반영됩니다. 그때까지는 현재 등록된 기준 문서가 계속 적용됩니다."}
               </p>
               <div className="onboarding-actions">
                 <button
@@ -1439,8 +1500,9 @@ function Login({
                 <Icon name="check" size={20} />
                 <span>
                   <b>{program}</b>
+                  {/* 🔴 사용자가 파일을 바꿔도 판정에 적용되는 것은 기존 문서입니다. */}
                   <small>
-                    {institution} · {criteriaFile || "기관 세부기준 미등록"}
+                    {institution} · {적용중_기준파일}
                   </small>
                 </span>
               </div>
@@ -1487,6 +1549,11 @@ function HomePage({
   go: (route: AppRoute) => void;
 }) {
   const 사업 = use사업();
+  // 🔴 홈에 박혀 있던 기관명·사업기간·D-day 를 실제 값으로 바꿉니다.
+  //    마이페이지와 다른 값이 보이던 자리입니다.
+  const 기관 = use기관();
+  const 협약 = use협약();
+  const 남음 = 디데이표기(협약.종료일);
   const counts = {
     all: plans.length,
     safe: plans.filter((p) => p.status === "특이사항 없음").length,
@@ -1524,19 +1591,21 @@ function HomePage({
         <section className="home-v3-project">
           <div className="home-v3-project-top">
             <span>진행 중인 사업</span>
-            <div>
-              <small>사업 종료까지</small>
-              <b>D-129</b>
-            </div>
+            {남음 && (
+              <div>
+                <small>{남음 === "종료" ? "협약 상태" : "사업 종료까지"}</small>
+                <b>{남음}</b>
+              </div>
+            )}
           </div>
           <h2>{사업}</h2>
-          <p>경상국립대학교 창업중심대학사업단 · 사업비 집행</p>
+          <p>{기관} · 사업비 집행</p>
           <dl>
             <div>
               <Icon name="calendar" size={16} />
               <span>
                 <dt>사업기간</dt>
-                <dd>2026.03.01 ~ 2026.12.31</dd>
+                <dd>{기간표기(협약.시작일, 협약.종료일)}</dd>
               </span>
             </div>
             <div>
@@ -5419,85 +5488,57 @@ function RecommendModal({
 }
 
 function MyPage({ notify }: { notify: (message: string) => void }) {
-  const 예비사업목록 = [
-    "2026 예비창업패키지",
-    "2026 초기창업패키지",
-    "2026 창업도약패키지",
-    "2026 창업중심대학",
-    "2026 재도전성공패키지",
-    "2026 모두의 창업 일반・기술",
-    "2026 초격차 스타트업 1000+",
-    "2026 민관공동 창업자 발굴·육성",
-  ];
-  const [서버사업, set서버사업] = useState<string[] | null>(null);
-  const programs = 서버사업 ?? 예비사업목록;
-  // 🔴 2026-09-04 저녁 — 검색을 붙였습니다. 그전에는 1건이 박혀 있어서 「검색도 수정도
-  //    안 된다」는 QA 지적이 나왔습니다. 이제 `GET /api/orgs` 에 물어봅니다(420건, 부분일치).
-  //    서버가 안 되면 예비 1건으로 조용히 내려갑니다 — 온보딩과 같은 규칙입니다.
-  const [기관목록, set기관목록] = useState<기관[]>([예비기관]);
-  const [기관찾는중, set기관찾는중] = useState(false);
   const [editingProfile, setEditingProfile] = useState(false);
-  const [hostSearchOpen, setHostSearchOpen] = useState(false);
   // 🔴 이메일은 «로그인한 사람» 의 것이어야 합니다 — 예전엔 여기 한 줄이 박혀 있어서
   //    어느 계정으로 들어와도 team@startup.kr 이 보였습니다.
   const 로그인이메일 = use이메일();
   const [profile, setProfile] = useState({
     team: "체쿠메이트",
     program: 선택사업(),
-    host: "경상국립대학교 창업중심대학사업단",
+    // 🔴 온보딩에서 고른 기관입니다. 예전엔 여기 한 줄이 박혀 있어서 다른 기관을
+    //    골라도 마이페이지는 늘 경상국립대로 보였습니다.
+    host: 기본기관명,
     duplicateBenefit: "X",
   });
   const [profileDraft, setProfileDraft] = useState(profile);
-  const [institutionFile, setInstitutionFile] = useState(
-    "2026 경상국립대학교 창업중심대학사업 사업비 집행 안내.pdf",
-  );
+  /** 🔴 판정에 «지금 적용 중인» 문서. 사용자가 올린 새 파일은 따로 표시합니다. */
+  const [대기중파일, set대기중파일] = useState<File | null>(null);
+  const [교체확인, set교체확인] = useState<File | null>(null);
 
   /**
-   * 협약기간·사업비. 서버(`/api/profile` 의 f1)가 «값을 갖고 있을 때만» 덮어씁니다.
-   * 목 서버는 전부 0/null 로 오기 때문에, 그대로 받으면 화면이 「—」와 「0원」이 됩니다.
-   * 그래서 아래 시연 기본값을 두고, 실서버가 붙으면 자동으로 바뀝니다.
+   * 협약기간·사업비. 서버(`/api/profile` 의 f1) → 이 브라우저가 기억한 값 →
+   * 시연 기본값 순서로 채웁니다. 홈·사이드바가 쓰는 `use협약()` 과 같은 규칙이라
+   * 세 화면이 어긋나지 않습니다.
    */
-  const [협약, set협약] = useState<협약정보>({
-    시작일: "2026-03-01",
-    종료일: "2026-12-31",
-    정부지원: 50000000,
-    자기부담: 0,
-  });
+  const [협약, set협약] = useState<협약정보>(시연협약);
   const [협약초안, set협약초안] = useState(협약);
   const [협약저장중, set협약저장중] = useState(false);
 
-  // 🔴 기관 검색 — 편집창이 열려 있을 때만, 250ms 늦춰서 서버를 칩니다.
-  useEffect(() => {
-    if (!editingProfile) return;
-    let 살아있음 = true;
-    set기관찾는중(true);
-    const 타이머 = window.setTimeout(() => {
-      // 🔴 온보딩과 같은 규칙 — 지금 참여 중인 사업을 운영하는 기관만 봅니다.
-      기관검색(profileDraft.host, { 사업명: profileDraft.program, 크기: 20 }).then((r) => {
-        if (!살아있음) return;
-        set기관목록(r.항목);
-        set기관찾는중(false);
-      });
-    }, 250);
-    return () => {
-      살아있음 = false;
-      window.clearTimeout(타이머);
-    };
-  }, [editingProfile, profileDraft.host, profileDraft.program]);
-
   useEffect(() => {
     let 살아있음 = true;
+    // 🔴 표기를 서버 문자열에 맞춥니다(「2026 초기창업패키지」→「초기창업패키지」).
+    //    선택은 온보딩에서 끝났으므로 여기서는 보여주기만 합니다.
     사업선택지().then((목록) => {
       if (!살아있음 || !목록) return;
-      set서버사업(목록);
       const 맞춘값 = 목록에맞추기(목록, 선택사업());
       setProfile((v) => ({ ...v, program: 맞춘값 }));
       setProfileDraft((v) => ({ ...v, program: 맞춘값 }));
     });
+    // 온보딩에서 고른 기관을 반영합니다.
+    const 기관 = 선택기관();
+    setProfile((v) => ({ ...v, host: 기관 }));
+    setProfileDraft((v) => ({ ...v, host: 기관 }));
+    // 기억해 둔 협약이 있으면 먼저 채우고, 서버가 값을 주면 그것으로 덮습니다.
+    const 기억 = 기억된협약();
+    if (기억 && 값있음(기억)) {
+      set협약(기억);
+      set협약초안(기억);
+    }
     협약읽기().then((값) => {
       if (!살아있음 || !값 || !값있음(값)) return; // 목 서버의 빈 값은 무시합니다
       set협약(값);
       set협약초안(값);
+      협약기억(값);
     });
     return () => {
       살아있음 = false;
@@ -5527,7 +5568,6 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
               onClick={() => {
                 setProfileDraft(profile);
                 set협약초안(협약);
-                setHostSearchOpen(false);
                 setEditingProfile(true);
               }}
             >
@@ -5599,16 +5639,21 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
               적용합니다.
             </p>
           </div>
+          {/* 🔴 고르자마자 바꾸지 않습니다 — 이 문서는 판정 기준이라 한 번 묻습니다.
+              서버가 .doc·.docx 를 415 로 거부하므로 고를 수 있게 두지 않습니다. */}
           <label className="outline small institution-file-replace">
             <input
               type="file"
-              accept=".pdf,.hwp,.hwpx,.doc,.docx"
+              accept=".pdf,.hwp,.hwpx"
               onChange={(event) => {
                 const file = event.target.files?.[0];
-                if (!file) return;
-                setInstitutionFile(file.name);
-                notify("주관기관 기준 파일을 교체했습니다.");
                 event.target.value = "";
+                if (!file) return;
+                if (file.size > 30 * 1024 * 1024) {
+                  notify("기준 문서는 30MB 이하만 등록할 수 있습니다.");
+                  return;
+                }
+                set교체확인(file);
               }}
             />
             <Icon name="upload" size={14} />
@@ -5616,12 +5661,21 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
           </label>
         </header>
         <article>
-          <span className="institution-badge">사용자 등록</span>
+          <span className="institution-badge">적용 중</span>
           <div>
-            <b>{institutionFile}</b>
-            <small>2026.03.02 등록</small>
+            <b>{적용중_기준파일}</b>
+            <small>판정에 반영되어 있는 기준 문서입니다.</small>
           </div>
         </article>
+        {대기중파일 && (
+          <article>
+            <span className="institution-badge pending">검토 대기</span>
+            <div>
+              <b>{대기중파일.name}</b>
+              <small>기관 검토 후 판정 기준에 반영됩니다. 그때까지는 위 문서가 적용됩니다.</small>
+            </div>
+          </article>
+        )}
       </section>
       <div className="rule-caution">
         <Icon name="alert" />
@@ -5631,13 +5685,58 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
           최신 안내를 확인해야 합니다.
         </p>
       </div>
+      {교체확인 && (
+        <div className="modal-backdrop">
+          <section className="modal narrow file-replace-modal" role="dialog" aria-modal="true" aria-labelledby="file-replace-title">
+            <header>
+              <div>
+                <h2 id="file-replace-title">주관기관 기준 문서를 교체하시겠습니까?</h2>
+                <p>이 문서는 금액 기준·사전승인 조건·필요 증빙 판단에 쓰이는 판정 기준입니다.</p>
+              </div>
+              <button onClick={() => set교체확인(null)}>×</button>
+            </header>
+            <dl className="file-replace-list">
+              <div>
+                <dt>새 문서</dt>
+                <dd>{교체확인.name}</dd>
+              </div>
+              <div>
+                <dt>크기</dt>
+                <dd>{크기표기(교체확인.size)}</dd>
+              </div>
+              <div>
+                <dt>현재 적용 중</dt>
+                <dd>{적용중_기준파일}</dd>
+              </div>
+            </dl>
+            <p className="file-replace-notice">
+              <span>ⓘ</span>
+              올린 문서는 기관 검토를 거쳐 판정 기준에 반영됩니다. 그때까지는 현재
+              적용 중인 문서로 계속 점검합니다.
+            </p>
+            <footer>
+              <button className="outline" onClick={() => set교체확인(null)}>취소</button>
+              <button
+                className="primary"
+                onClick={() => {
+                  set대기중파일(교체확인);
+                  set교체확인(null);
+                  notify("새 기준 문서를 등록했습니다. 검토 후 판정에 반영됩니다.");
+                }}
+              >
+                교체하기
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
       {editingProfile && (
         <div className="modal-backdrop">
           <section className="modal my-profile-edit-modal" role="dialog" aria-modal="true" aria-labelledby="profile-edit-title">
             <header>
               <div>
                 <h2 id="profile-edit-title">내 정보 수정</h2>
-                <p>로그인 이메일은 확인만 가능하며, 팀 이름과 참여 사업 정보를 수정할 수 있습니다.</p>
+                <p>이메일·참여 사업·주관기관은 확인만 가능합니다. 팀 이름과 협약 정보를 수정할 수 있습니다.</p>
               </div>
               <button onClick={() => setEditingProfile(false)}>×</button>
             </header>
@@ -5650,52 +5749,16 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
                 <span>팀 이름</span>
                 <input value={profileDraft.team} onChange={(event) => setProfileDraft((value) => ({ ...value, team: event.target.value }))} />
               </label>
-              <label className="my-host-search">
-                <span>주관기관</span>
-                <div>
-                  <Icon name="search" size={16} />
-                  <input
-                    value={profileDraft.host}
-                    onFocus={() => setHostSearchOpen(true)}
-                    onChange={(event) => {
-                      setProfileDraft((value) => ({ ...value, host: event.target.value }));
-                      setHostSearchOpen(true);
-                    }}
-                    placeholder="학교·기관 이름을 검색하세요"
-                    role="combobox"
-                    aria-expanded={hostSearchOpen}
-                    aria-controls="my-host-results"
-                  />
-                </div>
-                {hostSearchOpen && (
-                  <div className="my-host-results" id="my-host-results" role="listbox">
-                    {기관목록.map((기관) => (
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={profileDraft.host === 기관.기관명}
-                        key={기관.slug || 기관.기관명}
-                        onClick={() => {
-                          setProfileDraft((value) => ({ ...value, host: 기관.기관명 }));
-                          setHostSearchOpen(false);
-                        }}
-                      >
-                        <span>{기관.기관명}</span>
-                        {profileDraft.host === 기관.기관명 && <Icon name="check" size={15} />}
-                      </button>
-                    ))}
-                    {기관찾는중 && 기관목록.length === 0 && <p>찾는 중…</p>}
-                    {!기관찾는중 && 기관목록.length === 0 && (
-                      <p>일치하는 주관기관이 없습니다.</p>
-                    )}
-                  </div>
-                )}
+              {/* 🔴 참여 사업과 주관기관은 온보딩에서 정하고, 정해진 순간부터
+                  비목 조회·규정 검색·판정이 그 값을 씁니다. 여기서 바꾸면 이미
+                  내려둔 판정과 근거가 어긋나므로 확인만 하도록 잠급니다. */}
+              <label>
+                <span>참여 사업 <small className="profile-fixed-label">수정 불가</small></span>
+                <input value={profileDraft.program} readOnly aria-readonly="true" />
               </label>
               <label>
-                <span>참여 사업</span>
-                <select value={profileDraft.program} onChange={(event) => setProfileDraft((value) => ({ ...value, program: event.target.value }))}>
-                  {programs.map((program) => <option key={program} value={program}>{program}</option>)}
-                </select>
+                <span>주관기관 <small className="profile-fixed-label">수정 불가</small></span>
+                <input value={profileDraft.host} readOnly aria-readonly="true" />
               </label>
               <label>
                 <span>사업 중복 수혜 여부</span>
