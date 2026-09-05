@@ -5615,10 +5615,15 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
             <p>CHECKUMAIT이 지출 사전점검에 우선 적용하는 기준입니다.</p>
           </div>
         </header>
+        {/* 🔴 사업별 세부관리기준은 «고른 사업» 을 키로 조회합니다. 예전에는 여기
+            제목이 「창업중심대학사업」으로 박혀 있어서, 다른 사업을 골라도 화면은
+            창업중심대학 기준을 보고 있는 것처럼 읽혔습니다.
+            🔴 문서의 «정식 제목» 은 서버가 알려주지 않으므로 지어내지 않습니다.
+            사업명 + 일반 명칭(세부관리기준)까지만 씁니다. */}
         <article>
           <span className="auto-badge">자동 반영</span>
           <div>
-            <b>2026년 창업중심대학사업 운영관리기준·사업비 집행 범위</b>
+            <b>{profile.program} 세부관리기준 · 사업비 집행 범위</b>
             <small>중소벤처기업부·창업진흥원 · 현재 사업 기준</small>
           </div>
         </article>
