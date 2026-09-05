@@ -18,7 +18,7 @@ import { 적용규범 } from "../lib/norms";
 import { 기관검색, 사업요약, 예비기관, 기관저장, 선택기관, 기본기관명, 적용중_기준파일, type 기관 } from "../lib/orgs";
 import { 첨부보관, 첨부읽기, 첨부쓰기, 파일을첨부로, 크기표기, type 첨부 } from "../lib/attachments";
 import { 지금출처, 출처구독, 출처문구 } from "../lib/data-source";
-import { 인증켜짐, 로그인 as supabase로그인, 가입 as supabase가입, 로그아웃 as supabase로그아웃, 이메일 as supabase이메일 } from "../lib/supabase";
+import { 인증켜짐, 로그인 as supabase로그인, 가입 as supabase가입, 로그아웃 as supabase로그아웃, 이메일 as supabase이메일, 팀이름 as supabase팀이름, 팀이름쓰기 as supabase팀이름쓰기 } from "../lib/supabase";
 import { 상세를계획으로, 판정제목, 행동문구, 시각표기 } from "../lib/adapt";
 // 🔴 `데모종료` 는 남깁니다 — 「계정 없이 둘러보기」를 없앴어도 예전에 받아 둔
 //    데모 토큰이 브라우저에 2시간 남아 있을 수 있고, 그게 로그인 조회를 가로챕니다.
@@ -316,11 +316,34 @@ function use협약(재조회?: unknown): 협약정보 {
   return 값;
 }
 
-/** 회원가입에서 받은 팀 이름. 없으면 예전 표기를 그대로 씁니다. */
+/**
+ * 회원가입에서 받은 팀 이름.
+ *
+ * 🔴 **Supabase 사용자 메타데이터가 정본입니다** (2026-09-05).
+ *    전에는 이 탭의 sessionStorage 만 봤는데, 로그아웃하면 그 값을 지우므로
+ *    다시 로그인하면 이름이 「체쿠메이트」로 되돌아갔습니다. 계정에 붙여 두면
+ *    다른 기기·다른 브라우저에서 들어와도 따라옵니다.
+ *
+ * 🔴 로컬 기억을 «먼저» 그립니다. 서버 조회는 한 박자 늦어서, 안 그러면 로그인
+ *    직후 한 프레임 동안 「체쿠메이트」가 번쩍입니다.
+ */
 function use팀이름(재조회?: unknown): string {
   const [값, set값] = useState("체쿠메이트");
   useEffect(() => {
+    let 살아있음 = true;
     set값(기억된팀이름() || "체쿠메이트");
+    supabase팀이름()
+      .then((서버) => {
+        if (!살아있음 || !서버) return;
+        set값(서버);
+        팀이름기억(서버);   // 다음 진입에서 깜빡임 없이 바로 그리도록
+      })
+      .catch(() => {
+        /* 메타데이터가 없는 옛 계정 — 로컬 기억이나 기본 표기로 둡니다 */
+      });
+    return () => {
+      살아있음 = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [재조회]);
   return 값;
@@ -1218,7 +1241,11 @@ function Login({
       set가입오류(null);
       set가입중(true);
       try {
-        const 결과 = await supabase가입(가입.이메일.trim(), 가입.비밀번호);
+        const 결과 = await supabase가입(
+          가입.이메일.trim(),
+          가입.비밀번호,
+          가입.팀이름.trim(),
+        );
         if (결과 === "메일확인필요") {
           // 계정은 생겼지만 세션이 없습니다 — 다음 화면으로 보내면 전부 게스트로 돕니다.
           set가입오류(
@@ -5852,8 +5879,10 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
   // 🔴 이메일은 «로그인한 사람» 의 것이어야 합니다 — 예전엔 여기 한 줄이 박혀 있어서
   //    어느 계정으로 들어와도 team@startup.kr 이 보였습니다.
   const 로그인이메일 = use이메일();
+  // 🔴 팀 이름도 같은 규칙입니다 — Supabase 계정에 붙은 값이 정본입니다.
+  const 계정팀이름 = use팀이름();
   const [profile, setProfile] = useState({
-    team: "체쿠메이트",   // 🔴 가입에서 받은 값으로 아래 effect 가 덮습니다
+    team: "체쿠메이트",   // 🔴 `use팀이름()` 이 Supabase 값으로 덮습니다
     program: 선택사업(),
     // 🔴 온보딩에서 고른 기관입니다. 예전엔 여기 한 줄이 박혀 있어서 다른 기관을
     //    골라도 마이페이지는 늘 경상국립대로 보였습니다.
@@ -5875,6 +5904,12 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
   const [협약저장중, set협약저장중] = useState(false);
 
   useEffect(() => {
+    if (!계정팀이름 || editingProfile) return;
+    setProfile((v) => (v.team === 계정팀이름 ? v : { ...v, team: 계정팀이름 }));
+    setProfileDraft((v) => (v.team === 계정팀이름 ? v : { ...v, team: 계정팀이름 }));
+  }, [계정팀이름, editingProfile]);
+
+  useEffect(() => {
     let 살아있음 = true;
     // 🔴 표기를 서버 문자열에 맞춥니다(「2026 초기창업패키지」→「초기창업패키지」).
     //    선택은 온보딩에서 끝났으므로 여기서는 보여주기만 합니다.
@@ -5884,12 +5919,8 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
       setProfile((v) => ({ ...v, program: 맞춘값 }));
       setProfileDraft((v) => ({ ...v, program: 맞춘값 }));
     });
-    // 회원가입에서 받은 팀 이름을 반영합니다.
-    const 팀 = 기억된팀이름();
-    if (팀) {
-      setProfile((v) => ({ ...v, team: 팀 }));
-      setProfileDraft((v) => ({ ...v, team: 팀 }));
-    }
+    // 🔴 팀 이름은 아래 `use팀이름()` 이 Supabase 에서 받아 채웁니다 — 여기서
+    //    sessionStorage 를 또 읽으면 로그아웃 뒤 빈 값이 서버 값을 덮습니다.
     // 온보딩에서 고른 기관을 반영합니다.
     const 기관 = 선택기관();
     setProfile((v) => ({ ...v, host: 기관 }));
@@ -6146,6 +6177,10 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
               <button className="primary" disabled={!profileDraft.host.trim() || 협약저장중} onClick={() => {
                 // 화면은 먼저 바꿉니다 — 서버가 못 받아도 시연이 끊기면 안 됩니다.
                 setProfile(profileDraft);
+                // 🔴 팀 이름은 Supabase 계정에 붙여야 다음 로그인에도 남습니다.
+                //    실패해도 «막지 않습니다» — 화면 표기일 뿐입니다.
+                팀이름기억(profileDraft.team.trim());
+                supabase팀이름쓰기(profileDraft.team).catch(() => {});
                 set협약(협약초안);
                 사업저장(profileDraft.program);
                 set협약저장중(true);

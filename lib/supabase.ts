@@ -113,12 +113,23 @@ export type 가입결과 =
   | "메일확인필요"       // 계정은 생겼는데 확인 메일을 눌러야 세션이 납니다
   | "인증미설정";        // Supabase 설정 전 — 화면만 통과시킵니다
 
-export async function 가입(email: string, password: string): Promise<가입결과> {
+export async function 가입(
+  email: string,
+  password: string,
+  팀이름?: string,
+): Promise<가입결과> {
   if (!인증켜짐) return "인증미설정";
 
   const { data, error } = await supabase().auth.signUp({
     email: email.trim(),
     password,
+    // 🔴 팀 이름을 «Supabase 에» 붙입니다 (`auth.users.raw_user_meta_data`).
+    //    전에는 이 탭의 sessionStorage 에만 적어서, 로그아웃하거나 탭을 닫으면
+    //    사라지고 화면이 다시 「체쿠메이트」로 돌아갔습니다. 우리 DB 에는 팀 이름을
+    //    담을 칸이 없고(`tenant.accounts` 는 email·org_id 뿐), 계정 등록 API 도
+    //    아직 없습니다 — 그러니 «계정을 가진 쪽» 이 들고 있는 게 맞습니다.
+    //    로그인하면 세션에 실려 오므로 다른 기기·다른 브라우저에서도 따라옵니다.
+    options: 팀이름?.trim() ? { data: { 팀이름: 팀이름.trim() } } : undefined,
   });
 
   if (error) {
@@ -141,4 +152,41 @@ export async function 가입(email: string, password: string): Promise<가입결
   //    session 이 null 입니다. 이걸 성공으로 뭉개면 사용자는 가입이 끝난 줄 알고
   //    다음 화면으로 갔다가 «전부 게스트로» 돌게 됩니다.
   return data.session ? "가입됨" : "메일확인필요";
+}
+
+/* ── 팀 이름 (사용자 메타데이터) ──────────────────────────────────────────
+ *
+ * 🔴 `auth.users.raw_user_meta_data` 에 삽니다. 우리 백엔드 DB 가 아닙니다 —
+ *    `tenant.accounts` 에는 email·org_id 밖에 없고 계정 등록 API 도 아직 없어서,
+ *    담을 곳이 여기뿐입니다. 로그인하면 세션에 같이 실려 옵니다.
+ *
+ * ⚠️ 사용자 메타데이터는 «본인이 고칠 수 있는» 값입니다. 화면에 이름을 보여주는
+ *    용도로만 씁니다 — 권한이나 소속 판단에 쓰면 안 됩니다. 소속 기관은 서버가
+ *    토큰의 email 로 정합니다(`server/auth.py`).
+ */
+export async function 팀이름(): Promise<string | null> {
+  if (!인증켜짐) return null;
+  const { data } = await supabase().auth.getSession();
+  const v = data.session?.user?.user_metadata?.["팀이름"];
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
+/**
+ * 팀 이름을 바꿉니다 (마이페이지 「내 정보 수정」).
+ *
+ * 🔴 가입 때 메타데이터가 안 붙은 «옛 계정» 을 되살리는 통로이기도 합니다.
+ *    한 번 저장하면 그 다음 로그인부터 이름이 따라옵니다.
+ * 🔴 실패해도 «던지지 않습니다». 팀 이름은 화면 표기일 뿐이라, 이것 때문에
+ *    협약 저장 같은 진짜 작업이 실패로 보이면 안 됩니다.
+ */
+export async function 팀이름쓰기(이름: string): Promise<boolean> {
+  if (!인증켜짐) return false;
+  const 값 = (이름 ?? "").trim();
+  if (!값) return false;
+  try {
+    const { error } = await supabase().auth.updateUser({ data: { 팀이름: 값 } });
+    return !error;
+  } catch {
+    return false;
+  }
 }
