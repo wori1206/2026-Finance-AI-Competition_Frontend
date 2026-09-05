@@ -4,6 +4,8 @@ import { INITIAL_PLANS, INITIAL_SCHEDULES } from "./mock-data";
 import type { ExpensePlan, ScheduleItem } from "./types";
 import { API켜짐 } from "./config";
 import { 계획목록, 계획상세, 할일목록 } from "./api";
+import { 인증오류 } from "./http";
+import { 출처기록하기 } from "./data-source";
 import { 요약을계획으로, 상세를계획으로, 할일을일정으로 } from "./adapt";
 
 const PLAN_KEY = "checkumait-clean-plans";
@@ -72,11 +74,25 @@ const 상세동시 = 20;
  */
 async function 서버계획목록(): Promise<ExpensePlan[]> {
   try {
-    return await 서버계획목록_실제();
+    const 것 = await 서버계획목록_실제();
+    출처기록하기("서버");
+    return 것;
   } catch (e) {
+    // 🔴 «왜» 실패했는지를 기록합니다. 예전에는 콘솔 warn 한 줄뿐이라, 화면에는
+    //    예시 데이터가 조용히 떴고 사용자는 그게 DB 값인 줄 알았습니다.
+    //    401·403 은 「서버가 죽었다」가 아니라 «신원 문제» 입니다 — 처방이 다릅니다.
+    출처기록하기(...실패사유(e));
     console.warn("[CHECKUMAIT] 백엔드에 연결하지 못해 예시 데이터로 표시합니다.", e);
     return normalizePlans(read(PLAN_KEY, INITIAL_PLANS));
   }
+}
+
+/** 예외 → 화면이 말할 수 있는 사유. */
+function 실패사유(e: unknown): ["예시_미등록계정" | "예시_로그인만료" | "예시_연결실패", string | undefined] {
+  if (e instanceof 인증오류) {
+    return [e.상태 === 403 ? "예시_미등록계정" : "예시_로그인만료", e.message];
+  }
+  return ["예시_연결실패", e instanceof Error ? e.message : undefined];
 }
 
 async function 서버계획목록_실제(): Promise<ExpensePlan[]> {
@@ -118,10 +134,11 @@ async function 서버일정목록(): Promise<ScheduleItem[]> {
 // ════════════════════════════════════════════════════════════════
 
 export const planService = {
-  listPlans: (): Promise<ExpensePlan[]> =>
-    API켜짐()
-      ? 서버계획목록()
-      : Promise.resolve(normalizePlans(read(PLAN_KEY, INITIAL_PLANS))),
+  listPlans: (): Promise<ExpensePlan[]> => {
+    if (API켜짐()) return 서버계획목록();
+    출처기록하기("예시_주소없음");
+    return Promise.resolve(normalizePlans(read(PLAN_KEY, INITIAL_PLANS)));
+  },
 
   /**
    * 🔴 서버 모드에서는 저장하지 않습니다.

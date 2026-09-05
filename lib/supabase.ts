@@ -89,3 +89,56 @@ export async function 로그아웃(): Promise<void> {
   if (!인증켜짐) return;
   await supabase().auth.signOut();
 }
+
+/* ── 회원가입 ────────────────────────────────────────────────────────────
+ *
+ * 🔴 **가입은 «두 단계» 입니다. 이 함수는 그중 첫 단계뿐입니다.**
+ *
+ *      ① Supabase 에 계정을 만든다        ← 이 함수. 비밀번호는 Supabase 가 든다
+ *      ② 우리 서버에 (이메일 → 소속기관) 을 등록한다   ← **아직 API 가 없다**
+ *
+ *    ②가 없으면 로그인은 되는데 `tenant.accounts` 에 행이 없어서 «모든 API 가 403»
+ *    입니다(`server/auth.py::_supabase해석` → 「등록되지 않은 계정이다」).
+ *    그래서 ①만 성공한 사람은 로그인은 되지만 자기 지출계획이 안 보입니다.
+ *    → 화면이 그걸 «말해야» 합니다. `lib/data-source.ts` 의 배너가 그 자리입니다.
+ *
+ * 🔴 ②의 경로·바디가 아직 «정해지지 않았습니다». 계약 없이 호출부를 만들면
+ *    붙이는 날 전부 고칩니다. 그래서 여기서는 «만들지 않습니다» — 대신 온보딩이
+ *    기관 slug 를 기억해 두어(`lib/orgs.ts::기관저장`), 계약이 정해지면 그 값을
+ *    그대로 실으면 되게 해 둡니다.
+ */
+
+export type 가입결과 =
+  | "가입됨"            // 계정 생성 + 세션까지 받음 (이메일 확인 꺼짐)
+  | "메일확인필요"       // 계정은 생겼는데 확인 메일을 눌러야 세션이 납니다
+  | "인증미설정";        // Supabase 설정 전 — 화면만 통과시킵니다
+
+export async function 가입(email: string, password: string): Promise<가입결과> {
+  if (!인증켜짐) return "인증미설정";
+
+  const { data, error } = await supabase().auth.signUp({
+    email: email.trim(),
+    password,
+  });
+
+  if (error) {
+    // 🔴 서버 원문을 그대로 보여주지 않습니다 — 영어이고, 어떤 문구는
+    //    「그 이메일이 이미 있다」를 알려 주어 계정 존재 여부가 새어 나갑니다.
+    const 원문 = (error.message || "").toLowerCase();
+    if (원문.includes("already") || 원문.includes("registered")) {
+      throw new Error("이미 가입된 이메일입니다. 로그인해 주세요.");
+    }
+    if (원문.includes("password")) {
+      throw new Error("비밀번호가 조건에 맞지 않습니다. 8자 이상으로 정해 주세요.");
+    }
+    if (원문.includes("invalid") && 원문.includes("email")) {
+      throw new Error("이메일 형식이 올바르지 않습니다.");
+    }
+    throw new Error("가입하지 못했습니다. 잠시 뒤 다시 시도해 주세요.");
+  }
+
+  // 🔴 Supabase 프로젝트에서 「Confirm email」이 켜져 있으면 계정은 생기지만
+  //    session 이 null 입니다. 이걸 성공으로 뭉개면 사용자는 가입이 끝난 줄 알고
+  //    다음 화면으로 갔다가 «전부 게스트로» 돌게 됩니다.
+  return data.session ? "가입됨" : "메일확인필요";
+}

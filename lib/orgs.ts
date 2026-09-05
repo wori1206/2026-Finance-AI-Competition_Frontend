@@ -48,14 +48,42 @@ export const 예비기관: 기관 = {
  */
 const 기관KEY = "checkumait-주관기관";
 
-export function 기관저장(이름: string): void {
+/**
+ * 🔴 **slug 도 같이 기억합니다** (2026-09-05).
+ *
+ *    가입한 사람을 서버 명부(`tenant.accounts`)에 올리려면 «어느 기관인가» 를
+ *    말해야 하는데, 그 손잡이가 slug 입니다 — org_id 는 프론트가 알 수도 없고
+ *    알아서도 안 됩니다(`lib/http.ts` 주석 참조). 기관명은 동명이 있어서
+ *    (「경상국립대학교」·「경상국립대학교 창업지원단」·「…창업중심대학사업단」)
+ *    이름으로 되찾으면 «다른 기관에 붙습니다».
+ *
+ * ⚠️ 등록 API 는 아직 «없습니다». 계약(경로·바디)이 정해지지 않아 호출부는
+ *    만들지 않았습니다. 이 값은 그날 그대로 실으면 되는 재료입니다.
+ */
+const 기관SLUG_KEY = "checkumait-주관기관-slug";
+
+export function 기관저장(이름: string, slug?: string): void {
   if (typeof window === "undefined") return;
   const 값 = (이름 ?? "").trim();
   if (!값) return;
   try {
     localStorage.setItem(기관KEY, 값);
+    // 🔴 slug 를 «안 받았을 때 지우지 않습니다». 기존 호출부가 이름만 넘기는데
+    //    거기서 지우면 어제 고른 기관의 slug 가 사라집니다.
+    const s = (slug ?? "").trim();
+    if (s) localStorage.setItem(기관SLUG_KEY, s);
   } catch {
     /* 저장이 막혀도 이번 세션은 그냥 돕니다 */
+  }
+}
+
+/** 지금 고른 기관의 slug. 없으면 "" — 등록 API 가 붙는 날 이 값을 싣습니다. */
+export function 선택기관slug(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return localStorage.getItem(기관SLUG_KEY)?.trim() || "";
+  } catch {
+    return "";
   }
 }
 

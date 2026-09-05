@@ -1129,3 +1129,25 @@ pre.ai-inquiry-text{
 .edit-file-add:hover{border-color:var(--brand);color:var(--brand)}
 .edit-file-add input{display:none}
 .edit-file-error{margin:9px 0 0;color:#b4534d;font-size:11px;font-weight:400}
+
+/* ── 「예시 데이터를 보고 있습니다」 배너 ──────────────────────────────
+   🔴 서버 호출이 실패해 예시로 되돌아간 상태를 «화면이 말하게» 합니다.
+      정상일 때는 아예 안 그려지므로, 이 규칙이 보이면 그건 실제로 폴백 중입니다.
+   🔴 토스트가 아니라 «자리를 차지하는» 배너입니다. 잠깐 떴다 사라지면
+      나중에 화면을 보는 사람은 예시인 줄 모릅니다. */
+.data-source-banner{
+  display:flex;align-items:flex-start;gap:10px;
+  margin:0 26px 0;padding:12px 14px;
+  border:1px solid #cfe0f0;border-radius:6px;background:#f2f8fd;color:#2c4f6b;
+}
+.data-source-banner.warn{border-color:#f0d9b8;background:#fdf7ef;color:#7a5624}
+.data-source-banner>svg{flex:none;margin-top:1px}
+.data-source-banner>span{flex:1;min-width:0;display:grid;gap:3px}
+.data-source-banner b{font-size:12px;font-weight:700}
+.data-source-banner small{font-size:11px;font-weight:400;line-height:1.5;opacity:.9}
+.data-source-banner>button{
+  flex:none;width:22px;height:22px;padding:0;border:0;border-radius:4px;
+  background:transparent;color:inherit;opacity:.6;font-size:14px;line-height:1;cursor:pointer;
+}
+.data-source-banner>button:hover{opacity:1;background:rgba(0,0,0,.05)}
+@media(max-width:800px){.data-source-banner{margin:0 16px}}

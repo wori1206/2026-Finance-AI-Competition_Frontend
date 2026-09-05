@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { INITIAL_PLANS } from "../lib/mock-data";
 import { planService } from "../lib/plan-service";
 import type {
@@ -17,7 +17,8 @@ import { 체크저장, 일정변경저장 } from "../lib/tasks";
 import { 적용규범 } from "../lib/norms";
 import { 기관검색, 사업요약, 예비기관, 기관저장, 선택기관, 기본기관명, 적용중_기준파일, type 기관 } from "../lib/orgs";
 import { 첨부보관, 첨부읽기, 첨부쓰기, 파일을첨부로, 크기표기, type 첨부 } from "../lib/attachments";
-import { 인증켜짐, 로그인 as supabase로그인, 로그아웃 as supabase로그아웃, 이메일 as supabase이메일 } from "../lib/supabase";
+import { 지금출처, 출처구독, 출처문구 } from "../lib/data-source";
+import { 인증켜짐, 로그인 as supabase로그인, 가입 as supabase가입, 로그아웃 as supabase로그아웃, 이메일 as supabase이메일 } from "../lib/supabase";
 import { 상세를계획으로, 판정제목, 행동문구, 시각표기 } from "../lib/adapt";
 // 🔴 `데모종료` 는 남깁니다 — 「계정 없이 둘러보기」를 없앴어도 예전에 받아 둔
 //    데모 토큰이 브라우저에 2시간 남아 있을 수 있고, 그게 로그인 조회를 가로챕니다.
@@ -601,6 +602,46 @@ function Status({ value }: { value: PlanStatus }) {
  *      · 펼침 = 가로형 워드마크 (ssudo_v2)
  *      · 접힘 = 정사각 심볼   (ssu)
  */
+/**
+ * 「지금 보이는 자료가 서버 것이 아닙니다」를 «화면이 말하게» 합니다.
+ *
+ * 🔴 왜 있는가: 서버 호출이 실패하면 예시 데이터로 되돌아가는데, 예전에는 그걸
+ *    콘솔에만 적었습니다. 그래서 「123」 같은 예전 시험 입력이 DB 값처럼 보였고,
+ *    화면만 봐서는 «실제 자료인지 예시인지» 구분할 방법이 없었습니다.
+ *
+ * 🔴 서버가 정상이면 `출처문구()` 가 null 을 주고 아무것도 안 그립니다.
+ *
+ * 🔴 `useSyncExternalStore` 를 쓰는 이유: 출처는 React 밖(`lib/data-source.ts`)에서
+ *    바뀝니다. 상태를 또 만들어 복제하면 두 값이 어긋납니다.
+ */
+function DataSourceBanner() {
+  const 기록 = useSyncExternalStore(
+    출처구독,
+    지금출처,
+    // 🔴 서버 렌더에서는 «항상 서버 정상» 으로 봅니다. 서버에는 브라우저의
+    //    조회 결과가 없어서, 여기서 다른 값을 주면 hydration 이 어긋납니다.
+    () => ({ 값: "서버" as const }),
+  );
+  const [접음, set접음] = useState(false);
+  const 문구 = 출처문구(기록);
+  if (!문구 || 접음) return null;
+  return (
+    <div
+      className={`data-source-banner ${문구.심각도 === "주의" ? "warn" : ""}`}
+      role="status"
+    >
+      <Icon name="alert" size={16} />
+      <span>
+        <b>{문구.제목}</b>
+        <small>{문구.설명}</small>
+      </span>
+      <button type="button" aria-label="안내 닫기" onClick={() => set접음(true)}>
+        ×
+      </button>
+    </div>
+  );
+}
+
 function BrandWord() {
   return (
     <span className="brand-logo">
@@ -890,6 +931,9 @@ export default function CheckumaitApp() {
             </span>
           </div>
         </header>
+        {/* 🔴 지금 보이는 자료가 «서버 것이 아닐 때» 만 뜹니다. 정상이면 아무것도
+            안 그립니다 — 잘 되는 날 배너가 있으면 그게 더 나쁩니다. */}
+        <DataSourceBanner />
         {route.page === "home" && (
           <HomePage plans={plans} schedules={schedules} go={go} />
         )}
@@ -1053,6 +1097,13 @@ function Login({
   const [사업필터해제, set사업필터해제] = useState(false);
   const [institution, setInstitution] = useState("");
   /**
+   * 🔴 고른 기관의 slug. «이름이 아니라 이것» 이 서버가 기관을 되찾는 열쇠입니다
+   *    — 「경상국립대학교」·「경상국립대학교 창업지원단」·「…창업중심대학사업단」이
+   *    같이 있어서 이름으로 되찾으면 다른 기관에 붙습니다.
+   *    등록 API 가 붙는 날 이 값을 그대로 싣습니다 (`lib/orgs.ts::선택기관slug`).
+   */
+  const [institutionSlug, setInstitutionSlug] = useState("");
+  /**
    * 🔴 판정 엔진에 «이미 적재되어 있는» 기준 파일을 기본값으로 보여줍니다.
    *    사용자가 다른 파일을 올려도 엔진에 반영할 길이 없어(업로드 → 파싱 → 재적재는
    *    MVP 범위 밖), 여기서 바꾼 값은 서비스 어디에도 연결하지 않습니다.
@@ -1078,6 +1129,7 @@ function Login({
   });
   const [가입약관, set가입약관] = useState({ 서비스: false, 개인정보: false });
   const [가입오류, set가입오류] = useState<string | null>(null);
+  const [가입중, set가입중] = useState(false);
   const setupSteps = ["project", "institution", "upload", "ready"] as const;
   const stepIndex = Math.max(
     0,
@@ -1150,15 +1202,39 @@ function Login({
       가입약관.서비스 &&
       가입약관.개인정보;
 
-    const 가입하기 = () => {
-      if (!채워짐) return;
+    /**
+     * 🔴 **가입은 두 단계인데 지금은 ①만 됩니다.**
+     *      ① Supabase 계정 생성            ← 여기서 합니다
+     *      ② 우리 서버에 (이메일 → 기관) 등록 ← **API 가 아직 없습니다**
+     *    ②가 빠지면 로그인은 되는데 서버가 403 「등록되지 않은 계정이다」를 냅니다.
+     *    그 상태를 조용히 넘기지 않도록 온보딩 뒤 화면이 배너로 말합니다
+     *    (`lib/data-source.ts`).
+     *
+     * 🔴 Supabase 설정 전(인증켜짐=false)에는 예전처럼 «통과» 시킵니다. 설정이
+     *    안 들어간 채로 배포돼도 시연이 막히면 안 됩니다.
+     */
+    const 가입하기 = async () => {
+      if (!채워짐 || 가입중) return;
       set가입오류(null);
-      // 🔴 여기가 나중에 실제 가입 호출이 들어갈 «한 곳» 입니다.
-      //    지금은 화면만이므로 입력값을 이 탭에 기억하고 온보딩으로 넘깁니다.
-      이메일기억(가입.이메일.trim());
-      팀이름기억(가입.팀이름.trim());
-      setLoginEmail(가입.이메일.trim());
-      setStep("project");
+      set가입중(true);
+      try {
+        const 결과 = await supabase가입(가입.이메일.trim(), 가입.비밀번호);
+        if (결과 === "메일확인필요") {
+          // 계정은 생겼지만 세션이 없습니다 — 다음 화면으로 보내면 전부 게스트로 돕니다.
+          set가입오류(
+            "확인 메일을 보냈습니다. 메일의 링크를 누른 뒤 로그인해 주세요.",
+          );
+          return;
+        }
+        이메일기억(가입.이메일.trim());
+        팀이름기억(가입.팀이름.trim());
+        setLoginEmail(가입.이메일.trim());
+        setStep("project");
+      } catch (e: unknown) {
+        set가입오류(e instanceof Error ? e.message : "가입하지 못했습니다.");
+      } finally {
+        set가입중(false);
+      }
     };
 
     return (
@@ -1271,11 +1347,20 @@ function Login({
               )}
 
               <div className="onboarding-actions">
-                <button type="button" className="outline large" onClick={() => setStep("welcome")}>
+                <button
+                  type="button"
+                  className="outline large"
+                  disabled={가입중}
+                  onClick={() => setStep("welcome")}
+                >
                   이전
                 </button>
-                <button type="submit" className="primary large" disabled={!채워짐}>
-                  가입하고 시작하기
+                <button
+                  type="submit"
+                  className="primary large"
+                  disabled={!채워짐 || 가입중}
+                >
+                  {가입중 ? "계정을 만드는 중…" : "가입하고 시작하기"}
                 </button>
               </div>
             </form>
@@ -1527,6 +1612,9 @@ function Login({
                     onChange={(event) => {
                       setInstitutionQuery(event.target.value);
                       setInstitution("");
+                      // 🔴 이름을 지우면 slug 도 같이 버립니다. 안 버리면 A 기관을
+                      //    골랐다가 B 를 검색해 고른 순간 slug 만 A 로 남습니다.
+                      setInstitutionSlug("");
                     }}
                     placeholder="학교·기관 이름을 입력하세요"
                   />
@@ -1547,10 +1635,12 @@ function Login({
                       onClick={() => {
                         if (고름) {
                           setInstitution("");
+                          setInstitutionSlug("");
                           setInstitutionQuery("");
                           return;
                         }
                         setInstitution(기관.기관명);
+                        setInstitutionSlug(기관.slug || "");
                         setInstitutionQuery(기관.기관명);
                       }}
                       aria-pressed={고름}
@@ -1579,7 +1669,8 @@ function Login({
                   disabled={!institution}
                   onClick={() => {
                     // 🔴 여기서 고른 기관이 사이드바·홈·마이페이지에 그대로 쓰입니다.
-                    기관저장(institution);
+                    //    slug 는 화면에 안 쓰지만, 서버 명부 등록이 붙는 날 필요합니다.
+                    기관저장(institution, institutionSlug);
                     setStep("upload");
                   }}
                 >
