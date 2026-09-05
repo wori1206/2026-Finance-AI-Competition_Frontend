@@ -1083,3 +1083,49 @@ pre.ai-inquiry-text{
 }
 .login-brand .brand-logo .brand-logo-full{height:30px}
 @media(max-width:620px){.login-brand .brand-logo .brand-logo-full{height:26px}}
+
+/* ── 지출 계획 수정 창의 첨부 파일 ─────────────────────────────────
+   🔴 예전 마크업은 `.file-drop` 점선 상자에 「+ 파일 교체·추가」 버튼만 있는
+      «장식» 이었습니다(input 도 핸들러도 없었음). 실제 목록이 들어오면서
+      한 칸짜리 그리드가 안 맞아 별도 상자로 뺍니다.
+   🔴 상세 화면(.expense-v5-file-row)과 «같은 모양» 이어야 합니다 — 같은 파일을
+      두 화면에서 보는데 생김새가 다르면 다른 목록으로 읽힙니다. */
+.field-grid .edit-file-box{
+  display:block;border:1px dashed #cfd4d2;border-radius:5px;padding:13px;
+}
+.field-grid .edit-file-box>b{
+  display:block;margin-bottom:9px;color:var(--text);font-size:11px;font-weight:650;
+}
+.edit-file-empty{
+  margin:0 0 10px;color:var(--muted);font-size:11px;font-weight:400;
+}
+.edit-file-box ul{
+  list-style:none;margin:0 0 10px;padding:0;display:grid;gap:6px;
+}
+.edit-file-box li{
+  display:flex;align-items:center;gap:8px;
+  padding:8px 10px;border:1px solid var(--line);border-radius:4px;background:#fff;
+}
+.edit-file-box li>b{
+  flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:11px;font-weight:600;
+}
+.edit-file-box li>small{color:var(--muted);font-size:10px;font-weight:400}
+.edit-file-box li>button{
+  width:22px;height:22px;flex:none;padding:0;
+  border:1px solid var(--line);border-radius:4px;background:#fff;
+  color:var(--muted);font-size:12px;line-height:1;
+}
+.edit-file-box li>button:hover{border-color:#c9908c;color:#b4534d}
+.edit-file-box footer{display:flex;align-items:center;gap:10px}
+.edit-file-box footer small{color:var(--muted);font-size:10px;font-weight:400}
+/* 🔴 라벨이 곧 버튼입니다 — input 은 숨기고 라벨을 눌러 파일창을 엽니다. */
+.edit-file-add{
+  display:inline-flex;align-items:center;justify-content:center;
+  height:32px;padding:0 12px;cursor:pointer;
+  border:1px solid var(--line);border-radius:4px;background:#fff;
+  font-size:11px;font-weight:600;
+}
+.edit-file-add:hover{border-color:var(--brand);color:var(--brand)}
+.edit-file-add input{display:none}
+.edit-file-error{margin:9px 0 0;color:#b4534d;font-size:11px;font-weight:400}

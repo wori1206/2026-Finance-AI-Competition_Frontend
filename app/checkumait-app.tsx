@@ -236,17 +236,6 @@ const navItems = [
 const 현재사업 = () => 선택사업();
 
 /**
- * 파일 첨부에서 고를 수 있는 형식.
- *
- * 🔴 지출계획 첨부·증빙 자료는 서버에 올리지 않고 화면에서만 다룹니다. 그래서
- *    형식 제한이 «사용자 안내» 목적이지 서버 제약이 아닙니다. 견적서·계산서·
- *    이체확인증이 doc·docx·xlsx·사진으로 오는 일이 흔해 다 받습니다.
- */
-const 첨부_허용형식 =
-  ".pdf,.doc,.docx,.hwp,.hwpx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg";
-
-
-/**
  * 받침이 있으면 「을」, 없으면 「를」.
  *
  * 🔴 사업명이 서버에서 오는 값이라 조사를 고정할 수 없습니다. 「초기창업패키지을(를)」
@@ -1648,7 +1637,7 @@ function Login({
                       ? "현재 판정에 적용 중인 기준 문서입니다."
                       : criteriaFile
                         ? "업로드할 파일을 선택했습니다."
-                        : "선택사항 · PDF, DOC, DOCX, HWP, HWPX · 최대 30MB"}
+                        : "선택사항 · PDF, HWP, HWPX · 최대 30MB"}
                   </small>
                 </span>
                 <em>{criteriaFile ? "파일 변경" : "파일 찾기"}</em>
@@ -3116,7 +3105,6 @@ function NewPlanPage({
                     <input
                       type="file"
                       multiple
-                      accept={첨부_허용형식}
                       onChange={(event) => {
                         // 🔴 상세 화면과 같은 한도(개별 3MB · 최대 10개)를 여기서도 겁니다.
                         //    여기서 안 막으면 상세에서 못 다루는 파일이 들어옵니다.
@@ -3676,7 +3664,6 @@ function PlanDetail({
                     <input
                       type="file"
                       multiple
-                      accept={첨부_허용형식}
                       onChange={(event) => {
                         const selectedFiles = Array.from(event.target.files || []);
                         if (selectedFiles.some((file) => file.size > 3 * 1024 * 1024)) {
@@ -3961,7 +3948,6 @@ function PlanDetail({
                     <label className="outline small expense-v5-upload">
                       <input
                         type="file"
-                        accept={첨부_허용형식}
                         onChange={(event) => {
                           const file = event.target.files?.[0];
                           if (!file) return;
@@ -4077,6 +4063,7 @@ function PlanDetail({
         <EditPlan
           plan={draft}
           setPlan={setDraft}
+          onFilesSaved={setPlanFiles}
           close={() => setEditing(false)}
           save={() => {
             update({
@@ -4611,12 +4598,37 @@ function EditPlan({
   setPlan,
   close,
   save,
+  onFilesSaved,
 }: {
   plan: ExpensePlan;
   setPlan: (plan: ExpensePlan) => void;
   close: () => void;
   save: () => void;
+  /** 저장이 끝난 뒤 «부모 화면» 의 첨부 목록도 같은 값으로 맞춥니다. */
+  onFilesSaved?: (files: 첨부[]) => void;
 }) {
+  /**
+   * 🔴 「첨부 파일 [+ 파일 교체·추가]」는 «누르는 데가 없는 장식» 이었습니다.
+   *    input 도 onClick 도 없었고, 상세 화면의 첨부 목록과도 이어져 있지 않아서
+   *    수정 창에서는 붙인 파일이 보이지도 않고 새로 붙일 수도 없었습니다.
+   *    → 상세와 «같은 보관함»(lib/attachments)을 봅니다. 여기서 지운 파일은
+   *      상세에서도 사라지고, 여기서 붙인 파일은 상세에 그대로 나타납니다.
+   *
+   * 🔴 초안입니다. 「취소」로 닫으면 보관함을 건드리지 않습니다 — 다른 입력칸과
+   *    같은 규칙이어야 합니다. 실제 반영은 「수정 저장」에서 한 번에 합니다.
+   */
+  const [편집첨부, set편집첨부] = useState<첨부[]>(() => 첨부읽기(plan.id));
+  const [첨부오류, set첨부오류] = useState("");
+  useEffect(() => {
+    set편집첨부(첨부읽기(plan.id));
+    set첨부오류("");
+  }, [plan.id]);
+
+  const 첨부저장 = () => {
+    첨부쓰기(plan.id, 편집첨부);
+    onFilesSaved?.(편집첨부);
+  };
+
   return (
     <div className="modal-backdrop">
       <section className="modal wide">
@@ -4679,16 +4691,79 @@ function EditPlan({
               ))}
             </select>
           </label>
-          <label className="full file-drop">
-            첨부 파일<button type="button">+ 파일 교체·추가</button>
-            <span>기존 파일과 새 파일을 함께 관리할 수 있습니다.</span>
-          </label>
+          <div className="full edit-file-box">
+            <b>첨부 파일</b>
+            {편집첨부.length === 0 ? (
+              <p className="edit-file-empty">
+                첨부한 파일이 없습니다. 견적서·과업자료가 있으면 올려 두세요.
+              </p>
+            ) : (
+              <ul>
+                {편집첨부.map((file) => (
+                  <li key={file.id}>
+                    <Icon name="fileText" size={15} />
+                    <b>{file.name}</b>
+                    <small>{file.size}</small>
+                    <button
+                      type="button"
+                      aria-label={`${file.name} 삭제`}
+                      onClick={() =>
+                        set편집첨부((items) =>
+                          items.filter((item) => item.id !== file.id),
+                        )
+                      }
+                    >
+                      ×
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <footer>
+              <label className="outline small edit-file-add">
+                <input
+                  type="file"
+                  multiple
+                  onChange={(event) => {
+                    const 고른것 = Array.from(event.target.files || []);
+                    // 🔴 상세 화면과 «같은» 한도여야 합니다. 여기서만 큰 파일이
+                    //    들어오면 상세에서 다룰 수 없는 첨부가 생깁니다.
+                    const 넘김 = 고른것.filter((f) => f.size > 3 * 1024 * 1024);
+                    set첨부오류(
+                      넘김.length
+                        ? "첨부파일은 개별 3MB 이하만 올릴 수 있습니다."
+                        : "",
+                    );
+                    const 쓸것 = 고른것.filter((f) => f.size <= 3 * 1024 * 1024);
+                    // 🔴 순번을 «기존 개수부터» 셉니다. 0 부터 다시 세면 같은 파일을
+                    //    두 번에 나눠 붙였을 때 id 가 겹쳐 지우기가 엉킵니다.
+                    set편집첨부((items) =>
+                      [
+                        ...items,
+                        ...쓸것.map((f, i) => 파일을첨부로(f, items.length + i)),
+                      ].slice(0, 10),
+                    );
+                    event.target.value = "";
+                  }}
+                />
+                파일 추가
+              </label>
+              <small>최대 10개 / 개별 3MB 이하</small>
+            </footer>
+            {첨부오류 && <p className="edit-file-error">{첨부오류}</p>}
+          </div>
         </div>
         <footer>
           <button className="outline" onClick={close}>
             취소
           </button>
-          <button className="primary" onClick={save}>
+          <button
+            className="primary"
+            onClick={() => {
+              첨부저장();
+              save();
+            }}
+          >
             수정 저장
           </button>
         </footer>
