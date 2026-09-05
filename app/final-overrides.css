@@ -275,6 +275,25 @@ body .app-shell .expense-v5 .ai-before-checks>header button.outline:focus-visibl
 }
 .category-grid em svg{flex:0 0 auto;color:#176b5b!important}
 
+/* 비목 카드 — 이름 아래 서버가 준 설명 한 줄.
+   🔴 설명이 없는 카드는 <small> 자체가 안 그려지므로 예전 한 줄 모양 그대로다.
+      배지는 세로 가운데가 아니라 «첫 줄에» 맞춘다 — 설명이 두 줄이 되면
+      가운데 정렬은 배지가 아래로 내려가 이름과 어긋나 보인다. */
+.category-grid button{align-items:flex-start!important;padding-top:13px!important;padding-bottom:13px!important}
+.category-grid .category-name{
+  display:grid!important;
+  gap:4px!important;
+  min-width:0!important;   /* 긴 설명이 카드를 밀어내지 않게 */
+}
+.category-grid .category-name small{
+  color:var(--muted)!important;
+  font-size:11px!important;
+  font-weight:400!important;
+  line-height:1.5!important;
+  white-space:normal!important;
+  word-break:keep-all!important;   /* 한국어는 어절 단위로 끊는다 */
+}
+
 /* New-plan heading follows the expense-detail back-link hierarchy. */
 .new-plan-header{
   display:flex!important;

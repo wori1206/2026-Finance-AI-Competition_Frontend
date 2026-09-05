@@ -27,6 +27,33 @@ export type 정규화출력 = {
   질문원문: string;
 };
 
+/**
+ * 서버가 준 비목 후보 배열을 화면이 믿고 쓸 수 있는 모양으로 다듬습니다.
+ *
+ * 🔴 «있으면 쓰고 없으면 안 그린다» 가 원칙입니다. 서버가 `설명` 을 붙이기 시작하면
+ *    코드를 한 줄도 안 고치고 화면에 뜨고, 그 전까지는 조용히 비어 있습니다.
+ *
+ * 🔴 신뢰도 내림차순으로 세웁니다. 서버가 이미 정렬해 보내면 결과가 같고, 안 보내도
+ *    「가장 확신하는 후보」가 맨 앞에 옵니다 — 그 자리를 자동 선택에 쓰기 때문입니다.
+ *    자바스크립트 정렬은 안정 정렬이라 신뢰도가 같으면 서버가 준 순서가 유지됩니다.
+ */
+function 후보정리(값: unknown): 비목후보[] {
+  if (!Array.isArray(값)) return [];
+  const 정리 = 값.flatMap((항목): 비목후보[] => {
+    if (typeof 항목 !== "object" || 항목 === null) return [];
+    const o = 항목 as Record<string, unknown>;
+    const 비목 = typeof o["비목"] === "string" ? o["비목"].trim() : "";
+    if (!비목) return [];
+    const 설명 = typeof o["설명"] === "string" ? o["설명"].trim() : "";
+    return [{
+      비목,
+      신뢰도: typeof o["신뢰도"] === "number" ? o["신뢰도"] : 0,
+      설명: 설명 || undefined,
+    }];
+  });
+  return 정리.sort((a, b) => b.신뢰도 - a.신뢰도);
+}
+
 export async function 정규화하기(
   입력: 정규화입력값,
   진행?: (설명: string) => void,
@@ -44,9 +71,8 @@ export async function 정규화하기(
 
   if (오류) throw new Error(오류);
 
-  const 후보 = Array.isArray(결과["비목후보"]) ? (결과["비목후보"] as 비목후보[]) : [];
   return {
-    비목후보: 후보,
+    비목후보: 후보정리(결과["비목후보"]),
     정규화: 결과,
     질문원문: typeof 결과["질문원문"] === "string" ? (결과["질문원문"] as string) : "",
   };

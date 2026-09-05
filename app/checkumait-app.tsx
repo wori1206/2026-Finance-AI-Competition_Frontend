@@ -8,6 +8,7 @@ import type {
   PlanStatus,
   ScheduleItem,
 } from "../lib/types";
+import type { 비목후보 } from "../lib/server-types";
 import { API켜짐 } from "../lib/config";
 import { 판정실행 } from "../lib/judge";
 import { 정규화하기 } from "../lib/normalize";
@@ -2972,7 +2973,9 @@ function NewPlanPage({
   const [pendingPlan, setPendingPlan] = useState<ExpensePlan | null>(null);
   // ── 서버 연동 상태 ──
   const [서버비목, set서버비목] = useState<string[] | null>(null);
-  const [서버추천, set서버추천] = useState<string | null>(null);
+  // 🔴 예전에는 첫 후보 하나만 들고 있었습니다(`서버추천: string`). 서버는 후보를
+  //    «여러 개» 줄 수 있고 그때는 배지도 여러 개 붙어야 하므로 배열로 들고 갑니다.
+  const [서버후보, set서버후보] = useState<비목후보[]>([]);
   const [서버정규화, set서버정규화] = useState<Record<string, unknown> | null>(null);
   const [새planId, set새planId] = useState<string | null>(null);
   const [저장중, set저장중] = useState(false);
@@ -3020,7 +3023,20 @@ function NewPlanPage({
   }, []);
 
   const 비목선택지: readonly string[] = 서버비목 ?? EXPENSE_CATEGORIES;
-  const 표시추천 = 서버추천 ?? recommendation;
+  /**
+   * 배지를 달 비목들. 서버가 후보를 주면 «준 만큼 전부», 없으면 예전처럼 키워드
+   * 추정 한 개입니다. 🔴 서버 후보가 하나여도 배지는 하나만 붙습니다 — 개수를
+   * 화면이 정하지 않고 서버가 정합니다.
+   */
+  const 추천비목 = useMemo(
+    () => new Set(서버후보.length ? 서버후보.map((c) => c.비목) : [recommendation]),
+    [서버후보, recommendation],
+  );
+  /** 비목 → 설명. 서버가 `설명` 을 안 보내면 비어 있고, 그러면 설명 줄을 안 그립니다. */
+  const 비목설명 = useMemo(
+    () => new Map(서버후보.flatMap((c) => (c.설명 ? [[c.비목, c.설명] as const] : []))),
+    [서버후보],
+  );
   const questions =
     category === "지급수수료" ? FEE_QUESTIONS[feeSubtype] : 질문찾기(category);
   useEffect(() => {
@@ -3050,12 +3066,11 @@ function NewPlanPage({
       .then((r) => {
         if (!살아있음) return;
         set서버정규화(r.정규화);
-        const 첫후보 = r.비목후보[0]?.비목;
         // 🔴 후보가 «비어 있는 것도 정상» 입니다 (실서버 폼 경로). 그때는 사용자가 고릅니다.
-        if (첫후보) {
-          set서버추천(첫후보);
-          setCategory(첫후보);
-        }
+        set서버후보(r.비목후보);
+        // 자동 선택은 가장 확신하는 «하나» 만. 배지는 후보 전부에 붙지만 커서는 하나다.
+        const 첫후보 = r.비목후보[0]?.비목;
+        if (첫후보) setCategory(첫후보);
       })
       .catch((e: unknown) => {
         if (!살아있음) return;
@@ -3306,21 +3321,30 @@ function NewPlanPage({
               선택했습니다. 직접 변경할 수 있습니다.
             </p>
             <div className="category-grid">
-              {비목선택지.map((item) => (
-                <button
-                  key={item}
-                  className={`${category === item ? "selected" : ""} ${표시추천 === item ? "recommended" : ""}`}
-                  onClick={() => setCategory(item)}
-                >
-                  <span>{item}</span>
-                  {표시추천 === item && (
-                    <em>
-                      <Icon name="sparkSolid" size={11} />
-                      AI 추천
-                    </em>
-                  )}
-                </button>
-              ))}
+              {비목선택지.map((item) => {
+                const 추천됨 = 추천비목.has(item);
+                const 설명 = 비목설명.get(item);
+                return (
+                  <button
+                    key={item}
+                    className={`${category === item ? "selected" : ""} ${추천됨 ? "recommended" : ""}`}
+                    onClick={() => setCategory(item)}
+                  >
+                    <span className="category-name">
+                      {item}
+                      {/* 🔴 서버가 설명을 보낼 때만 그립니다. 없으면 이 줄 자체가 없어
+                          카드 높이도 예전 그대로입니다. */}
+                      {설명 && <small>{설명}</small>}
+                    </span>
+                    {추천됨 && (
+                      <em>
+                        <Icon name="sparkSolid" size={11} />
+                        AI 추천
+                      </em>
+                    )}
+                  </button>
+                );
+              })}
             </div>
             {category === "지급수수료" && (
               <section className="fee-subtype-panel">
