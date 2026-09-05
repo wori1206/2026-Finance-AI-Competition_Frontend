@@ -236,6 +236,28 @@ const navItems = [
 const 현재사업 = () => 선택사업();
 
 /**
+ * 파일 첨부에서 고를 수 있는 형식.
+ *
+ * 🔴 지출계획 첨부·증빙 자료는 서버에 올리지 않고 화면에서만 다룹니다. 그래서
+ *    형식 제한이 «사용자 안내» 목적이지 서버 제약이 아닙니다. 견적서·계산서·
+ *    이체확인증이 doc·docx·xlsx·사진으로 오는 일이 흔해 다 받습니다.
+ */
+const 첨부_허용형식 =
+  ".pdf,.doc,.docx,.hwp,.hwpx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg";
+
+/**
+ * 주관기관 세부기준 문서에서 고를 수 있는 형식.
+ *
+ * 🔴 규정 문서 자리라 사진·스프레드시트는 뺍니다.
+ * 🔴 **서버는 아직 doc·docx 를 415 로 거부합니다** — `routes_l3.py` 의
+ *    `허용_확장자 = {pdf, hwpx, hwp}` (백엔드 origin/main 8d043e0 기준).
+ *    지금은 이 파일을 서버로 올리는 경로가 화면에 없어서(표시 전용) 문제가
+ *    안 되지만, `POST /api/l3/upload` 를 붙이는 날에는 둘 중 하나를 해야
+ *    합니다 — 백엔드가 확장자를 넓히거나, 여기서 doc·docx 를 도로 빼거나.
+ */
+const 기준문서_허용형식 = ".pdf,.doc,.docx,.hwp,.hwpx";
+
+/**
  * 받침이 있으면 「을」, 없으면 「를」.
  *
  * 🔴 사업명이 서버에서 오는 값이라 조사를 고정할 수 없습니다. 「초기창업패키지을(를)」
@@ -592,10 +614,22 @@ function Status({ value }: { value: PlanStatus }) {
   );
 }
 
+/**
+ * 써도돼요 로고.
+ *
+ * 🔴 두 벌을 «둘 다» 그려 두고 CSS 로 하나만 보입니다. 메뉴를 접었다 펼 때
+ *    이미지를 갈아끼우면 잠깐 빈칸이 생기는데(새 파일을 그때 받아옵니다),
+ *    미리 둘 다 두면 그 깜빡임이 없습니다.
+ *      · 펼침 = 가로형 워드마크 (ssudo_v2)
+ *      · 접힘 = 정사각 심볼   (ssu)
+ */
 function BrandWord() {
   return (
-    <span className="brand-word" aria-label="CHECKUMAIT">
-      CHEC<span>KU</span>MAIT
+    <span className="brand-logo">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img className="brand-logo-full" src="/logo/ssudo-wordmark.svg" alt="써도돼요" />
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img className="brand-logo-mark" src="/logo/ssudo-mark.svg" alt="" aria-hidden="true" />
     </span>
   );
 }
@@ -775,12 +809,9 @@ export default function CheckumaitApp() {
         <button
           className="brand"
           onClick={() => go({ page: "home" })}
-          aria-label="CHECKUMAIT 홈"
+          aria-label="써도돼요 홈"
         >
-          <span className="brand-mark">
-            <Icon name="check" size={20} />
-          </span>
-          <strong><BrandWord /></strong>
+          <BrandWord />
         </button>
         <nav className="side-nav" aria-label="주요 메뉴">
           {navItems
@@ -1156,9 +1187,6 @@ function Login({
       <main className="onboarding-setup">
         <header className="onboarding-nav">
           <div className="login-brand static">
-            <span>
-              <Icon name="check" size={25} />
-            </span>
             <BrandWord />
           </div>
           <button className="outline" onClick={() => setStep("welcome")}>
@@ -1289,9 +1317,6 @@ function Login({
       <main className="onboarding-landing">
         <header className="onboarding-nav">
           <div className="login-brand static">
-            <span>
-              <Icon name="check" size={25} />
-            </span>
             <BrandWord />
           </div>
           <span className="onboarding-login-note">최초 로그인 후 초기 설정이 진행됩니다.</span>
@@ -1424,9 +1449,6 @@ function Login({
     <main className="onboarding-setup">
       <header className="onboarding-nav">
         <div className="login-brand static">
-          <span>
-            <Icon name="check" size={25} />
-          </span>
           <BrandWord />
         </div>
         <button className="outline" onClick={() => setStep("welcome")}>
@@ -1542,10 +1564,18 @@ function Login({
                     <button
                       key={기관.slug || 기관.기관명}
                       className={고름 ? "selected" : ""}
+                      // 🔴 고른 것을 다시 누르면 해제합니다. 잘못 골랐을 때
+                      //    빠져나갈 길이 없으면 새로고침 말고는 방법이 없습니다.
                       onClick={() => {
+                        if (고름) {
+                          setInstitution("");
+                          setInstitutionQuery("");
+                          return;
+                        }
                         setInstitution(기관.기관명);
                         setInstitutionQuery(기관.기관명);
                       }}
+                      aria-pressed={고름}
                     >
                       <span>
                         <b>{기관.기관명}</b>
@@ -1611,10 +1641,7 @@ function Login({
               >
                 <input
                   type="file"
-                  /* 🔴 서버가 .doc·.docx 를 415 로 «거부» 합니다 (파서가 없습니다).
-                     고를 수 있게 두면 반드시 실패하는 선택지를 주는 셈입니다.
-                     `routes_l3.py` 허용_확장자 = {pdf, hwpx, hwp} */
-                  accept=".pdf,.hwp,.hwpx"
+                  accept={기준문서_허용형식}
                   onChange={(event) =>
                     setCriteriaFile(event.target.files?.[0]?.name || "")
                   }
@@ -1629,7 +1656,7 @@ function Login({
                       ? "현재 판정에 적용 중인 기준 문서입니다."
                       : criteriaFile
                         ? "업로드할 파일을 선택했습니다."
-                        : "선택사항 · PDF, HWP, HWPX · 최대 30MB"}
+                        : "선택사항 · PDF, DOC, DOCX, HWP, HWPX · 최대 30MB"}
                   </small>
                 </span>
                 <em>{criteriaFile ? "파일 변경" : "파일 찾기"}</em>
@@ -3091,12 +3118,13 @@ function NewPlanPage({
                 <div className="new-plan-file-head">
                   <span>
                     <b className="field-label">첨부파일</b>
-                    <small>견적서·과업자료 등이 있다면 첨부해주세요.</small>
+                    <small>견적서·과업자료 등이 있다면 첨부해주세요. PDF·워드·한글·엑셀·이미지, 개별 3MB.</small>
                   </span>
                   <label className="new-plan-file-button">
                     <input
                       type="file"
                       multiple
+                      accept={첨부_허용형식}
                       onChange={(event) => {
                         // 🔴 상세 화면과 같은 한도(개별 3MB · 최대 10개)를 여기서도 겁니다.
                         //    여기서 안 막으면 상세에서 못 다루는 파일이 들어옵니다.
@@ -3656,6 +3684,7 @@ function PlanDetail({
                     <input
                       type="file"
                       multiple
+                      accept={첨부_허용형식}
                       onChange={(event) => {
                         const selectedFiles = Array.from(event.target.files || []);
                         if (selectedFiles.some((file) => file.size > 3 * 1024 * 1024)) {
@@ -3940,6 +3969,7 @@ function PlanDetail({
                     <label className="outline small expense-v5-upload">
                       <input
                         type="file"
+                        accept={첨부_허용형식}
                         onChange={(event) => {
                           const file = event.target.files?.[0];
                           if (!file) return;
@@ -5821,7 +5851,7 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
           <label className="outline small institution-file-replace">
             <input
               type="file"
-              accept=".pdf,.hwp,.hwpx"
+              accept={기준문서_허용형식}
               onChange={(event) => {
                 const file = event.target.files?.[0];
                 event.target.value = "";

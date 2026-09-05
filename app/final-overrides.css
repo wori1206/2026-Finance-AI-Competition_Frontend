@@ -1052,3 +1052,34 @@ pre.ai-inquiry-text{
   color:#6c736f!important;
   cursor:not-allowed;
 }
+
+/* ══ 써도돼요 로고 ══════════════════════════════════════════════════
+   🔴 워드마크와 심볼을 «둘 다» 넣어 두고 하나만 보입니다 — 메뉴를 접었다 펼
+      때 이미지를 새로 받느라 생기는 깜빡임을 없애려는 것입니다.
+   🔴 img 에 `display:block!important` 를 걸면 숨겨야 할 쪽까지 되살아납니다.
+      크기만 풀고 보임/숨김은 아래 두 규칙으로만 정합니다. */
+.brand-logo{display:inline-flex;align-items:center;line-height:0}
+.brand-logo img{width:auto!important;max-width:none;height:auto}
+.brand-logo .brand-logo-full{display:block;height:26px}
+.brand-logo .brand-logo-mark{display:none;height:28px}
+
+/* 사이드바 — 예전 초록 사각 마크 자리를 로고가 대신합니다. */
+.sidebar .brand{gap:0!important;padding:0 12px!important}
+.app-shell.sidebar-collapsed .sidebar .brand{padding:0!important}
+/* `.brand strong{display:none}` 규칙이 접힘 상태에서 로고까지 지우지 않게. */
+.app-shell.sidebar-collapsed .sidebar .brand-logo{display:inline-flex!important}
+.app-shell.sidebar-collapsed .sidebar .brand-logo-full{display:none}
+.app-shell.sidebar-collapsed .sidebar .brand-logo-mark{display:block}
+
+/* 온보딩·회원가입 상단
+   🔴 예전 `.login-brand>span:first-child{width:29px;height:29px}` 는 초록 사각
+      아이콘을 겨냥한 규칙인데, 이제 첫 자식이 로고라 워드마크가 29px 정사각으로
+      찌그러집니다. 로고에는 그 크기를 풀어 줍니다. */
+.login-brand{gap:0!important}
+.login-brand>.brand-logo{
+  width:auto!important;height:auto!important;
+  display:inline-flex!important;place-items:initial!important;
+  background:transparent!important;border-radius:0!important;
+}
+.login-brand .brand-logo .brand-logo-full{height:30px}
+@media(max-width:620px){.login-brand .brand-logo .brand-logo-full{height:26px}}
