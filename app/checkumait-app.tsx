@@ -12,7 +12,7 @@ import type { 비목후보, 심층질문항목, 답변항목 } from "../lib/serv
 import { API켜짐 } from "../lib/config";
 import { 판정실행 } from "../lib/judge";
 import { 정규화하기 } from "../lib/normalize";
-import { 비목목록, 계획추가, GPU깨우기, GPU상태, 규정업로드 } from "../lib/api";
+import { 비목목록, 계획추가, GPU상태, 규정업로드 } from "../lib/api";
 import type { GPU상태값 } from "../lib/api";
 import { 체크저장, 일정변경저장, 일정등록 } from "../lib/tasks";
 import { 적용규범 } from "../lib/norms";
@@ -902,9 +902,10 @@ export default function CheckumaitApp() {
           ))}
         </nav>
         <div className="side-bottom">
-          {/* 🔴 순서를 바꿨습니다 — 「지금 서버가 되는가」가 먼저고,
-              「어느 사업인가」는 그 아래입니다 (QA 0905). */}
-          <GPU상태배지 />
+          {/* 🔴 2026-09-07 — GPU 상태 배지를 뺐습니다. 판정이 Qwen API 로 넘어가
+              «자체 GPU 를 안 씁니다» — 팟 상태는 사용자가 알 필요도, 알아서도
+              안 되는 정보가 됐습니다(꺼져 있어도 서비스는 정상입니다).
+              컴포넌트 자체는 남겨둡니다 — vLLM 경로로 되돌릴 때 다시 답니다. */}
           <section className="project-mini">
             <span>{데모기관 ? "둘러보기" : "참여 중인 프로젝트"}</span>
             <b>{사업}</b>
@@ -1492,9 +1493,10 @@ function Login({
                 try {
                   await supabase로그인(loginEmail, loginPassword);
                   이메일기억(loginEmail);
-                  // 🔴 로그인 직후 GPU 기동에 «머리 시작 시간»을 벌어 둡니다. 실패해도
-                  //    조용히 넘어갑니다 — 실제 판정 때 서버가 다시 기동을 시도합니다.
-                  if (API켜짐()) GPU깨우기().catch(() => {});
+                  // 🔴 2026-09-07 — 로그인 직후 `GPU깨우기()` 를 «뺐습니다».
+                  //    판정이 Qwen API 로 넘어가 GPU 가 필요 없는데, 로그인할 때마다
+                  //    꺼둔 팟을 깨우려 들었습니다(`오늘_깨움` 이 올라가는 걸로 확인).
+                  //    오너가 「재기동 금지」로 못박은 팟이라 비용이 실제로 붙습니다.
                   setStep("project");
                 } catch (e: unknown) {
                   set로그인오류(
