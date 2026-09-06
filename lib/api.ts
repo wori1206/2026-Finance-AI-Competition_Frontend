@@ -94,10 +94,13 @@ export const 프로필저장 = (p: { f1?: unknown; f3?: unknown[]; f4?: unknown[
  * 🔴 이 함수는 `http.ts` 를 안 거치는 «직접 fetch» 라 그동안 Authorization 이
  *    아예 안 붙었습니다. 붙입니다.
  */
-export async function 규정업로드(파일: File, 기관명: string, orgId: string) {
+export async function 규정업로드(파일: File, 기관명: string, orgId?: string) {
+  // 🔴 2026-09-06 — `orgId` 를 «선택» 으로 바꿉니다. 프론트는 org_id 를 알 수 없고
+  //    (`lib/orgs.ts:10`), 서버가 토큰 주체로 정합니다(`routes_l3._업로드_주인` — 토큰이 이깁니다).
+  //    필수로 두는 바람에 화면에서 이 함수를 «아예 부를 수 없었습니다».
   const fd = new FormData();
   fd.append("파일", 파일);
-  fd.append("org_id", orgId);
+  if (orgId) fd.append("org_id", orgId);
   fd.append("기관명", 기관명);
   // ⚠️ FormData 에는 Content-Type 을 직접 넣지 마세요 — 브라우저가 경계문자를 붙입니다
   const { apiBase } = await import("./config");

@@ -12,7 +12,7 @@ import type { 비목후보 } from "../lib/server-types";
 import { API켜짐 } from "../lib/config";
 import { 판정실행 } from "../lib/judge";
 import { 정규화하기 } from "../lib/normalize";
-import { 비목목록, 계획추가, GPU깨우기, GPU상태 } from "../lib/api";
+import { 비목목록, 계획추가, GPU깨우기, GPU상태, 규정업로드 } from "../lib/api";
 import type { GPU상태값 } from "../lib/api";
 import { 체크저장, 일정변경저장, 일정등록 } from "../lib/tasks";
 import { 적용규범 } from "../lib/norms";
@@ -6172,10 +6172,28 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
               <button className="outline" onClick={() => set교체확인(null)}>취소</button>
               <button
                 className="primary"
-                onClick={() => {
-                  setInstitutionFile(교체확인.name);
+                onClick={async () => {
+                  // 🔴 2026-09-06 — 여기는 «서버를 안 부르고» 화면 이름만 바꾸고
+                  //    "교체했습니다" 라고 알리고 있었습니다. 실측: /api/l3/upload 요청 0건,
+                  //    tenant.l3_documents 4건 그대로 — 사용자는 등록됐다고 믿는데
+                  //    판정 기준은 «하나도 안 바뀝니다». 이 제품의 핵심 약속이 깨지던 자리입니다.
+                  const 파일 = 교체확인;
                   set교체확인(null);
-                  notify("주관기관 기준 파일을 교체했습니다.");
+                  try {
+                    const r = await 규정업로드(파일, 선택기관());
+                    setInstitutionFile(파일.name);
+                    notify(
+                      r?.조_건수
+                        ? `기준 문서를 등록했습니다 — 조 ${r.조_건수}건을 읽었습니다.`
+                        : "기준 문서를 등록했습니다 — 파싱이 진행 중입니다.",
+                    );
+                  } catch (e) {
+                    // 🔴 실패를 «성공처럼» 넘기지 않습니다. 조용히 넘기면 사용자는
+                    //    바뀌지 않은 기준으로 판정을 받고도 바뀐 줄 압니다.
+                    notify(
+                      `기준 문서 등록에 실패했습니다${e instanceof Error && e.message ? ` — ${e.message}` : ""}`,
+                    );
+                  }
                 }}
               >
                 교체하기
