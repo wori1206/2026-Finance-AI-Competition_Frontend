@@ -16,7 +16,7 @@ import { 비목목록, 계획추가, GPU깨우기, GPU상태 } from "../lib/api"
 import type { GPU상태값 } from "../lib/api";
 import { 체크저장, 일정변경저장, 일정등록 } from "../lib/tasks";
 import { 적용규범 } from "../lib/norms";
-import { 기관검색, 사업요약, 예비기관, 기관저장, 선택기관, 기본기관명, 적용중_기준파일, type 기관 } from "../lib/orgs";
+import { 기관검색, 사업요약, 기관저장, 선택기관, 기본기관명, 적용중_기준파일, type 기관 } from "../lib/orgs";
 import { 첨부보관, 첨부읽기, 첨부쓰기, 파일을첨부로, 크기표기, type 첨부 } from "../lib/attachments";
 import { 지금출처, 출처구독, 출처문구 } from "../lib/data-source";
 import { 인증켜짐, 로그인 as supabase로그인, 가입 as supabase가입, 로그아웃 as supabase로그아웃, 이메일 as supabase이메일, 팀이름 as supabase팀이름, 팀이름쓰기 as supabase팀이름쓰기 } from "../lib/supabase";
@@ -26,7 +26,7 @@ import { 상세를계획으로, 판정제목, 행동문구, 시각표기 } from 
 import { 데모종료, 데모중, 이메일기억, 기억된이메일, 이메일잊기, 팀이름기억, 기억된팀이름 } from "../lib/session";
 import { 초안전부지우기 } from "../lib/inquiry-store";
 import { 선택사업, 사업저장, 사업선택지, 목록에맞추기, 기본사업 } from "../lib/program";
-import { 협약읽기, 협약쓰기, 값있음, 원, 날짜표기, 기간표기, 디데이표기, 시연협약, 협약기억, 기억된협약, type 협약정보 } from "../lib/profile";
+import { 협약쓰기, 원, 날짜표기, 기간표기, 디데이표기, 지금협약, 협약기억, type 협약정보 } from "../lib/profile";
 import { SendButton } from "./send-button";
 import "./detail-refinement.css";
 
@@ -295,23 +295,18 @@ function use기관(재조회?: unknown): string {
 /**
  * 협약 기간·사업비. 홈·사이드바·마이페이지가 «같은 값» 을 보게 하는 통로입니다.
  *
- * 🔴 순서: 서버(`/api/profile` f1) → 이 브라우저가 기억한 값 → 시연 기본값.
- *    목 서버는 저장을 안 받으므로 서버만 믿으면 마이페이지에서 고친 값이 사라집니다.
+ * 🔴 순서: 사용자가 마이페이지에서 고친 값 → 온보딩에서 «고른 사업» 의 시연값.
+ *    서버(`GET /api/profile`)는 안 읽습니다 — 서버 표에 2024 날짜가 박혀 있어서
+ *    읽으면 D-day 자리가 다시 「종료」가 됩니다. 자세한 사정은 `lib/profile.ts::지금협약`.
+ *
+ * 🔴 초기값을 «동기» 로 채웁니다. 예전엔 기본값을 그린 다음 효과에서 덮어써서,
+ *    홈에 잠깐 다른 금액이 스쳤습니다.
  */
 function use협약(재조회?: unknown): 협약정보 {
-  const [값, set값] = useState<협약정보>(시연협약);
+  const [값, set값] = useState<협약정보>(지금협약);
   useEffect(() => {
-    let 살아있음 = true;
-    const 기억 = 기억된협약();
-    if (기억 && 값있음(기억)) set값(기억);
-    협약읽기().then((v) => {
-      if (!살아있음 || !v || !값있음(v)) return;
-      set값(v);
-      협약기억(v);
-    });
-    return () => {
-      살아있음 = false;
-    };
+    // 로그인·사업 변경 뒤에는 고른 사업이 달라졌을 수 있으므로 다시 읽습니다.
+    set값(지금협약());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [재조회]);
   return 값;
@@ -1152,8 +1147,19 @@ function Login({
   const [institutionQuery, setInstitutionQuery] = useState("");
   // 🔴 주관기관은 서버(`GET /api/orgs`)가 정본입니다. 예전에는 화면에 1건이 박혀 있어서
   //    검색도 수정도 안 됐습니다. 서버가 안 되면 예비 1건으로 조용히 내려갑니다.
-  const [기관목록, set기관목록] = useState<기관[]>([예비기관]);
-  const [기관찾는중, set기관찾는중] = useState(false);
+  //
+  // 🔴 **빈 목록으로 시작합니다** (2026-09-06). 전에는 초기값이 `[예비기관]` 이라
+  //    2단계에 들어서는 순간 「경상국립대학교 창업중심대학사업단」 카드가 한 장
+  //    떠 있다가, 250ms 뒤 검색 결과가 도착하면 실제 목록으로 갈아끼워졌습니다
+  //    — 어느 사업을 골랐든 경상국립대가 먼저 번쩍이는 것으로 보였습니다.
+  //    예비 목록은 «서버가 안 될 때» 쓰라고 만든 것이지 첫 그림용이 아닙니다.
+  //    `기관검색()` 이 실패하면 지금도 `[예비기관]` 을 돌려주므로 그 길은 그대로입니다.
+  const [기관목록, set기관목록] = useState<기관[]>([]);
+  //
+  // 🔴 «찾는 중» 으로 시작합니다. 빈 목록 + 찾는중=false 로 시작하면 이번엔 한 프레임 동안
+  //    「일치하는 곳이 없습니다」가 번쩍입니다(아래 렌더 두 줄이 그 조합을 그립니다).
+  //    2단계에 들어서는 순간 어차피 검색이 시작되므로, 처음부터 그렇게 말합니다.
+  const [기관찾는중, set기관찾는중] = useState(true);
   /** 🔴 고른 사업으로 걸렀더니 0건이라 필터를 풀었는가. 그러면 화면이 말해야 합니다. */
   const [사업필터해제, set사업필터해제] = useState(false);
   const [institution, setInstitution] = useState("");
@@ -5964,11 +5970,10 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
   const [교체확인, set교체확인] = useState<File | null>(null);
 
   /**
-   * 협약기간·사업비. 서버(`/api/profile` 의 f1) → 이 브라우저가 기억한 값 →
-   * 시연 기본값 순서로 채웁니다. 홈·사이드바가 쓰는 `use협약()` 과 같은 규칙이라
-   * 세 화면이 어긋나지 않습니다.
+   * 협약기간·사업비. 사용자가 고친 값 → 고른 사업의 시연값 순서로 채웁니다.
+   * 홈·사이드바가 쓰는 `use협약()` 과 «같은 함수» 를 부르므로 세 화면이 어긋나지 않습니다.
    */
-  const [협약, set협약] = useState<협약정보>(시연협약);
+  const [협약, set협약] = useState<협약정보>(지금협약);
   const [협약초안, set협약초안] = useState(협약);
   const [협약저장중, set협약저장중] = useState(false);
 
@@ -5994,18 +5999,11 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
     const 기관 = 선택기관();
     setProfile((v) => ({ ...v, host: 기관 }));
     setProfileDraft((v) => ({ ...v, host: 기관 }));
-    // 기억해 둔 협약이 있으면 먼저 채우고, 서버가 값을 주면 그것으로 덮습니다.
-    const 기억 = 기억된협약();
-    if (기억 && 값있음(기억)) {
-      set협약(기억);
-      set협약초안(기억);
-    }
-    협약읽기().then((값) => {
-      if (!살아있음 || !값 || !값있음(값)) return; // 목 서버의 빈 값은 무시합니다
-      set협약(값);
-      set협약초안(값);
-      협약기억(값);
-    });
+    // 🔴 협약은 `지금협약()` 하나로 정합니다 — 고친 값이 있으면 그것, 없으면 고른 사업의
+    //    시연값. 서버 읽기는 뺐습니다(서버 표에 2024 가 박혀 있어 화면이 되돌아갑니다).
+    const 현재협약 = 지금협약();
+    set협약(현재협약);
+    set협약초안(현재협약);
     return () => {
       살아있음 = false;
     };
@@ -6256,6 +6254,11 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
                   .catch(() => false)
                   .finally(() => set팀갱신((n) => n + 1));
                 set협약(협약초안);
+                // 🔴 **고친 값을 이 브라우저에 남깁니다** (2026-09-06). 여기가 비어 있어서,
+                //    협약을 고치고 저장해도 새로고침하면 옛 값으로 돌아갔습니다
+                //    — 서버가 준 값이 화면을 덮었기 때문에 저장이 안 되는 것처럼 보였습니다.
+                //    `PUT /api/profile` 은 아직 스텁이라 서버에는 어차피 안 남습니다.
+                협약기억(협약초안);
                 사업저장(profileDraft.program);
                 set협약저장중(true);
                 협약쓰기(협약초안)
