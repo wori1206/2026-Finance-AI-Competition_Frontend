@@ -20,13 +20,13 @@ import { 기관검색, 사업요약, 기관저장, 선택기관, 기본기관명
 import { 첨부보관, 첨부읽기, 첨부쓰기, 파일을첨부로, 크기표기, type 첨부 } from "../lib/attachments";
 import { 지금출처, 출처구독, 출처문구 } from "../lib/data-source";
 import { 인증켜짐, 로그인 as supabase로그인, 가입 as supabase가입, 로그아웃 as supabase로그아웃, 이메일 as supabase이메일, 팀이름 as supabase팀이름, 팀이름쓰기 as supabase팀이름쓰기 } from "../lib/supabase";
-import { 상세를계획으로, 판정제목, 행동문구, 시각표기 } from "../lib/adapt";
+import { 상세를계획으로, 판정제목, 행동문구, 시각표기, L3등록사실 } from "../lib/adapt";
 // 🔴 `데모종료` 는 남깁니다 — 「계정 없이 둘러보기」를 없앴어도 예전에 받아 둔
 //    데모 토큰이 브라우저에 2시간 남아 있을 수 있고, 그게 로그인 조회를 가로챕니다.
 import { 데모종료, 데모중, 이메일기억, 기억된이메일, 이메일잊기, 팀이름기억, 기억된팀이름 } from "../lib/session";
 import { 초안전부지우기 } from "../lib/inquiry-store";
 import { 선택사업, 사업저장, 사업선택지, 목록에맞추기, 기본사업 } from "../lib/program";
-import { 협약쓰기, 원, 날짜표기, 기간표기, 디데이표기, 지금협약, 협약기억, type 협약정보 } from "../lib/profile";
+import { 협약쓰기, 원, 날짜표기, 기간표기, 디데이표기, 지금협약, 협약기억, 기억된협약, 서버협약읽기, type 협약정보 } from "../lib/profile";
 import { SendButton } from "./send-button";
 import "./detail-refinement.css";
 
@@ -295,18 +295,33 @@ function use기관(재조회?: unknown): string {
 /**
  * 협약 기간·사업비. 홈·사이드바·마이페이지가 «같은 값» 을 보게 하는 통로입니다.
  *
- * 🔴 순서: 사용자가 마이페이지에서 고친 값 → 온보딩에서 «고른 사업» 의 시연값.
- *    서버(`GET /api/profile`)는 안 읽습니다 — 서버 표에 2024 날짜가 박혀 있어서
- *    읽으면 D-day 자리가 다시 「종료」가 됩니다. 자세한 사정은 `lib/profile.ts::지금협약`.
+ * 🔴 순서: 사용자가 마이페이지에서 고친 값 → **서버(`GET /api/profile`)** → 온보딩에서
+ *    «고른 사업» 의 시연값.
+ *
+ * 🔴 2026-09-06 에는 서버를 안 읽었습니다 — 그날 운영 `tenant.f_profile` 의 협약기간이
+ *    2024 년(이미 만료)으로 박혀 있어서, 읽으면 D-day 가 「종료」로 되돌아갔습니다.
+ *    담당자가 그 행을 고쳤으므로(2026-09-07) 다시 읽되, **사용자가 직접 고친 값이
+ *    있으면 서버를 안 부릅니다** — 로컬 결정이 서버 값보다 셉니다. 자세한 사정은
+ *    `lib/profile.ts::서버협약읽기`.
  *
  * 🔴 초기값을 «동기» 로 채웁니다. 예전엔 기본값을 그린 다음 효과에서 덮어써서,
- *    홈에 잠깐 다른 금액이 스쳤습니다.
+ *    홈에 잠깐 다른 금액이 스쳤습니다. 서버 값은 늦게 도착하므로 받아지면 한 번 더
+ *    덮어씁니다(짧게 시연값 → 서버값으로 바뀔 수 있습니다 — 없음보다 낫습니다).
  */
 function use협약(재조회?: unknown): 협약정보 {
   const [값, set값] = useState<협약정보>(지금협약);
   useEffect(() => {
+    let 살아있음 = true;
     // 로그인·사업 변경 뒤에는 고른 사업이 달라졌을 수 있으므로 다시 읽습니다.
     set값(지금협약());
+    if (!기억된협약()) {
+      서버협약읽기().then((서버값) => {
+        if (살아있음 && 서버값) set값(서버값);
+      });
+    }
+    return () => {
+      살아있음 = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [재조회]);
   return 값;
@@ -1845,12 +1860,9 @@ function Login({
                     try {
                       const r = await 규정업로드(criteriaBlob, 선택기관());
                       /* 서버는 접수까지만 하고 202 로 돌려줍니다(`routes_l3.py` §5).
-                         조 건수가 오면 파싱이 이미 끝난 것이고, 없으면 진행 중입니다. */
-                      set기준파싱문구(
-                        r?.조_건수
-                          ? `조 ${r.조_건수}건을 읽었습니다.`
-                          : "파싱이 진행 중입니다. 완료되면 판정에 반영됩니다.",
-                      );
+                         조 건수가 오면 파싱이 이미 끝난 것이고, 없으면 진행 중입니다.
+                         🔴 `파싱품질` 도 같이 봅니다 — warn/fail 이면 문구를 갈라 말합니다. */
+                      set기준파싱문구(L3등록사실(r?.조_건수, r?.파싱품질));
                       await new Promise((r) => setTimeout(r, 900));
                       setStep("ready");
                     } catch (e) {
@@ -6184,10 +6196,18 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
     setProfile((v) => ({ ...v, host: 기관 }));
     setProfileDraft((v) => ({ ...v, host: 기관 }));
     // 🔴 협약은 `지금협약()` 하나로 정합니다 — 고친 값이 있으면 그것, 없으면 고른 사업의
-    //    시연값. 서버 읽기는 뺐습니다(서버 표에 2024 가 박혀 있어 화면이 되돌아갑니다).
+    //    시연값. 고친 값이 «없을 때만» 서버(`GET /api/profile`)를 한 번 더 물어
+    //    맞으면 덮어씁니다(`use협약()` 과 같은 순서 — 자세한 사정은 `lib/profile.ts`).
     const 현재협약 = 지금협약();
     set협약(현재협약);
     set협약초안(현재협약);
+    if (!기억된협약()) {
+      서버협약읽기().then((서버값) => {
+        if (!살아있음 || !서버값) return;
+        set협약(서버값);
+        set협약초안(서버값);
+      });
+    }
     return () => {
       살아있음 = false;
     };
@@ -6366,11 +6386,9 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
                   try {
                     const r = await 규정업로드(파일, 선택기관());
                     setInstitutionFile(파일.name);
-                    notify(
-                      r?.조_건수
-                        ? `기준 문서를 등록했습니다 — 조 ${r.조_건수}건을 읽었습니다.`
-                        : "기준 문서를 등록했습니다 — 파싱이 진행 중입니다.",
-                    );
+                    // 🔴 `파싱품질` warn/fail 이면 "등록했습니다" 성공 톤을 그대로 안 씁니다.
+                    const 사실 = L3등록사실(r?.조_건수, r?.파싱품질);
+                    notify(r?.파싱품질 === "fail" ? 사실 : `기준 문서를 등록했습니다 — ${사실}`);
                   } catch (e) {
                     // 🔴 실패를 «성공처럼» 넘기지 않습니다. 조용히 넘기면 사용자는
                     //    바뀌지 않은 기준으로 판정을 받고도 바뀐 줄 압니다.

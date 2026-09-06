@@ -111,7 +111,11 @@ export async function 규정업로드(파일: File, 기관명: string, orgId?: s
   });
   return 응답처리(res) as Promise<{
     doc_id: string; 파일명: string; 확장자: string; 상태: string;
-    조_건수: number; dangling: number; 메시지: string;
+    조_건수: number | null; dangling: Record<string, unknown>[]; 메시지: string | null;
+    // 🔴 서버는 이미 채워서 보냅니다(`server/models.py::L3업로드응답`,
+    //    `routes_l3.py:367`) — 대기/pass/warn/fail. warn·fail 은 「조문은 뽑혔지만
+    //    조·항 구조가 없어 단락으로 나눴다」는 뜻이라 호출부가 문구를 갈라야 합니다.
+    파싱품질: "대기" | "pass" | "warn" | "fail" | null;
   }>;
 }
 
