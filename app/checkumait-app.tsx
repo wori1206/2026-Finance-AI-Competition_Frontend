@@ -12,15 +12,15 @@ import type { 비목후보, 심층질문항목, 답변항목 } from "../lib/serv
 import { API켜짐 } from "../lib/config";
 import { 판정실행 } from "../lib/judge";
 import { 정규화하기 } from "../lib/normalize";
-import { 비목목록, 계획추가, GPU상태, 규정업로드 } from "../lib/api";
+import { 비목목록, 계획추가, GPU상태, 규정업로드, L3현재문서목록 } from "../lib/api";
 import type { GPU상태값 } from "../lib/api";
 import { 체크저장, 일정변경저장, 일정등록 } from "../lib/tasks";
-import { 적용규범 } from "../lib/norms";
-import { 기관검색, 사업요약, 기관저장, 선택기관, 기본기관명, 적용중_기준파일, type 기관 } from "../lib/orgs";
+import { 기본규범, 서버규범읽기, type 적용규범항목 } from "../lib/norms";
+import { 기관검색, 사업요약, 기관저장, 선택기관, 기본기관명, type 기관 } from "../lib/orgs";
 import { 첨부보관, 첨부읽기, 첨부쓰기, 파일을첨부로, 크기표기, type 첨부 } from "../lib/attachments";
 import { 지금출처, 출처구독, 출처문구 } from "../lib/data-source";
 import { 인증켜짐, 로그인 as supabase로그인, 가입 as supabase가입, 로그아웃 as supabase로그아웃, 이메일 as supabase이메일, 팀이름 as supabase팀이름, 팀이름쓰기 as supabase팀이름쓰기 } from "../lib/supabase";
-import { 상세를계획으로, 판정제목, 행동문구, 시각표기, L3등록사실 } from "../lib/adapt";
+import { 상세를계획으로, 판정제목, 행동문구, 시각표기, L3등록사실, L3현재문서요약짓기, type L3현재문서요약 } from "../lib/adapt";
 // 🔴 `데모종료` 는 남깁니다 — 「계정 없이 둘러보기」를 없앴어도 예전에 받아 둔
 //    데모 토큰이 브라우저에 2시간 남아 있을 수 있고, 그게 로그인 조회를 가로챕니다.
 import { 데모종료, 데모중, 이메일기억, 기억된이메일, 이메일잊기, 팀이름기억, 기억된팀이름 } from "../lib/session";
@@ -319,6 +319,58 @@ function use협약(재조회?: unknown): 협약정보 {
         if (살아있음 && 서버값) set값(서버값);
       });
     }
+    return () => {
+      살아있음 = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [재조회]);
+  return 값;
+}
+
+/**
+ * 마이페이지 「공통 관리 기준」 — `사업명` 에 적용되는 규범 목록.
+ *
+ * 🔴 2026-09-07 — `GET /api/programs` 가 `우선순위규칙목록` 을 실어 보내기
+ *    시작했습니다(서버 커밋 `7fcd665`). 첫 그림은 `기본규범()`(동기, 지어내지
+ *    않는 최소 문구)으로 채우고, 서버 응답이 오면 덮어씁니다 — `use협약()` 과
+ *    같은 모양입니다.
+ */
+function use적용규범(사업명: string): 적용규범항목[] {
+  const [값, set값] = useState<적용규범항목[]>(() => 기본규범(사업명));
+  useEffect(() => {
+    let 살아있음 = true;
+    set값(기본규범(사업명));
+    서버규범읽기(사업명).then((서버값) => {
+      if (살아있음 && 서버값) set값(서버값);
+    });
+    return () => {
+      살아있음 = false;
+    };
+  }, [사업명]);
+  return 값;
+}
+
+const 빈기준문서: L3현재문서요약 = { 파일명: null, 안내: null, 실패목록: [] };
+
+/**
+ * 마이페이지 「주관기관 세부 안내」 — 이 기관에 지금 적용 중인 L3 문서.
+ *
+ * 🔴 2026-09-07 — `GET /api/l3/current` 신설(서버 커밋 `7fcd665`). 게스트는 org 가
+ *    없어 서버가 늘 빈 목록을 줍니다 — 그래서 이 훅은 로그인된 마이페이지에서만
+ *    씁니다(온보딩은 `criteriaFile` 로컬 상태만 씁니다, 위 `Login` 컴포넌트 참고).
+ */
+function use현재기준문서(재조회?: unknown): L3현재문서요약 {
+  const [값, set값] = useState<L3현재문서요약>(빈기준문서);
+  useEffect(() => {
+    let 살아있음 = true;
+    if (!API켜짐()) return;
+    L3현재문서목록()
+      .then((r) => {
+        if (살아있음) set값(L3현재문서요약짓기(r?.문서 ?? []));
+      })
+      .catch(() => {
+        /* 실패해도 조용히 넘어갑니다 — 이 문서 이름은 참고용이지 판정을 막지 않습니다 */
+      });
     return () => {
       살아있음 = false;
     };
@@ -1187,12 +1239,12 @@ function Login({
    */
   const [institutionSlug, setInstitutionSlug] = useState("");
   /**
-   * 🔴 판정 엔진에 «이미 적재되어 있는» 기준 파일을 기본값으로 보여줍니다.
-   *    사용자가 다른 파일을 올려도 엔진에 반영할 길이 없어(업로드 → 파싱 → 재적재는
-   *    MVP 범위 밖), 여기서 바꾼 값은 서비스 어디에도 연결하지 않습니다.
-   *    화면은 «지금 실제로 적용 중인 파일» 을 그대로 말합니다.
+   * 🔴 2026-09-07 — 온보딩은 «게스트» 라 `GET /api/l3/current` 를 불러도 항상
+   *    0건입니다(`l3_documents.org_id` NOT NULL — 로그인 전엔 org 자체가 없습니다).
+   *    그래서 예전처럼 "이미 적재된 파일"을 지어내지 않고 빈 값으로 시작합니다 —
+   *    사용자가 파일을 고르기 전까지는 정말로 «아직 없는» 것이 맞습니다.
    */
-  const [criteriaFile, setCriteriaFile] = useState(적용중_기준파일);
+  const [criteriaFile, setCriteriaFile] = useState("");
   /* 🔴 2026-09-07 — 여기가 «파일 이름만» 들고 있었습니다. `File` 이 없으니 업로드할
      방법 자체가 없었고, 화면엔 체크가 떠서 «등록됐다» 로 보였습니다. 실서버
      `tenant.l3_documents` 최신 행이 9월 3일자인 걸로 확인했습니다 — 온보딩에서
@@ -1822,21 +1874,22 @@ function Login({
                 <span>
                   <b>{criteriaFile || "기관 세부기준 파일 선택"}</b>
                   <small>
-                    {criteriaFile === 적용중_기준파일
-                      ? "현재 판정에 적용 중인 기준 문서입니다."
-                      : criteriaFile
-                        ? "업로드할 파일을 선택했습니다."
-                        : "선택사항 · PDF, HWP, HWPX · 최대 30MB"}
+                    {!criteriaBlob
+                      ? "선택사항 · PDF, HWP, HWPX · 최대 30MB"
+                      : "업로드할 파일을 선택했습니다."}
                   </small>
                 </span>
                 <em>{criteriaFile ? "파일 변경" : "파일 찾기"}</em>
               </label>
-              {/* 🔴 바꾼 파일이 판정에 쓰인다고 오해하지 않게 «지금 적용 중인 것» 을 밝힙니다.
-                  올린 문서를 엔진에 넣으려면 파싱·재적재가 필요한데 MVP 범위 밖입니다. */}
+              {/* 🔴 바꾼 파일이 판정에 쓰인다고 오해하지 않게 밝힙니다. 올린 문서를
+                  엔진에 넣으려면 파싱·재적재가 필요한데 MVP 범위 밖입니다.
+                  (2026-09-07 — «지금 적용 중인 파일»을 여기서 지어내지 않습니다.
+                  게스트 상태라 서버도 아직 그 답을 모릅니다 — 로그인 후 마이페이지가
+                  실제 값을 보여줍니다.) */}
               <p className="onboarding-notice">
-                {criteriaFile === 적용중_기준파일
-                  ? "등록된 문서는 기관별 금액 기준, 사전승인·심의 조건, 필요 증빙 판단에 사용됩니다."
-                  : "새로 올린 문서는 기관 검토 후 판정 기준에 반영됩니다. 그때까지는 현재 등록된 기준 문서가 계속 적용됩니다."}
+                {!criteriaBlob
+                  ? "등록한 문서는 기관별 금액 기준, 사전승인·심의 조건, 필요 증빙 판단에 사용됩니다."
+                  : "새로 올린 문서는 기관 검토 후 판정 기준에 반영됩니다. 그때까지는 기존에 등록된 기준 문서가 계속 적용됩니다."}
               </p>
               <div className="onboarding-actions">
                 <button
@@ -1938,9 +1991,12 @@ function Login({
                 <Icon name="check" size={20} />
                 <span>
                   <b>{program}</b>
-                  {/* 🔴 사용자가 파일을 바꿔도 판정에 적용되는 것은 기존 문서입니다. */}
+                  {/* 🔴 사용자가 파일을 바꿔도 판정에 적용되는 것은 기존 문서입니다.
+                      2026-09-07 — 게스트 상태에서 「지금 적용 중인 파일」을 지어내지
+                      않습니다(고른 적 없으면 안 보여줍니다). */}
                   <small>
-                    {institution} · {적용중_기준파일}
+                    {institution}
+                    {criteriaFile ? ` · ${criteriaFile}` : ""}
                   </small>
                 </span>
               </div>
@@ -6161,8 +6217,14 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
     duplicateBenefit: "X",
   });
   const [profileDraft, setProfileDraft] = useState(profile);
-  /** 주관기관 세부 안내 — 시연용 표시 값입니다(판정 엔진과는 연결되지 않습니다). */
-  const [institutionFile, setInstitutionFile] = useState(적용중_기준파일);
+  /**
+   * 「지금 적용 중」인 기관 세부기준 문서 — `GET /api/l3/current` (2026-09-07,
+   * `lib/orgs.ts:107 적용중_기준파일` 하드코딩 대체용, 서버 커밋 `7fcd665`).
+   * fail 문서는 숨기지 않고 `기준문서.실패목록`으로 따로 받아 «구분해서» 보여줍니다.
+   */
+  const 기준문서 = use현재기준문서();
+  /** 방금 이 화면에서 새로 등록한 파일 — 서버 재조회 전에도 먼저 보여줍니다. */
+  const [방금등록, set방금등록] = useState<{ 파일명: string; 안내: string | null } | null>(null);
   const [교체확인, set교체확인] = useState<File | null>(null);
 
   /**
@@ -6212,6 +6274,8 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
       살아있음 = false;
     };
   }, []);
+
+  const 규범목록 = use적용규범(profile.program);
 
   return (
     <div className="page my-page">
@@ -6286,9 +6350,10 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
         </header>
         {/* 🔴 사업마다 적용 규범이 «다릅니다». 예전에는 「창업중심대학사업 운영관리기준」이
             박혀 있어서, 다른 사업을 골라도 화면은 창업중심대학 기준을 보고 있는 것처럼
-            읽혔습니다. 초격차·모두의창업은 상위 규범이 통합관리지침이 아니라
-            운영요령까지 포함이라 줄 수도 달라집니다. (lib/norms.ts 참조) */}
-        {적용규범(profile.program).map((규범) => (
+            읽혔습니다. 2026-09-07 부터 `GET /api/programs` 가 실제 우선순위규칙을 주므로
+            (`lib/norms.ts`), 초격차·모두의창업처럼 상위 규범이 하나 더 있는 사업도
+            서버가 준 줄 수 그대로 갈립니다. */}
+        {규범목록.map((규범) => (
           <article key={규범.제목}>
             <span className="auto-badge">자동 반영</span>
             <div>
@@ -6331,10 +6396,21 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
         <article>
           <span className="institution-badge">사용자 등록</span>
           <div>
-            <b>{institutionFile}</b>
-            <small>2026.03.02 등록</small>
+            <b>{방금등록?.파일명 ?? 기준문서.파일명 ?? "등록된 기준 문서가 없습니다"}</b>
+            <small>{방금등록?.안내 ?? 기준문서.안내 ?? "2026.03.02 등록"}</small>
           </div>
         </article>
+        {/* 🔴 파싱에 실패한(fail) 문서는 «숨기지 않습니다» — 숨기면 사용자가 올린 파일이
+            왜 판정에 안 먹는지 영영 모릅니다(ai-33 지시, 2026-09-07). */}
+        {기준문서.실패목록.map((문서) => (
+          <article key={문서.doc_id} className="institution-file-failed">
+            <span className="institution-badge warn">읽지 못함</span>
+            <div>
+              <b>{문서.원본파일명}</b>
+              <small>판정에 반영되지 않습니다 — 조·항을 읽지 못했습니다.</small>
+            </div>
+          </article>
+        ))}
       </section>
       <div className="rule-caution">
         <Icon name="alert" />
@@ -6365,7 +6441,7 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
               </div>
               <div>
                 <dt>현재 문서</dt>
-                <dd>{institutionFile}</dd>
+                <dd>{방금등록?.파일명 ?? 기준문서.파일명 ?? "등록된 기준 문서가 없습니다"}</dd>
               </div>
             </dl>
             <p className="file-replace-notice">
@@ -6385,9 +6461,13 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
                   set교체확인(null);
                   try {
                     const r = await 규정업로드(파일, 선택기관());
-                    setInstitutionFile(파일.name);
                     // 🔴 `파싱품질` warn/fail 이면 "등록했습니다" 성공 톤을 그대로 안 씁니다.
+                    //    fail 은 「지금 적용 중」자리를 이 파일로 안 바꿉니다 — 실제로
+                    //    판정에 반영되는 게 아니므로 바뀐 척하면 안 됩니다.
                     const 사실 = L3등록사실(r?.조_건수, r?.파싱품질);
+                    if (r?.파싱품질 !== "fail") {
+                      set방금등록({ 파일명: 파일.name, 안내: r?.파싱품질 === "warn" ? 사실 : null });
+                    }
                     notify(r?.파싱품질 === "fail" ? 사실 : `기준 문서를 등록했습니다 — ${사실}`);
                   } catch (e) {
                     // 🔴 실패를 «성공처럼» 넘기지 않습니다. 조용히 넘기면 사용자는

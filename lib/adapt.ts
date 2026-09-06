@@ -4,7 +4,7 @@
 // 🔴 화면 코드(checkumait-app.tsx)를 안 고치려고 여기서 흡수합니다.
 
 import type { ExpensePlan, PlanStatus, ScheduleItem, ChecklistItem, RuleItem } from "./types";
-import type { 계획요약, 계획상세, 할일, 판정값 } from "./server-types";
+import type { 계획요약, 계획상세, 할일, 판정값, L3현재문서 } from "./server-types";
 import { 초안읽기 } from "./inquiry-store";
 
 /**
@@ -121,6 +121,34 @@ export function L3등록사실(
     return `${조_건수}개 항목을 읽었습니다. 이 문서는 조·항 구조가 없어 항목 단위로 나눴습니다.`;
   }
   return `조 ${조_건수}건을 읽었습니다.`;
+}
+
+/** 마이페이지 「주관기관 세부 안내」가 그릴 요약 — `L3현재문서요약짓기()` 결과. */
+export type L3현재문서요약 = {
+  /** 대표 파일명 — pass/warn/대기 중 최신 것. 실려 온 게 하나도 없으면 `null`. */
+  파일명: string | null;
+  /** 대표 파일이 warn 이면 그 사실 문구(`L3등록사실()` 과 같은 톤). 아니면 `null`. */
+  안내: string | null;
+  /** `파싱품질='fail'` 인 문서들 — 판정에 안 쓰이지만 «숨기지 않고» 따로 보여줄 목록. */
+  실패목록: L3현재문서[];
+};
+
+/**
+ * `GET /api/l3/current` 응답(여러 건 가능) → 화면 요약 한 개.
+ *
+ * 🔴 2026-09-07 — 데모 org 는 문서 3건 중 1건이 `파싱품질='fail'` 입니다(ai-33 실측).
+ *    「적용 중」자리에 fail 문서까지 나란히 보여주면 사용자가 "반영되고 있다"고
+ *    오해합니다. 그렇다고 숨기면 왜 안 먹는지 영영 모릅니다 — 그래서 대표(pass/warn/
+ *    대기) 하나만 「적용 중」에 놓고, fail 은 `실패목록`으로 따로 갈라 둘 다 보여줍니다.
+ */
+export function L3현재문서요약짓기(목록: L3현재문서[]): L3현재문서요약 {
+  const 실패목록 = 목록.filter((d) => d.파싱품질 === "fail");
+  const 대표 = 목록.find((d) => d.파싱품질 !== "fail") ?? null;
+  return {
+    파일명: 대표?.원본파일명 ?? null,
+    안내: 대표 && 대표.파싱품질 === "warn" ? L3등록사실(대표.조_건수, 대표.파싱품질) : null,
+    실패목록,
+  };
 }
 
 /** 내부 doc_id → 사람이 읽는 문서명.

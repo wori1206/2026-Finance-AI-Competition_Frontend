@@ -8,13 +8,32 @@ import type {
   계획상세 as 계획상세형,   // 아래 같은 이름의 «함수» 와 겹쳐서 별칭으로 받습니다
   할일,
   할일목록응답,
+  사업정보,
+  L3현재문서,
 } from "./server-types";
 
 /* ── 사업 · 비목 ─────────────────────────────── */
 
-/** 화면 2 온보딩① 사업 선택 */
+/**
+ * 화면 2 온보딩① 사업 선택 · 마이페이지 「공통 관리 기준」.
+ * 🔴 2026-09-07 — `사업정보.우선순위규칙목록` 이 추가됐습니다(서버 커밋 `7fcd665`,
+ *    `corpus.precedence_rules`, verified 행만). `lib/norms.ts` 가 이걸 읽습니다.
+ */
 export const 사업목록 = () =>
-  GET("/api/programs") as Promise<{ 사업: { 사업명: string; 별칭: string[] }[] }>;
+  GET("/api/programs") as Promise<{ 사업: 사업정보[]; 비고?: string | null }>;
+
+/**
+ * 이 기관(주관기관)에 «지금 적용 중»(status='active')인 L3 문서 목록.
+ * 🔴 2026-09-07 신설(`GET /api/l3/current`) — `lib/orgs.ts:107 적용중_기준파일`
+ *    하드코딩 대체용.
+ *
+ * 🔴 `org_id` 를 인자로 «안 받습니다** — 여기서 프론트가 알 수 있는 손잡이는
+ *    `slug`(HMAC, 역산 불가) 뿐이고 `org_id` 는 UUID 여야 하니 slug 를 실으면
+ *    422 로 거부됩니다(`server/auth.py::_uuid인가`). org 는 로그인 토큰에서
+ *    미들웨어가 정합니다(`server/auth.py` §org_id 주입) — 게스트면 서버가 빈
+ *    목록을 줍니다.
+ */
+export const L3현재문서목록 = () => GET("/api/l3/current") as Promise<{ 문서: L3현재문서[] }>;
 
 /**
  * 화면 9 비목 확인.

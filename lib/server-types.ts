@@ -5,6 +5,37 @@
 
 export type 판정값 = "가능" | "조건부" | "불가" | "판단불가" | null;
 
+/**
+ * `corpus.precedence_rules` 한 행 — L1/L2/L3 중 어느 층이 이기는지.
+ * `server/models.py::우선순위규칙` 과 1:1 대응 (2026-09-07, 서버 커밋 `7fcd665`).
+ */
+export type 우선순위규칙 = {
+  우선계층: string;
+  열위계층: string;
+  범위?: string | null;
+  우선규범?: string | null;
+  해석?: string | null;
+};
+
+/** `GET /api/programs` 항목 한 줄. `server/models.py::사업정보` 와 1:1 대응. */
+export type 사업정보 = {
+  사업명: string;
+  별칭: string[];
+  비목계통: string | null;
+  트랙범위: string | null;
+  우선순위규칙목록: 우선순위규칙[];
+};
+
+/** `GET /api/l3/current` 한 건. `server/models.py::L3현재문서` 와 1:1 대응. */
+export type L3현재문서 = {
+  doc_id: string;
+  원본파일명: string;
+  version: string | null;
+  시행일: string | null;
+  파싱품질: "대기" | "pass" | "warn" | "fail" | null;
+  조_건수: number;
+};
+
 /** GET /api/plans 의 항목 한 줄 */
 export type 계획요약 = {
   plan_id: number;
