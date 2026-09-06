@@ -1177,6 +1177,14 @@ function Login({
    *    화면은 «지금 실제로 적용 중인 파일» 을 그대로 말합니다.
    */
   const [criteriaFile, setCriteriaFile] = useState(적용중_기준파일);
+  /* 🔴 2026-09-07 — 여기가 «파일 이름만» 들고 있었습니다. `File` 이 없으니 업로드할
+     방법 자체가 없었고, 화면엔 체크가 떠서 «등록됐다» 로 보였습니다. 실서버
+     `tenant.l3_documents` 최신 행이 9월 3일자인 걸로 확인했습니다 — 온보딩에서
+     올린 문서는 «한 번도» 서버에 간 적이 없습니다.
+     마이페이지 「교체하기」에서 고친 것과 «같은 결함이 다른 자리에» 하나 더 있었습니다. */
+  const [criteriaBlob, setCriteriaBlob] = useState<File | null>(null);
+  const [기준파싱중, set기준파싱중] = useState(false);
+  const [기준파싱문구, set기준파싱문구] = useState("");
   // 🔴 Supabase 에 실제로 만들어 둔 계정과 «똑같아야» 합니다.
   //    (Supabase → Authentication → Users 에서 보이는 이메일)
   //    비밀번호는 코드에 넣지 않습니다. 시연 때 직접 입력하세요.
@@ -1785,9 +1793,11 @@ function Login({
                      고를 수 있게 두면 반드시 실패하는 선택지를 주는 셈입니다.
                      `routes_l3.py` 허용_확장자 = {pdf, hwpx, hwp} */
                   accept=".pdf,.hwp,.hwpx"
-                  onChange={(event) =>
-                    setCriteriaFile(event.target.files?.[0]?.name || "")
-                  }
+                  onChange={(event) => {
+                    const f = event.target.files?.[0] ?? null;
+                    setCriteriaBlob(f);
+                    setCriteriaFile(f?.name || "");
+                  }}
                 />
                 <span className="criteria-icon">
                   <Icon name={criteriaFile ? "check" : "plus"} size={19} />
@@ -1820,12 +1830,82 @@ function Login({
                 </button>
                 <button
                   className="primary large"
-                  onClick={() => setStep("ready")}
+                  disabled={기준파싱중}
+                  onClick={async () => {
+                    /* 🔴 파일을 «안 골랐으면» 예전과 똑같이 그냥 넘어갑니다 —
+                       기준 문서 등록은 선택사항입니다(위 안내 문구). */
+                    if (!criteriaBlob) {
+                      setStep("ready");
+                      return;
+                    }
+                    set기준파싱중(true);
+                    set기준파싱문구("");
+                    try {
+                      const r = await 규정업로드(criteriaBlob, 선택기관());
+                      /* 서버는 접수까지만 하고 202 로 돌려줍니다(`routes_l3.py` §5).
+                         조 건수가 오면 파싱이 이미 끝난 것이고, 없으면 진행 중입니다. */
+                      set기준파싱문구(
+                        r?.조_건수
+                          ? `조 ${r.조_건수}건을 읽었습니다.`
+                          : "파싱이 진행 중입니다. 완료되면 판정에 반영됩니다.",
+                      );
+                      await new Promise((r) => setTimeout(r, 900));
+                      setStep("ready");
+                    } catch (e) {
+                      set기준파싱문구(
+                        `등록에 실패했습니다${e instanceof Error ? ` — ${e.message}` : ""}`,
+                      );
+                      await new Promise((r) => setTimeout(r, 1800));
+                      /* 🔴 실패해도 온보딩을 막지 않습니다 — 기준 문서는 선택사항이고,
+                         여기서 가두면 서비스에 들어가지도 못합니다. */
+                      setStep("ready");
+                    } finally {
+                      set기준파싱중(false);
+                    }
+                  }}
                 >
-                  설정 완료
+                  {기준파싱중 ? "등록 중…" : "설정 완료"}
                 </button>
               </div>
             </>
+          )}
+          {기준파싱중 && (
+            /* 🔴 판정 모달(`AiCheckingOverlay`)과 «같은 클래스» 를 씁니다 —
+               프로토타입 디자인이 이미 그 모양이라, 새 스타일을 만들면 한 서비스에
+               로딩 모양이 두 가지가 됩니다. */
+            <div className="ai-checking-backdrop">
+              <section
+                className="ai-checking-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="l3-parsing-title"
+              >
+                <span className="ai-checking-visual" aria-hidden="true">
+                  <span className="ai-checking-spinner" />
+                  <Icon name="sparkSolid" size={20} />
+                  <i className="ai-check-spark ai-check-spark-one">
+                    <Icon name="sparkSolid" size={9} />
+                  </i>
+                  <i className="ai-check-spark ai-check-spark-two">
+                    <Icon name="sparkSolid" size={7} />
+                  </i>
+                </span>
+                <h2 id="l3-parsing-title">기준 문서를 읽고 있어요</h2>
+                <p>
+                  {기준파싱문구 ||
+                    "조·항을 나누고 금액 기준과 사전승인 조건을 찾고 있습니다."}
+                </p>
+                <div className="ai-checking-steps">
+                  {["문서 업로드", "조·항 분리", "기준 반영"].map((label, i) => (
+                    <span className={기준파싱문구 || i === 0 ? "active" : ""} key={label}>
+                      <i />
+                      <b>{label}</b>
+                    </span>
+                  ))}
+                </div>
+                <small>{criteriaFile}</small>
+              </section>
+            </div>
           )}
           {step === "ready" && (
             <>
