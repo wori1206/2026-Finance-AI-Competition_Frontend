@@ -2,6 +2,7 @@
 
 import { 주소, 인증오류 } from "./http";
 import { 현재토큰 as 토큰 } from "./session";   // 🔴 Supabase 토큰 + 데모 토큰을 한 곳에서 고릅니다
+import type { 답변항목 } from "./server-types";
 
 /**
  * SSE over POST.
@@ -107,6 +108,8 @@ export type 판정입력 = {
   사업명?: string | null;
   plan_id?: number | null;
   f5?: { 친족거래: boolean; 전직임직원업체: boolean };
+  /** 심층질문 답 — 서버 `models.py::판정요청.답변` 그대로. 비어도 종전과 같은 경로를 탄다. */
+  답변?: 답변항목[];
 };
 
 /**

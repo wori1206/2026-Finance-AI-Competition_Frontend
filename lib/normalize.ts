@@ -9,7 +9,7 @@
 //    → 그래서 «후보가 비어도 정상» 으로 다뤄야 합니다.
 
 import { 정규화SSE } from "./sse";
-import type { 비목후보 } from "./server-types";
+import type { 비목후보, 심층질문항목 } from "./server-types";
 
 export type 정규화입력값 = {
   품목: string;
@@ -25,7 +25,47 @@ export type 정규화출력 = {
   비목후보: 비목후보[];
   정규화: Record<string, unknown>;
   질문원문: string;
+  심층질문: 심층질문항목[];
 };
+
+/**
+ * 서버가 준 심층질문 배열을 화면이 믿고 쓸 수 있는 모양으로 다듬습니다.
+ *
+ * 🔴 「있으면 쓰고 없으면 안 그린다」— 여기서도 같은 원칙입니다. 모양이 안 맞는
+ *    항목(code·질문문 없음)은 조용히 버립니다. 지어낸 질문을 화면에 올리지 않습니다.
+ */
+function 심층질문정리(값: unknown): 심층질문항목[] {
+  if (!Array.isArray(값)) return [];
+  return 값.flatMap((항목): 심층질문항목[] => {
+    if (typeof 항목 !== "object" || 항목 === null) return [];
+    const o = 항목 as Record<string, unknown>;
+    const code = typeof o["code"] === "string" ? o["code"] : "";
+    const 질문문 = typeof o["질문문"] === "string" ? o["질문문"] : "";
+    if (!code || !질문문) return [];
+    const 유형목록 = ["예아니오", "선택", "숫자", "텍스트"] as const;
+    const 유형 = 유형목록.includes(o["유형"] as (typeof 유형목록)[number])
+      ? (o["유형"] as (typeof 유형목록)[number])
+      : "예아니오";
+    const 선택지 = Array.isArray(o["선택지"])
+      ? (o["선택지"] as unknown[]).flatMap((s) => {
+          if (typeof s !== "object" || s === null) return [];
+          const so = s as Record<string, unknown>;
+          const sv = typeof so["값"] === "string" ? so["값"] : "";
+          const sl = typeof so["라벨"] === "string" ? so["라벨"] : "";
+          return sv && sl ? [{ 값: sv, 라벨: sl }] : [];
+        })
+      : [];
+    const 근거원본 = (o["근거"] ?? {}) as Record<string, unknown>;
+    const 근거 = {
+      doc_id: typeof 근거원본["doc_id"] === "string" ? 근거원본["doc_id"] : "",
+      조번호: typeof 근거원본["조번호"] === "string" ? 근거원본["조번호"] : "",
+    };
+    const 필요F필드 = Array.isArray(o["필요F필드"])
+      ? (o["필요F필드"] as unknown[]).filter((x): x is string => typeof x === "string")
+      : [];
+    return [{ code, 질문문, 유형, 선택지, 근거, 필요F필드 }];
+  });
+}
 
 /**
  * 서버가 준 비목 후보 배열을 화면이 믿고 쓸 수 있는 모양으로 다듬습니다.
@@ -75,5 +115,6 @@ export async function 정규화하기(
     비목후보: 후보정리(결과["비목후보"]),
     정규화: 결과,
     질문원문: typeof 결과["질문원문"] === "string" ? (결과["질문원문"] as string) : "",
+    심층질문: 심층질문정리(결과["심층질문"]),
   };
 }

@@ -10,11 +10,11 @@
 
 import { 계획상세 } from "./api";
 import { 판정SSE } from "./sse";
-import { 상세를계획으로, 판정을상태로, 판정설명, 시각표기 } from "./adapt";
+import { 상세를계획으로, 판정을상태로, 판정설명, 시각표기, 인용정리 } from "./adapt";
 import { 초안보관 } from "./inquiry-store";
 import type { ChecklistItem, RuleItem } from "./types";
 import type { ExpensePlan } from "./types";
-import type { 판정값 } from "./server-types";
+import type { 판정값, 답변항목 } from "./server-types";
 
 export type 목판정 = "가능" | "조건부" | "불가" | "판단불가";
 
@@ -57,7 +57,13 @@ export type 대체입력 = {
 export async function 판정실행(
   planId: string | number,
   중계: 판정중계,
-  옵션?: { 목?: 목판정; signal?: AbortSignal; 대체입력?: 대체입력 },
+  옵션?: {
+    목?: 목판정;
+    signal?: AbortSignal;
+    대체입력?: 대체입력;
+    /** F1(2026-09-07) — 심층질문 답. 「확인 필요」는 호출부에서 값 "미상" 으로 채워 넣는다. */
+    답변?: 답변항목[];
+  },
 ): Promise<판정결과> {
   // 🔴 방금 만든 계획은 상세 조회가 «서버 버그로» 500 이 납니다
   //    (routes_plans.py:139 — `계획상세() got multiple values for keyword argument '정규화'`).
@@ -121,6 +127,9 @@ export async function 판정실행(
     정규화: 정규화 as Record<string, unknown>,
     확정비목: 이전.확정비목,
     사업명: 이전.사업명,
+    // 🔴 비어 있어도 종전과 바이트 단위로 같은 경로다(`models.py::판정요청.답변` 기본값 []
+    //    → `_사용자F값_조립` 이 None 을 돌려준다) — 안 보내던 필드를 뒤늦게 실어도 안전하다.
+    답변: 옵션?.답변 ?? [],
   };
 
   const 흐름 = (이름: string, 값: unknown) => {
@@ -149,14 +158,12 @@ export async function 판정실행(
           });
           break;
         case "인용":
-          인용 = (Array.isArray(값) ? 값 : []).map((c) => {
-            const o = (c ?? {}) as Record<string, unknown>;
-            return {
-              title: [문자(o["조번호"]), 문자(o["조제목"])].filter(Boolean).join(" ") || "근거 조항",
-              source: 문자(o["doc_id"]),
-              description: 문자(o["원문"]),
-            };
-          });
+          // 🔴 2026-09-07(레인 F2) — 여기서 직접 매핑하던 걸 `adapt.ts` 의 `인용정리()`
+          //    로 모았다. doc_id 를 안 거치고 raw 로 찍던 것(문서명보기 누락)과, 같은
+          //    조가 항호만 다른 여러 건으로 와서 조 전체 원문이 중복 노출되던 것(항
+          //    단위로 안 자르던 것) 둘 다 이 파일만의 매핑이라 `adapt.ts` 쪽 수정이
+          //    안 먹었다 — 같은 서버 응답을 두 파일이 따로 읽던 문제가 재발한 것.
+          인용 = 인용정리(Array.isArray(값) ? (값 as Record<string, unknown>[]) : []);
           break;
         case "문의초안":
           문의초안 = typeof 값 === "string" ? 값 : 문자(v["문의초안"]);

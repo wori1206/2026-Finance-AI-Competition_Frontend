@@ -95,6 +95,28 @@ export type 할일목록응답 = { 건수: number; 항목: 할일[] };
  */
 export type 비목후보 = { 비목: string; 신뢰도: number; 설명?: string | null };
 
+/**
+ * 심층질문 — `corpus.check_items` 기반, LLM 이 만들지 않는다(A-3, 2026-09-06 레인 Y).
+ * `models.py::심층질문항목` 과 1:1 대응. `code` 로 `/api/judge` 의 `답변` 에 되돌려 보낸다.
+ */
+export type 심층질문선택지 = { 값: string; 라벨: string };
+
+export type 심층질문근거 = { doc_id: string; 조번호: string };
+
+export type 심층질문항목 = {
+  code: string;
+  질문문: string;
+  유형: "예아니오" | "선택" | "숫자" | "텍스트";
+  /** `유형` 이 "선택" 일 때만 채워진다. */
+  선택지: 심층질문선택지[];
+  /** 왜 묻는지 — 화면에 조번호만 작게 보여준다. doc_id 원문은 노출하지 않는다. */
+  근거: 심층질문근거;
+  필요F필드: string[];
+};
+
+/** `/api/judge` 요청의 `답변[]` 한 칸 — `models.py::답변항목` 과 1:1 대응. */
+export type 답변항목 = { code: string; 값: unknown };
+
 export type 정규화결과 = {
   품목: string | null;
   금액: number | null;
@@ -107,4 +129,5 @@ export type 정규화결과 = {
   신청일: string | null;
   비교견적: string | null;
   질문원문: string | null;
+  심층질문: 심층질문항목[];
 };

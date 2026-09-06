@@ -8,7 +8,7 @@ import type {
   PlanStatus,
   ScheduleItem,
 } from "../lib/types";
-import type { 비목후보 } from "../lib/server-types";
+import type { 비목후보, 심층질문항목, 답변항목 } from "../lib/server-types";
 import { API켜짐 } from "../lib/config";
 import { 판정실행 } from "../lib/judge";
 import { 정규화하기 } from "../lib/normalize";
@@ -2138,6 +2138,7 @@ function AiCheckingOverlay({
   count,
   planId,
   대체입력,
+  답변,
   제목,
   onComplete,
   onFail,
@@ -2159,6 +2160,8 @@ function AiCheckingOverlay({
     용도?: string | null;
     금액?: number | null;
   };
+  /** F1(2026-09-07) — 심층질문 답. 안 주면 빈 배열과 같아 예전과 같은 경로를 탑니다. */
+  답변?: 답변항목[];
   onComplete: (판정된계획?: ExpensePlan) => void;
   onFail?: (메시지: string) => void;
 }) {
@@ -2209,7 +2212,7 @@ function AiCheckingOverlay({
             setStage((s) => Math.min(2, s + 1));
           },
         },
-        { 대체입력 },
+        { 대체입력, 답변 },
       );
     }
 
@@ -2983,6 +2986,10 @@ function NewPlanPage({
   //    «여러 개» 줄 수 있고 그때는 배지도 여러 개 붙어야 하므로 배열로 들고 갑니다.
   const [서버후보, set서버후보] = useState<비목후보[]>([]);
   const [서버정규화, set서버정규화] = useState<Record<string, unknown> | null>(null);
+  // 🔴 F1(2026-09-07) — check_items 기반 심층질문(A-3). 비면 예전 하드코딩 질문표로 폴백합니다.
+  const [서버심층질문, set서버심층질문] = useState<심층질문항목[]>([]);
+  // code → 답. 「확인 필요」도 값 그대로 담아 뒀다가 제출 직전에 "미상" 으로 바꿔 보냅니다.
+  const [심층답변, set심층답변] = useState<Record<string, string>>({});
   const [새planId, set새planId] = useState<string | null>(null);
   const [저장중, set저장중] = useState(false);
   const [연동오류, set연동오류] = useState<string | null>(null);
@@ -3074,6 +3081,7 @@ function NewPlanPage({
         set서버정규화(r.정규화);
         // 🔴 후보가 «비어 있는 것도 정상» 입니다 (실서버 폼 경로). 그때는 사용자가 고릅니다.
         set서버후보(r.비목후보);
+        set서버심층질문(r.심층질문);
         // 자동 선택은 가장 확신하는 «하나» 만. 배지는 후보 전부에 붙지만 커서는 하나다.
         const 첫후보 = r.비목후보[0]?.비목;
         if (첫후보) setCategory(첫후보);
@@ -3391,13 +3399,58 @@ function NewPlanPage({
               </span>
             </div>
             <div className="question-list">
-              {questions.map((question, index) => (
-                <Question
-                  key={`${category}-${feeSubtype}-${index}`}
-                  label={question.label}
-                  options={question.options}
-                />
-              ))}
+              {/* 🔴 F1(2026-09-07) — 서버가 준 심층질문(check_items 기반, 근거 조항 딸림)이
+                  있으면 그걸 그립니다. 서버가 비면(폼 경로 초기·API 꺼짐 등) 예전 하드코딩
+                  질문표로 폴백합니다 — 「비어도 화면이 안 죽는다」 원칙, `정규화하기`/`normalize.ts` 와 같습니다. */}
+              {서버심층질문.length > 0
+                ? 서버심층질문.map((q) =>
+                    q.유형 === "숫자" || q.유형 === "텍스트" ? (
+                      <div className="question" key={q.code}>
+                        <b>
+                          {q.질문문}
+                          {q.근거.조번호 && (
+                            <small className="question-basis"> · {q.근거.조번호}</small>
+                          )}
+                        </b>
+                        <div>
+                          <input
+                            className="question-input"
+                            type={q.유형 === "숫자" ? "number" : "text"}
+                            value={심층답변[q.code] === "확인 필요" ? "" : (심층답변[q.code] ?? "")}
+                            onChange={(e) =>
+                              set심층답변((prev) => ({ ...prev, [q.code]: e.target.value }))
+                            }
+                            placeholder="답을 입력하세요"
+                          />
+                          <button
+                            type="button"
+                            className={심층답변[q.code] === "확인 필요" ? "active" : ""}
+                            onClick={() =>
+                              set심층답변((prev) => ({ ...prev, [q.code]: "확인 필요" }))
+                            }
+                          >
+                            확인 필요
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <Question
+                        key={q.code}
+                        label={q.질문문}
+                        options={심층질문옵션(q)}
+                        value={심층답변[q.code]}
+                        onChange={(v) => set심층답변((prev) => ({ ...prev, [q.code]: v }))}
+                        근거조번호={q.근거.조번호 || undefined}
+                      />
+                    ),
+                  )
+                : questions.map((question, index) => (
+                    <Question
+                      key={`${category}-${feeSubtype}-${index}`}
+                      label={question.label}
+                      options={question.options}
+                    />
+                  ))}
             </div>
             <div className="info-note">
               <Icon name="spark" />
@@ -3452,6 +3505,11 @@ function NewPlanPage({
             용도: purpose,
             금액: Number(amount.replace(/,/g, "")) || 0,
           }}
+          // 🔴 F1(2026-09-07) — 답 없는(undefined) 문항은 서버로 안 보냅니다.
+          //    빈 문자열도 "답 안 함" 취급 — 못 고른 걸 "미상"으로 밀어붙이지 않습니다.
+          답변={서버심층질문
+            .filter((q) => 심층답변[q.code])
+            .map((q) => ({ code: q.code, 값: 심층질문값(q, 심층답변[q.code]) }))}
           onFail={(메시지) => {
             setChecking(false);
             set연동오류(메시지);
@@ -3487,20 +3545,64 @@ function NewPlanPage({
   );
 }
 
+/**
+ * 서버 심층질문 하나를 버튼 목록(라벨)으로 바꿉니다.
+ * 🔴 "숫자"·"텍스트" 는 버튼이 아니라 입력창으로 따로 그립니다 — 여기선 빈 배열.
+ */
+function 심층질문옵션(q: 심층질문항목): string[] {
+  if (q.유형 === "선택") return [...q.선택지.map((s) => s.라벨), "확인 필요"];
+  if (q.유형 === "예아니오") return ["예", "아니오", "확인 필요"];
+  return [];
+}
+
+/**
+ * 버튼에 찍힌 «라벨» 을 서버로 보낼 «값」 으로 바꿉니다.
+ * 🔴 "확인 필요" 는 무조건 "미상" 입니다 — F1 지시 그대로. `유형` 과 무관합니다.
+ * 🔴 "선택" 은 라벨(사람이 읽는 말)과 값(서버 코드)이 다를 수 있어 선택지에서 되찾습니다
+ *    — 못 찾으면(있을 수 없지만) 라벨을 그대로 보내 완전히 유실되진 않게 합니다.
+ */
+function 심층질문값(q: 심층질문항목, 라벨: string): unknown {
+  if (라벨 === "확인 필요") return "미상";
+  if (q.유형 === "선택") return q.선택지.find((s) => s.라벨 === 라벨)?.값 ?? 라벨;
+  return 라벨;
+}
+
+/**
+ * 🔴 F1(2026-09-07) — 예전엔 답을 `useState` 로만 들고 있어 부모가 못 봤습니다.
+ *    「확인 필요」를 눌러도 어디로도 안 갔습니다. `value`/`onChange` 를 주면 부모
+ *    state 를 그대로 보여주는 «제어» 컴포넌트가 되고, 안 주면 예전 그대로(내부에만
+ *    담아두는) 동작이라 다른 호출부(재점검 모달)를 안 건드려도 됩니다.
+ */
 function Question({
   label,
   options = ["예", "아니오", "확인 필요"],
-}: CheckQuestion) {
-  const [value, setValue] = useState("");
+  value,
+  onChange,
+  근거조번호,
+}: CheckQuestion & {
+  value?: string;
+  onChange?: (value: string) => void;
+  /** 왜 묻는지 — 근거 조번호만 작게 보여줍니다. doc_id 원문은 넘기지 않습니다. */
+  근거조번호?: string;
+}) {
+  const [내부값, set내부값] = useState("");
+  const 제어됨 = value !== undefined;
+  const 현재값 = 제어됨 ? value : 내부값;
   return (
     <div className="question">
-      <b>{label}</b>
+      <b>
+        {label}
+        {근거조번호 && <small className="question-basis"> · {근거조번호}</small>}
+      </b>
       <div>
         {options.map((option) => (
           <button
             key={option}
-            className={value === option ? "active" : ""}
-            onClick={() => setValue(option)}
+            className={현재값 === option ? "active" : ""}
+            onClick={() => {
+              if (!제어됨) set내부값(option);
+              onChange?.(option);
+            }}
           >
             {option}
           </button>
