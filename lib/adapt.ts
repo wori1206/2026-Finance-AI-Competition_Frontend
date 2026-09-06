@@ -104,9 +104,16 @@ function 할일을체크로(t: 할일): ChecklistItem {
 function 인용을규정으로(c: Record<string, unknown>): RuleItem {
   const 문자 = (k: string) => (typeof c[k] === "string" ? (c[k] as string) : "");
   return {
-    title: 문자("제목") || 문자("조") || "근거 조항",
-    source: 문자("문서") || 문자("출처") || "",
-    description: 문자("본문") || 문자("설명") || "",
+    // 🔴 2026-09-06 — 여기서 읽던 여섯 키(제목·조·문서·출처·본문·설명)가 **서버 스키마에
+    //    하나도 없었습니다.** 정본은 `scripts/llm_schema.py:208 class 인용` 이고
+    //    s번호 · doc_id · 조번호 · 조제목 · 항호 · 원문 · 원문범위 · version · extraction 입니다.
+    //    그래서 실서버 판정에서 「적용 근거 2건」인데 각 줄이 «근거 조항»(폴백) + 빈칸으로
+    //    나갔습니다 — 조문 내용이 통째로 안 보였습니다 (2026-09-06 production 실화면 확인).
+    //    🔴 `lib/judge.ts:145` 는 «이미» 맞는 키를 쓰고 있었습니다. 같은 서버 응답을 두 파일이
+    //       서로 다른 키로 읽고 있던 것이라, 이 파일을 그쪽에 맞춰 하나로 모읍니다.
+    title: [문자("조번호"), 문자("조제목")].filter(Boolean).join(" ") || "근거 조항",
+    source: 문자("doc_id"),
+    description: 문자("원문"),
   };
 }
 
