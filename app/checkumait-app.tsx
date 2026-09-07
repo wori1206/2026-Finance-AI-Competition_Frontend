@@ -1301,6 +1301,8 @@ function Login({
      올린 문서는 «한 번도» 서버에 간 적이 없습니다.
      마이페이지 「교체하기」에서 고친 것과 «같은 결함이 다른 자리에» 하나 더 있었습니다. */
   const [criteriaBlob, setCriteriaBlob] = useState<File | null>(null);
+  // 🔴 드래그로 파일을 얹는 동안만 true — 테두리를 바꿔 «여기 놓으면 된다» 를 보입니다.
+  const [기준파일드래그중, set기준파일드래그중] = useState(false);
   const [기준파싱중, set기준파싱중] = useState(false);
   const [기준파싱문구, set기준파싱문구] = useState("");
   // 🔴 Supabase 에 실제로 만들어 둔 계정과 «똑같아야» 합니다.
@@ -1903,8 +1905,40 @@ function Login({
                   </dd>
                 </div>
               </dl>
+              {/* 🔴 2026-09-07 — 드래그&드롭을 받습니다. `<label>` 이 이미 파일 입력을
+                  감싸고 있어서 여기에 얹으면 클릭 경로와 «같은 상태» 로 들어갑니다
+                  (파일을 두 군데서 따로 들고 있지 않습니다).
+                  `onDragOver` 에서 preventDefault 를 «반드시» 해야 drop 이 발생합니다 —
+                  안 하면 브라우저가 파일을 새 탭으로 열어버려 온보딩이 통째로 날아갑니다. */}
               <label
-                className={`criteria-upload ${criteriaFile ? "complete" : ""}`}
+                className={`criteria-upload ${criteriaFile ? "complete" : ""} ${
+                  기준파일드래그중 ? "dragging" : ""
+                }`}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (!기준파일드래그중) set기준파일드래그중(true);
+                }}
+                onDragLeave={(e) => {
+                  // 자식 요소로 옮겨갈 때도 dragleave 가 뜹니다 — 라벨 «밖» 으로 나갈 때만 끕니다.
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) set기준파일드래그중(false);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  set기준파일드래그중(false);
+                  const f = e.dataTransfer.files?.[0] ?? null;
+                  if (!f) return;
+                  // 클릭 경로의 accept 와 «같은 규칙» 을 여기서도 겁니다. 드롭은 accept 를
+                  // 안 거치므로 .docx 를 얹으면 서버가 415 로 거부합니다 — 미리 막습니다.
+                  if (!/\.(pdf|hwp|hwpx)$/i.test(f.name)) {
+                    // 이 화면은 게스트라 `notify` 가 없습니다 — 온보딩이 이미 쓰는
+                    // `기준파싱문구` 자리에 띄웁니다(같은 곳에 결과가 나오니 일관됩니다).
+                    set기준파싱문구("PDF·HWP·HWPX 파일만 올릴 수 있습니다.");
+                    return;
+                  }
+                  set기준파싱문구("");
+                  setCriteriaBlob(f);
+                  setCriteriaFile(f.name);
+                }}
               >
                 <input
                   type="file"
@@ -1925,7 +1959,7 @@ function Login({
                   <b>{criteriaFile || "기관 세부기준 파일 선택"}</b>
                   <small>
                     {!criteriaBlob
-                      ? "선택사항 · PDF, HWP, HWPX · 최대 30MB"
+                      ? "선택사항 · 끌어다 놓아도 됩니다 · PDF, HWP, HWPX · 최대 30MB"
                       : "업로드할 파일을 선택했습니다."}
                   </small>
                 </span>
