@@ -88,7 +88,15 @@ export async function 응답처리(res: Response) {
     //      415 "파일 내용이 .hwpx 가 아닙니다 (실제: xlsx)."
     //      413 "파일이 너무 큽니다 (30MB 이하)."   400 "빈 파일입니다."
     //    detail 을 안 보면 이 친절한 문구가 전부 「요청 실패 (415)」로 뭉개집니다.
-    throw new Error(꺼내기("오류") ?? 꺼내기("detail") ?? `요청 실패 (${res.status})`);
+    // 🔴 2026-09-07 — Error 에 «상태코드» 를 같이 싣습니다. detail 이 있으면 메시지에
+    //    숫자가 «안 들어가서»(예: 404 → "지출계획 23412 을(를) 찾을 수 없습니다"),
+    //    호출부가 문자열에서 상태코드를 찾으면 «영원히 못 찾습니다».
+    //    실제로 `deletePlan()` 의 「404 는 이미 없다는 뜻이니 실패로 안 친다」가 그렇게
+    //    한 번도 발동하지 않고 있었습니다(발견 ai-9d). 문자열 대신 이 필드를 보세요.
+    throw Object.assign(
+      new Error(꺼내기("오류") ?? 꺼내기("detail") ?? `요청 실패 (${res.status})`),
+      { status: res.status },
+    );
   }
   return res.status === 204 ? null : res.json();
 }
@@ -125,4 +133,8 @@ export async function PUT(경로: string, 바디: unknown) {
       body: JSON.stringify(바디),
     }),
   );
+}
+
+export async function DELETE(경로: string) {
+  return 응답처리(await fetch(주소(경로), { method: "DELETE", headers: await 헤더(true) }));
 }

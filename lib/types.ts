@@ -45,6 +45,18 @@ export type ExpensePlan = {
   aiChecks: ChecklistItem[];
   evidence: ChecklistItem[];
   rules: RuleItem[];
+  /**
+   * 🔴 2026-09-07 — 삭제 확인 모달(보류 중, B)용 «지우기 전» 개수. `aiChecks.length +
+   *    evidence.length` 로는 못 씁니다 — `aiChecks` 가 결제전 할일이 없으면 «전체
+   *    할일들» 로 통째로 바뀌는 경로가 있어(`adapt.ts::상세를계획으로`), 그 경우
+   *    결제후 항목이 두 번 잡힙니다. 서버가 준 원본 `할일` 배열 길이를 그대로 둡니다.
+   *
+   * 🔴 **선택 필드로 둡니다** — B(삭제 확인 모달)가 오너 결정으로 보류돼
+   *    `adapt.ts`/`mock-data.ts` 를 아직 안 건드립니다. 필수로 두면 그 파일들이
+   *    전부 이 값을 채워야 해서 tsc 가 깨집니다. B 를 다시 시작할 때
+   *    `adapt.ts::상세를계획으로` 에서 `d.할일?.length` 로 채우면 됩니다.
+   */
+  할일건수?: number;
 };
 
 export type ScheduleItem = {

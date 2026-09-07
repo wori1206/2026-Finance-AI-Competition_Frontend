@@ -12,7 +12,7 @@ import type { 비목후보, 심층질문항목, 답변항목 } from "../lib/serv
 import { API켜짐 } from "../lib/config";
 import { 판정실행 } from "../lib/judge";
 import { 정규화하기 } from "../lib/normalize";
-import { 비목목록, 계획추가, GPU상태, 규정업로드, L3현재문서목록 } from "../lib/api";
+import { 비목목록, 계획추가, GPU상태, 규정업로드, L3현재문서목록, 계획삭제 } from "../lib/api";
 import type { GPU상태값 } from "../lib/api";
 import { 체크저장, 일정변경저장, 일정등록 } from "../lib/tasks";
 import { 기본규범, 서버규범읽기, type 적용규범항목 } from "../lib/norms";
@@ -923,9 +923,59 @@ export default function CheckumaitApp() {
       ))
     )
       return false;
+
+    // 🔴 2026-09-07 — 여기가 **서버를 안 부르고 있었습니다.** localStorage 만 고치고
+    //    "삭제했습니다" 라고 알렸는데, 새로고침하면 계획이 «되살아났습니다».
+    //    화면과 서버가 갈라지는 유형이고(L3 업로드에서도 같은 일이 있었습니다),
+    //    사용자에게는 거짓말이 됩니다. `DELETE /api/plans/{id}`(v26)를 부릅니다.
+    //
+    //    🔴 시그니처를 `boolean` 그대로 둡니다 — 호출부 두 곳(`remove` prop)이 동기
+    //    boolean 을 기대합니다. 타입을 바꾸면 그 경로 전체를 손대야 하고, 지금은
+    //    «위험을 최소로» 가는 게 맞습니다(오너 지시). 그래서 화면은 먼저 지우고,
+    //    서버가 실패하면 «되돌립니다» — 낙관적 삭제 + 롤백.
+    const 이전계획 = plans;
+    const 이전일정 = schedules;
     persistPlans(plans.filter((plan) => !targets.includes(plan.id)));
     persistSchedules(schedules.filter((item) => !targets.includes(item.planId)));
-    notify("지출 계획과 연결된 일정을 삭제했습니다.");
+
+    if (!API켜짐()) {
+      notify("지출 계획과 연결된 일정을 삭제했습니다.");
+      return true;
+    }
+
+    Promise.allSettled(targets.map((id) => 계획삭제(id)))
+      .then((결과들) => {
+        // 404 는 «이미 없다» 는 뜻이라 실패로 치지 않습니다(서버가 남의 org 도 404 로
+        // 숨깁니다 — `lib/api.ts::계획삭제` 주석 참고).
+        // 🔴 상태코드는 «Error 의 status 필드» 로 봅니다. 문자열에서 "404" 를 찾으면
+        //    안 됩니다 — detail 이 있으면 메시지에 숫자가 안 들어갑니다(발견 ai-9d).
+        const 실패 = 결과들.filter(
+          (r) =>
+            r.status === "rejected" &&
+            (r as PromiseRejectedResult).reason?.status !== 404,
+        );
+        if (실패.length === 0) {
+          const 할일 = 결과들.reduce(
+            (합, r) => 합 + (r.status === "fulfilled" ? (r.value?.할일삭제 ?? 0) : 0),
+            0,
+          );
+          notify(
+            할일 > 0
+              ? `지출 계획을 삭제했습니다. 확인 항목 ${할일}건도 함께 삭제됐습니다.`
+              : "지출 계획을 삭제했습니다.",
+          );
+          return;
+        }
+        // 🔴 하나라도 서버에서 못 지웠으면 «화면을 되돌립니다». 안 그러면 사라진 것처럼
+        //    보이다가 새로고침에 되살아나 같은 거짓말이 반복됩니다.
+        persistPlans(이전계획);
+        persistSchedules(이전일정);
+        notify(
+          실패.length === targets.length
+            ? "삭제하지 못했습니다. 잠시 후 다시 시도해 주세요."
+            : `${targets.length}건 중 ${실패.length}건을 삭제하지 못해 되돌렸습니다.`,
+        );
+      });
     return true;
   };
 

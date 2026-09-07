@@ -2,7 +2,7 @@
 
 // 화면이 부르는 함수는 전부 여기 있습니다. 주소를 아는 곳은 config.ts 하나입니다.
 
-import { GET, POST, PATCH, PUT, 인증헤더, 응답처리 } from "./http";
+import { GET, POST, PATCH, PUT, DELETE, 인증헤더, 응답처리 } from "./http";
 import type {
   계획목록응답,
   계획상세 as 계획상세형,   // 아래 같은 이름의 «함수» 와 겹쳐서 별칭으로 받습니다
@@ -56,6 +56,16 @@ export const 계획목록 = (opt: {
 
 export const 계획상세 = (planId: number | string) =>
   GET(`/api/plans/${planId}`) as Promise<계획상세형>;
+
+/**
+ * 화면 11 「삭제」 — v26 배포로 신설(오너 요청, 2026-09-07).
+ * 🔴 계획을 지워도 **판정 기록(`decisions`)은 안 지웁니다** — 감사 흔적으로 연결만
+ *    끊습니다. `할일삭제` 는 같이 지워진 확인 항목·일정(plan_tasks) 개수입니다.
+ * 🔴 없거나 남의 org 계획이면 서버가 403 이 아니라 **404** 를 줍니다(존재 자체를
+ *    숨기려는 설계) — 호출부가 이걸 「이미 지워졌나 보다」 로 읽으면 됩니다.
+ */
+export const 계획삭제 = (planId: number | string) =>
+  DELETE(`/api/plans/${planId}`) as Promise<{ 삭제: boolean; plan_id: number; 제목: string | null; 할일삭제: number }>;
 
 /** 화면 8 저장. 사업명·품목·금액·용도가 «필수» 입니다. */
 export const 계획추가 = (입력: {
