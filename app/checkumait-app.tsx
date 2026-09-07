@@ -943,7 +943,16 @@ export default function CheckumaitApp() {
       return true;
     }
 
-    Promise.allSettled(targets.map((id) => 계획삭제(id)))
+    // 🔴 2026-09-07 — 서버에 «있는» 계획만 서버에 지운다. 샘플 계획(`mock-data` 의
+    //    "mentoring" 같은 문자열 id)은 localStorage 에만 있어서 서버가 422 를 돌려줬고,
+    //    그 한 건 때문에 «같이 고른 진짜 계획까지 전부 되돌려» "삭제하지 못했습니다" 가 났다
+    //    (실서버 로그 01:00:36 `DELETE /api/plans/mentoring → 422`). 서버 id 는 숫자다.
+    const 서버대상 = targets.filter((id) => /^\d+$/.test(String(id)));
+    if (서버대상.length === 0) {
+      notify("지출 계획과 연결된 일정을 삭제했습니다.");
+      return true;
+    }
+    Promise.allSettled(서버대상.map((id) => 계획삭제(id)))
       .then((결과들) => {
         // 404 는 «이미 없다» 는 뜻이라 실패로 치지 않습니다(서버가 남의 org 도 404 로
         // 숨깁니다 — `lib/api.ts::계획삭제` 주석 참고).
