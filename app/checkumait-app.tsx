@@ -776,13 +776,27 @@ export default function CheckumaitApp() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [toast, setToast] = useState("");
 
+  // 🔴 2026-10-29 — 지출계획·일정은 로그인 «뒤에» 불러옵니다.
+  //    예전에는 첫 마운트 때 한 번만 불렀는데, 그때는 아직 로그인 전이라 토큰 없이
+  //    나갑니다. 서버는 게스트로 보고 0건을 주고, 로그인한 뒤에도 다시 안 불러서
+  //    지출계획이 전부 0으로 보였습니다. 로그아웃 후 다른 계정으로 들어와도 다시 읽습니다.
+  //    늦게 도착한 이전 응답이 새 응답을 덮지 않도록 `살아있음` 으로 막습니다.
   useEffect(() => {
+    if (!signedIn) return;
+    let 살아있음 = true;
     Promise.all([planService.listPlans(), planService.listSchedules()]).then(
       ([planRows, scheduleRows]) => {
+        if (!살아있음) return;
         setPlans(planRows);
         setSchedules(scheduleRows);
       },
     );
+    return () => {
+      살아있음 = false;
+    };
+  }, [signedIn]);
+
+  useEffect(() => {
     const onPop = (event: PopStateEvent) =>
       setRoute((event.state as AppRoute) || { page: "home" });
     window.addEventListener("popstate", onPop);
