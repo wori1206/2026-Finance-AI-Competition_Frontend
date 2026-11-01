@@ -1,6 +1,6 @@
 "use client";
 
-// 서버가 «실제로» 주는 모양. 목 서버(SUDDOE_MOCK=1) 응답을 직접 캡처해 적었습니다.
+// 서버가 '실제로' 주는 모양. mock 서버(SUDDOE_MOCK=1) 응답을 직접 캡처해 적었습니다.
 // 프론트 타입(types.ts)과 이름이 달라서 adapt.ts 가 사이에서 번역합니다.
 
 export type 판정값 = "가능" | "조건부" | "불가" | "판단불가" | null;
@@ -11,7 +11,7 @@ export type 판정값 = "가능" | "조건부" | "불가" | "판단불가" | nul
  */
 export type 우선순위규칙 = {
   우선계층: string;
-  열위계층: string;
+  후순위계층: string;
   범위?: string | null;
   우선규범?: string | null;
   해석?: string | null;
@@ -21,7 +21,7 @@ export type 우선순위규칙 = {
 export type 사업정보 = {
   사업명: string;
   별칭: string[];
-  비목계통: string | null;
+  비목체계: string | null;
   트랙범위: string | null;
   우선순위규칙목록: 우선순위규칙[];
 };
@@ -32,7 +32,7 @@ export type L3현재문서 = {
   원본파일명: string;
   version: string | null;
   시행일: string | null;
-  파싱품질: "대기" | "pass" | "warn" | "fail" | null;
+  파싱품질: "pending" | "pass" | "warn" | "fail" | null;
   조_건수: number;
 };
 
@@ -70,7 +70,8 @@ export type 할일 = {
   task_id: number;
   plan_id: number | null;
   출처: "ai" | "user";
-  코드: string | null;
+  /** `corpus.check_items.code`. 매칭하지 못하면 null. */
+  code: string | null;
   구분: "결제전" | "결제후" | "집행";
   항목: string;
   설명: string | null;
@@ -93,10 +94,16 @@ export type 판정상세 = {
   판정?: 판정값;
   요약?: string | null;
   신뢰등급?: "A" | "B" | null;
-  버전스탬프?: string | null;
+  /** 인용한 규정의 버전 문자열. */
+  규정버전?: string | null;
   인용?: 인용[];
+  /** `전제[].매핑` 값의 프로필 경로 접두어는 아직 `F1.` 형식이며 이후 `협약.` 형식으로 바뀝니다. 프론트는 이 값을 해석하지 않습니다. */
   전제?: unknown[];
-  /** 🔴 「판단불가」일 때만 실립니다. 아니면 키 자체가 없습니다. */
+  /** 참조 관계 목록. 항목 키는 `참조문자열`·`해결근거` 등입니다. */
+  참조관계?: unknown[];
+  /** 판정을 하향하거나 경고한 검증 사유. */
+  검증사유?: string[];
+  /** 주의: 「판단불가」일 때만 포함됩니다. 아니면 키 자체가 없습니다. */
   문의초안?: string | null;
   [k: string]: unknown;
 } | null;
@@ -118,16 +125,16 @@ export type 할일목록응답 = { 건수: number; 항목: 할일[] };
 /**
  * 정규화가 돌려주는 비목 후보 한 건.
  *
- * 🔴 `설명` 은 **아직 서버가 안 보냅니다** (`server/models.py::비목후보` 는 비목·신뢰도
- *    두 칸뿐). 백엔드가 컬럼을 붙이면 그때부터 값이 실려 오고 화면이 저절로 살아납니다
+ * 주의: `설명` 은 **아직 서버가 안 보냅니다** (`server/models.py::비목후보` 는 비목·신뢰도
+ *    두 칸뿐). 백엔드가 컬럼을 추가하면 그때부터 값이 포함되어 오고 화면에 자동으로 표시됩니다
  *    — 그래서 선택 필드로 둡니다. 값이 없으면 설명 줄을 아예 안 그립니다.
- *    🔴 여기에 프론트가 지어낸 문구를 채워 넣지 마세요. 없는 근거를 만드는 것이고,
+ *    주의: 여기에 프론트가 지어낸 문구를 채워 넣지 마세요. 없는 근거를 만드는 것이고,
  *       서버가 진짜 값을 보내기 시작하면 둘이 어긋납니다.
  */
 export type 비목후보 = { 비목: string; 신뢰도: number; 설명?: string | null };
 
 /**
- * 심층질문 — `corpus.check_items` 기반, LLM 이 만들지 않는다(A-3, 2026-09-06 레인 Y).
+ * 심층질문 — `corpus.check_items` 기반, LLM 이 만들지 않는다(2026-09-06).
  * `models.py::심층질문항목` 과 1:1 대응. `code` 로 `/api/judge` 의 `답변` 에 되돌려 보낸다.
  */
 export type 심층질문선택지 = { 값: string; 라벨: string };
@@ -142,7 +149,7 @@ export type 심층질문항목 = {
   선택지: 심층질문선택지[];
   /** 왜 묻는지 — 화면에 조번호만 작게 보여준다. doc_id 원문은 노출하지 않는다. */
   근거: 심층질문근거;
-  필요F필드: string[];
+  필요프로필필드: string[];
 };
 
 /** `/api/judge` 요청의 `답변[]` 한 칸 — `models.py::답변항목` 과 1:1 대응. */

@@ -1,30 +1,30 @@
 "use client";
 
 import { apiBase } from "./config";
-import { 현재토큰 as 토큰 } from "./session";   // 🔴 Supabase 토큰 + 데모 토큰을 한 곳에서 고릅니다
+import { 현재토큰 as 토큰 } from "./session";   // 주의: Supabase 토큰 + 데모 토큰을 한 곳에서 고릅니다
 
 /**
  * 요청 주소를 만듭니다. **org_id 는 절대 붙지 않습니다.**
  *
- * 🔴 2026-09-03 — `?org_id=` 자기신고를 뗐습니다.
- *    org_id 는 기관명만으로 재계산되는 값이라 URL 에 실리는 순간 남의 지출계획을
- *    여는 손잡이가 됩니다. 이제 기관은 서버가 Authorization 토큰에서 «주입» 합니다.
+ * 주의: 2026-09-03 — `?org_id=` 자기신고를 뗐습니다.
+ *    org_id 는 기관명만으로 재계산되는 값이라 URL 에 포함되는 순간 남의 지출계획을
+ *    여는 식별자가 됩니다. 이제 기관은 서버가 Authorization 토큰에서 '주입' 합니다.
  *
- * 🔴 아래 `if (k === "org_id") continue` 는 실수 방지용입니다. 호출부가 실수로
+ * 주의: 아래 `if (k === "org_id") continue` 는 실수 방지용입니다. 호출부가 실수로
  *    `{ org_id: ... }` 를 넘겨도 URL·쿼리스트링·브라우저 히스토리에 남지 않습니다.
  *    (히스토리에 한 번 남으면 로그아웃해도 안 지워집니다.)
  */
 export function 주소(경로: string, 쿼리?: Record<string, unknown>): string {
   const u = new URL(경로, apiBase() || "http://localhost");
   for (const [k, v] of Object.entries(쿼리 ?? {})) {
-    if (k === "org_id") continue;                       // 🔴 위 주석 참조. 절대 싣지 않습니다
+    if (k === "org_id") continue;                       // 주의: 위 주석 참조. 절대 넣지 않습니다
     if (v !== undefined && v !== null && v !== "") u.searchParams.set(k, String(v));
   }
   return u.toString();
 }
 
 /**
- * 401/403 을 «조용히» 실패시키지 않기 위한 오류 타입입니다.
+ * 401/403 을 '조용히' 실패시키지 않기 위한 오류 타입입니다.
  * 화면은 `err instanceof 인증오류` 로 「로그인이 풀렸습니다」를 구분해 보여줄 수 있습니다.
  */
 export class 인증오류 extends Error {
@@ -39,18 +39,18 @@ export class 인증오류 extends Error {
 /**
  * 모든 요청에 붙는 헤더.
  *
- * 로그인돼 있으면 `Authorization: Bearer <access_token>` 을 싣습니다.
+ * 로그인돼 있으면 `Authorization: Bearer <access_token>` 을 넣습니다.
  * 서버는 이 토큰의 email 클레임으로 기관을 정합니다 — 프론트는 기관을 주장하지 않습니다.
  *
- * 🔴 **게스트(비로그인)는 헤더를 «안» 보냅니다.** 빈 문자열이나 `Bearer null` 을
- *    보내면 서버가 401 로 «거부» 합니다(헤더가 있으면 토큰으로 끝납니다). 게스트는
+ * 주의: **게스트(비로그인)는 헤더를 '안' 보냅니다.** 빈 문자열이나 `Bearer null` 을
+ *    보내면 서버가 401 로 '거부' 합니다(헤더가 있으면 토큰으로 끝납니다). 게스트는
  *    헤더가 아예 없어야 org_id=None 으로 통과해 게스트 행만 봅니다.
  */
 async function 헤더(본문있음: boolean): Promise<Record<string, string>> {
   const h: Record<string, string> = {};
   if (본문있음) h["Content-Type"] = "application/json";
   const t = await 토큰();
-  if (t) h.Authorization = `Bearer ${t}`;               // 없으면 «넣지 않습니다» (게스트)
+  if (t) h.Authorization = `Bearer ${t}`;               // 없으면 '넣지 않습니다' (게스트)
   return h;
 }
 
@@ -69,10 +69,11 @@ export async function 응답처리(res: Response) {
         ? String((body as Record<string, unknown>)[키])
         : null;
 
-    // 🔴 401/403 을 일반 오류에 섞지 않습니다. 섞으면 화면에 「요청 실패 (401)」만 뜨고
-    //    사용자도 개발자도 «로그인이 풀린 것» 이라는 걸 못 알아봅니다.
+    // 주의: 401/403 을 일반 오류에 섞지 않습니다. 섞으면 화면에 「요청 실패 (401)」만 뜨고
+    //    사용자도 개발자도 '로그인이 풀린 것' 이라는 걸 못 알아봅니다.
     if (res.status === 401 || res.status === 403) {
-      const 사유 = 꺼내기("detail") ?? 꺼내기("오류");
+      // 인증 미들웨어도 { "오류", "상태" } 형식으로 응답합니다. `detail` 은 라우트의 HTTPException 용입니다.
+      const 사유 = 꺼내기("오류") ?? 꺼내기("detail");
       console.warn("[auth]", res.status, res.url, 사유);   // 조용히 실패하지 않게
       throw new 인증오류(
         res.status,
@@ -82,17 +83,17 @@ export async function 응답처리(res: Response) {
       );
     }
 
-    // 🔴 `detail` 도 봅니다. FastAPI 의 `HTTPException` 은 «전부» detail 로 나갑니다.
+    // 주의: `detail` 도 봅니다. FastAPI 의 `HTTPException` 은 '전부' detail 로 나갑니다.
     //    규정 업로드가 그 자리입니다 —
     //      415 ".docx 은 지원하지 않습니다. PDF·HWPX·HWP 로 올려 주세요."
     //      415 "파일 내용이 .hwpx 가 아닙니다 (실제: xlsx)."
     //      413 "파일이 너무 큽니다 (30MB 이하)."   400 "빈 파일입니다."
-    //    detail 을 안 보면 이 친절한 문구가 전부 「요청 실패 (415)」로 뭉개집니다.
-    // 🔴 2026-09-07 — Error 에 «상태코드» 를 같이 싣습니다. detail 이 있으면 메시지에
-    //    숫자가 «안 들어가서»(예: 404 → "지출계획 23412 을(를) 찾을 수 없습니다"),
-    //    호출부가 문자열에서 상태코드를 찾으면 «영원히 못 찾습니다».
+    //    detail 을 안 보면 이 안내 문구가 전부 「요청 실패 (415)」로 바뀝니다.
+    // 주의: 2026-09-07 — Error 에 '상태코드' 를 같이 넣습니다. detail 이 있으면 메시지에
+    //    숫자가 '안 들어가서'(예: 404 → "지출계획 23412 을(를) 찾을 수 없습니다"),
+    //    호출부가 문자열에서 상태코드를 찾으면 '영원히 못 찾습니다'.
     //    실제로 `deletePlan()` 의 「404 는 이미 없다는 뜻이니 실패로 안 친다」가 그렇게
-    //    한 번도 발동하지 않고 있었습니다(발견 ai-9d). 문자열 대신 이 필드를 보세요.
+    //    한 번도 발동하지 않고 있었습니다. 문자열 대신 이 필드를 보세요.
     throw Object.assign(
       new Error(꺼내기("오류") ?? 꺼내기("detail") ?? `요청 실패 (${res.status})`),
       { status: res.status },

@@ -276,8 +276,8 @@ body .app-shell .expense-v5 .ai-before-checks>header button.outline:focus-visibl
 .category-grid em svg{flex:0 0 auto;color:#176b5b!important}
 
 /* 비목 카드 — 이름 아래 서버가 준 설명 한 줄.
-   🔴 설명이 없는 카드는 <small> 자체가 안 그려지므로 예전 한 줄 모양 그대로다.
-      배지는 세로 가운데가 아니라 «첫 줄에» 맞춘다 — 설명이 두 줄이 되면
+   주의: 설명이 없는 카드는 <small> 자체가 안 그려지므로 예전 한 줄 모양 그대로다.
+      배지는 세로 가운데가 아니라 '첫 줄에' 맞춘다 — 설명이 두 줄이 되면
       가운데 정렬은 배지가 아래로 내려가 이름과 어긋나 보인다. */
 .category-grid button{align-items:flex-start!important;padding-top:13px!important;padding-bottom:13px!important}
 .category-grid .category-name{
@@ -892,7 +892,7 @@ input[type="checkbox"],input[type="radio"]{border-color:var(--color-border-contr
 
 @media(prefers-reduced-motion:reduce){:where(.primary,.outline,button,input,textarea,select){transition-duration:0ms!important}}
 
-/* 🔴 판정별 「그래서 무엇을 해야 하는가」 한 줄.
+/* 주의: 판정별 「그래서 무엇을 해야 하는가」 한 줄.
    .ai-verdict-row p 가 12px 회색이라, 그대로 두면 안내문에 묻혀 안 읽힙니다. */
 .ai-verdict-row p.ai-verdict-action{
   margin:0 0 8px;
@@ -915,7 +915,7 @@ input[type="checkbox"],input[type="radio"]{border-color:var(--color-border-contr
 }
 
 /* ── 「판단불가」 문의 초안 아코디언 (AI 점검 결과 · 적용 근거 아래) ──────────
-   🔴 접어 둡니다. 판정을 보러 온 사람에게 메일 본문이 먼저 펼쳐져 있으면
+   주의: 접어 둡니다. 판정을 보러 온 사람에게 메일 본문이 먼저 펼쳐져 있으면
       「AI 점검 결과」가 안 읽힙니다. 필요한 사람만 폅니다. */
 .ai-result-frame details.ai-inquiry{
   margin:0 0 12px;
@@ -953,7 +953,7 @@ input[type="checkbox"],input[type="radio"]{border-color:var(--color-border-contr
 .ai-inquiry-body{padding:14px;border-top:1px solid var(--color-border-subtle,#e2e6e3)}
 .ai-inquiry-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:9px}
 .ai-inquiry-head small{font-size:12px;color:var(--color-text-muted,#6c736f)}
-/* 🔴 서버가 준 글자를 그대로 씁니다 — 줄바꿈만 살리고 폰트는 본문과 맞춥니다.
+/* 주의: 서버가 준 글자를 그대로 씁니다 — 줄바꿈만 살리고 폰트는 본문과 맞춥니다.
       pre 기본 monospace 로 두면 「메일 본문」이 아니라 「코드」로 읽힙니다. */
 pre.ai-inquiry-text{
   margin:0;
@@ -996,7 +996,7 @@ pre.ai-inquiry-text{
 /* 온보딩 마지막 — 안내가 두 줄이 됐습니다. */
 .onboarding-demo-notice small+small{margin-top:3px}
 
-/* 🔴 집행 준비: 1(결제 전) 과 2·3(결제 이후) 을 결제 시점으로 끊습니다.
+/* 주의: 집행 준비: 1(결제 전) 과 2·3(결제 이후) 을 결제 시점으로 끊습니다.
    세 카드가 붙어 있어 「지금 뭘 해야 하나」가 안 보인다는 QA 지적. */
 .expense-v5-prep-grid>.expense-v5-prep-split{
   height:1px;
@@ -1011,8 +1011,8 @@ pre.ai-inquiry-text{
 .expense-v5 .expense-v5-execution-form{grid-template-columns:1fr 1.25fr!important}
 
 /* 등록을 마친 집행 정보는 잠깁니다 — 누적 집행액에 이미 들어간 값입니다.
-   🔴 `detail-refinement.css` 가 `.expense-v5 … input:not([type=checkbox])` 로
-      흰 배경을 칠하고 있어, 그보다 «구체적인» 선택자라야 이깁니다. */
+   주의: `detail-refinement.css` 가 `.expense-v5 … input:not([type=checkbox])` 로
+      흰 배경을 칠하고 있어, 그보다 '구체적인' 선택자라야 우선합니다. */
 .expense-v5 .expense-v5-execution-form.is-locked input:not([type="checkbox"]),
 .expense-v5 .expense-v5-execution-form.is-locked .expense-v5-amount-input input{
   background:#f1f4f2!important;
@@ -1041,7 +1041,7 @@ pre.ai-inquiry-text{
 }
 
 /* ── 주관기관 기준 문서 (마이페이지) ─────────────────────────────
-   🔴 「적용 중」과 「검토 대기」를 눈으로 갈라 둡니다 — 올린 파일이 바로 판정에
+   주의: 「적용 중」과 「검토 대기」를 눈으로 갈라 둡니다 — 올린 파일이 바로 판정에
       쓰인다고 오해하면, 판정 결과를 잘못 믿게 됩니다. */
 /* 기준 문서 교체 확인 창 */
 .file-replace-modal{max-width:460px}
@@ -1064,7 +1064,7 @@ pre.ai-inquiry-text{
 }
 .file-replace-modal .file-replace-notice>span{flex:none;color:#3987c8}
 
-/* 🔴 「수정 불가」 칸이 편집 가능한 칸과 똑같이 보이면 라벨을 안 읽고 입력을 시도합니다. */
+/* 주의: 「수정 불가」 칸이 편집 가능한 칸과 똑같이 보이면 라벨을 안 읽고 입력을 시도합니다. */
 .my-profile-edit-grid input[readonly]{
   background:#f1f4f2!important;
   border-color:#dde3e0!important;
@@ -1073,9 +1073,9 @@ pre.ai-inquiry-text{
 }
 
 /* ══ 써도돼요 로고 ══════════════════════════════════════════════════
-   🔴 워드마크와 심볼을 «둘 다» 넣어 두고 하나만 보입니다 — 메뉴를 접었다 펼
+   주의: 워드마크와 심볼을 '둘 다' 넣어 두고 하나만 보입니다 — 메뉴를 접었다 펼
       때 이미지를 새로 받느라 생기는 깜빡임을 없애려는 것입니다.
-   🔴 img 에 `display:block!important` 를 걸면 숨겨야 할 쪽까지 되살아납니다.
+   주의: img 에 `display:block!important` 를 걸면 숨겨야 할 쪽까지 되살아납니다.
       크기만 풀고 보임/숨김은 아래 두 규칙으로만 정합니다. */
 .brand-logo{display:inline-flex;align-items:center;line-height:0}
 .brand-logo img{width:auto!important;max-width:none;height:auto}
@@ -1091,7 +1091,7 @@ pre.ai-inquiry-text{
 .app-shell.sidebar-collapsed .sidebar .brand-logo-mark{display:block}
 
 /* 온보딩·회원가입 상단
-   🔴 예전 `.login-brand>span:first-child{width:29px;height:29px}` 는 초록 사각
+   주의: 예전 `.login-brand>span:first-child{width:29px;height:29px}` 는 초록 사각
       아이콘을 겨냥한 규칙인데, 이제 첫 자식이 로고라 워드마크가 29px 정사각으로
       찌그러집니다. 로고에는 그 크기를 풀어 줍니다. */
 .login-brand{gap:0!important}
@@ -1104,10 +1104,10 @@ pre.ai-inquiry-text{
 @media(max-width:620px){.login-brand .brand-logo .brand-logo-full{height:26px}}
 
 /* ── 지출 계획 수정 창의 첨부 파일 ─────────────────────────────────
-   🔴 예전 마크업은 `.file-drop` 점선 상자에 「+ 파일 교체·추가」 버튼만 있는
-      «장식» 이었습니다(input 도 핸들러도 없었음). 실제 목록이 들어오면서
+   주의: 예전 마크업은 `.file-drop` 점선 상자에 「+ 파일 교체·추가」 버튼만 있는
+      '장식' 이었습니다(input 도 핸들러도 없었음). 실제 목록이 들어오면서
       한 칸짜리 그리드가 안 맞아 별도 상자로 뺍니다.
-   🔴 상세 화면(.expense-v5-file-row)과 «같은 모양» 이어야 합니다 — 같은 파일을
+   주의: 상세 화면(.expense-v5-file-row)과 '같은 모양' 이어야 합니다 — 같은 파일을
       두 화면에서 보는데 생김새가 다르면 다른 목록으로 읽힙니다. */
 .field-grid .edit-file-box{
   display:block;border:1px dashed #cfd4d2;border-radius:5px;padding:13px;
@@ -1138,7 +1138,7 @@ pre.ai-inquiry-text{
 .edit-file-box li>button:hover{border-color:#c9908c;color:#b4534d}
 .edit-file-box footer{display:flex;align-items:center;gap:10px}
 .edit-file-box footer small{color:var(--muted);font-size:10px;font-weight:400}
-/* 🔴 라벨이 곧 버튼입니다 — input 은 숨기고 라벨을 눌러 파일창을 엽니다. */
+/* 주의: 라벨이 곧 버튼입니다 — input 은 숨기고 라벨을 눌러 파일창을 엽니다. */
 .edit-file-add{
   display:inline-flex;align-items:center;justify-content:center;
   height:32px;padding:0 12px;cursor:pointer;
@@ -1150,9 +1150,9 @@ pre.ai-inquiry-text{
 .edit-file-error{margin:9px 0 0;color:#b4534d;font-size:11px;font-weight:400}
 
 /* ── 「예시 데이터를 보고 있습니다」 배너 ──────────────────────────────
-   🔴 서버 호출이 실패해 예시로 되돌아간 상태를 «화면이 말하게» 합니다.
+   주의: 서버 호출이 실패해 예시로 되돌아간 상태를 '화면이 말하게' 합니다.
       정상일 때는 아예 안 그려지므로, 이 규칙이 보이면 그건 실제로 폴백 중입니다.
-   🔴 토스트가 아니라 «자리를 차지하는» 배너입니다. 잠깐 떴다 사라지면
+   주의: 토스트가 아니라 '자리를 차지하는' 배너입니다. 잠깐 떴다 사라지면
       나중에 화면을 보는 사람은 예시인 줄 모릅니다. */
 .data-source-banner{
   display:flex;align-items:flex-start;gap:10px;
