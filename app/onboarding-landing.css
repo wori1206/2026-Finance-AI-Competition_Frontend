@@ -39,7 +39,7 @@
 .onboarding-hero-copy>p:not(.login-kicker){margin-bottom:52px}
 
 /* ══ 회원가입 ═══════════════════════════════════════════════════════
-   🔴 온보딩 단계 화면과 «같은 껍데기»(setup-shell → setup-content)를 씁니다.
+   주의: 온보딩 단계 화면과 '같은 레이아웃'(setup-shell → setup-content)를 씁니다.
       4단계 스테퍼만 뺐습니다 — 가입은 그 4단계 밖이라 붙이면 「1/4」가 두 번
       도는 것처럼 보입니다. */
 .signup-content{width:min(560px,100%)}
