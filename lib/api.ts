@@ -10,6 +10,7 @@ import type {
   할일목록응답,
   사업정보,
   L3현재문서,
+  L3처리결과,
 } from "./server-types";
 
 /* ── 사업 · 비목 ─────────────────────────────── */
@@ -138,18 +139,12 @@ export async function 규정업로드(파일: File, 기관명: string, orgId?: s
     method: "POST",
     headers: await 인증헤더(),          // 게스트면 빈 객체 — 헤더가 아예 안 붙습니다
     body: fd,
+    // 주의: 응답이 멈추면 화면의 「읽는 중」 창이 닫히지 않습니다. 30MB 를 느린 망으로 올려도
+    //    충분한 3분을 상한으로 둡니다(넘으면 TimeoutError — 호출부가 사용자 문장으로 바꿉니다).
+    signal: AbortSignal.timeout(180_000),
   });
-  return 응답처리(res) as Promise<{
-    doc_id: string; 파일명: string; 확장자: string; 상태: string;
-    조_건수: number | null;
-    /** 상위 규정을 찾지 못한 참조 목록. */
-    미해결참조: Record<string, unknown>[];
-    메시지: string | null;
-    // 주의: 서버는 이미 채워서 보냅니다(`server/models.py::L3업로드응답`,
-    //    `routes_l3.py:367`) — pending/pass/warn/fail. warn·fail 은 「조문은 추출됐지만
-    //    조·항 구조가 없어 단락으로 나눴다」는 뜻이라 호출부가 문구를 구분해야 합니다.
-    파싱품질: "pending" | "pass" | "warn" | "fail" | null;
-  }>;
+  // 주의: 202 응답이라 `상태` 는 거의 늘 '파싱대기' 입니다 — 결과는 `규정처리기다리기()` 로 받습니다.
+  return 응답처리(res) as Promise<L3처리결과>;
 }
 
 /**
@@ -157,7 +152,46 @@ export async function 규정업로드(파일: File, 기관명: string, orgId?: s
  *    (그전에는 URL 에 `?org_id=` 로 포함되어 브라우저 히스토리에 남았습니다.)
  *    로그인 없이 부르면 게스트로 조회되어 남의 문서는 보이지 않습니다.
  */
-export const 규정상태 = (docId: string) => GET(`/api/l3/${docId}`);
+export const 규정상태 = (docId: string) => GET(`/api/l3/${docId}`) as Promise<L3처리결과>;
+
+/**
+ * 업로드한 기준 문서를 서버가 다 읽을 때까지 상태를 물어 결과를 돌려줍니다.
+ *
+ * 주의: 2026-11-03 — 업로드는 202(접수)만 돌려주고 파싱은 서버 뒤에서 돕니다. 그동안 화면은
+ *    접수 응답만 보고 「등록했습니다」를 띄워서, 스캔본처럼 읽지 못한 문서도 적용된 것처럼
+ *    보였습니다. `상태` 가 '파싱대기' 를 벗어나면(완료·실패) 바로 돌려줍니다. `최대ms` 안에 안
+ *    끝나면 마지막 응답(아직 '파싱대기')을 돌려줍니다 — 그 `메시지` 가 "끝날 때까지는 기존 규정으로
+ *    판정합니다" 를 담고 있습니다. 조회가 한 번도 안 되면 접수 응답을 그대로 돌려줍니다.
+ */
+export async function 규정처리기다리기(
+  접수: L3처리결과,
+  최대ms = 120_000,
+  간격ms = 1_500,
+): Promise<L3처리결과> {
+  let 마지막 = 접수;
+  const 끝 = Date.now() + 최대ms;
+  while (L3처리중(마지막.상태) && Date.now() < 끝) {
+    await new Promise((r) => setTimeout(r, 간격ms));
+    try {
+      // 주의: 응답이 멈춘 요청 하나가 전체 대기를 붙잡지 않게 한 번의 조회에도 상한을 둡니다
+      마지막 = await Promise.race([
+        규정상태(접수.doc_id),
+        new Promise<never>((_, 거절) =>
+          setTimeout(() => 거절(new Error("상태 조회 응답이 늦습니다")), 15_000),
+        ),
+      ]);
+    } catch (e) {
+      // 401·403·404 는 다시 물어도 같습니다 — 2분을 채우지 않고 바로 알립니다.
+      // 그 밖(네트워크·5xx·지연)은 일시적일 수 있어 다음 차례에 다시 묻습니다.
+      const 상태코드 = (e as { status?: number } | null)?.status;
+      if (상태코드 === 401 || 상태코드 === 403 || 상태코드 === 404) throw e;
+    }
+  }
+  return 마지막;
+}
+
+/** 서버가 아직 읽고 있는 상태인가. 서버 계약상 '파싱중' 도 올 수 있습니다(`server/models.py::L3업로드응답`). */
+export const L3처리중 = (상태: string) => 상태 === "파싱대기" || 상태 === "파싱중";
 
 /* ── 서버 살았나 ─────────────────────────────── */
 

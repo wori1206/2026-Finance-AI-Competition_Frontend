@@ -32,8 +32,32 @@ export type L3현재문서 = {
   원본파일명: string;
   version: string | null;
   시행일: string | null;
+  /** 등록한 날(YYYY-MM-DD). */
+  등록일?: string | null;
   파싱품질: "pending" | "pass" | "warn" | "fail" | null;
   조_건수: number;
+};
+
+/**
+ * `POST /api/l3/upload`(202) · `GET /api/l3/{doc_id}` 응답. `server/models.py::L3업로드응답` 과 1:1 대응.
+ *
+ * 주의: 2026-11-03 — 기관당 기준 문서는 하나입니다. 새 문서를 읽으면 바로 그 문서로 판정하고,
+ *    읽지 못하면 기존 문서를 계속 씁니다. `메시지` 가 두 경우를 이미 사용자 문장으로 담아 옵니다.
+ */
+export type L3처리결과 = {
+  doc_id: string;
+  파일명: string;
+  확장자: string;
+  상태: "파싱대기" | "완료" | "실패" | (string & {});
+  조_건수: number | null;
+  /** 상위 규정을 찾지 못한 참조 목록. */
+  미해결참조: Record<string, unknown>[];
+  메시지: string | null;
+  파싱품질: "pending" | "pass" | "warn" | "fail" | null;
+  /** `상태="실패"` 일 때만. 스캔본·보호문서·조문없음·중단 등. 안내 문구는 `메시지` 에 있습니다. */
+  실패사유?: string | null;
+  /** 이 기관이 지금 판정에 쓰는 기준 문서 이름. `null` 이면 공통 관리 기준만으로 판정합니다. */
+  적용중_문서?: string | null;
 };
 
 /** GET /api/plans 의 항목 한 줄 */
