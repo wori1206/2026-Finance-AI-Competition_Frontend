@@ -36,6 +36,8 @@ export type L3현재문서 = {
   등록일?: string | null;
   파싱품질: "pending" | "pass" | "warn" | "fail" | null;
   조_건수: number;
+  /** 텍스트를 얻은 방식. `"ocr"` 이면 스캔본을 OCR 로 읽은 문서입니다(금액·조번호 오인식 가능). */
+  추출방식?: string | null;
 };
 
 /**
@@ -58,6 +60,8 @@ export type L3처리결과 = {
   실패사유?: string | null;
   /** 이 기관이 지금 판정에 쓰는 기준 문서 이름. `null` 이면 공통 관리 기준만으로 판정합니다. */
   적용중_문서?: string | null;
+  /** `"ocr"` 이면 스캔본을 OCR 로 읽은 문서입니다. 이 문서를 근거로 한 '가능'은 서버가 '조건부'로 낮춥니다. */
+  추출방식?: string | null;
 };
 
 /** GET /api/plans 의 항목 한 줄 */

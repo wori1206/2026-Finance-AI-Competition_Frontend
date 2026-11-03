@@ -350,7 +350,7 @@ function use적용규정(사업명: string): 적용규정항목[] {
   return 값;
 }
 
-const 빈기준문서: L3현재문서요약 = { 파일명: null, 안내: null, 등록일: null, 실패목록: [], 처리중목록: [] };
+const 빈기준문서: L3현재문서요약 = { 파일명: null, 안내: null, 등록일: null, ocr: false, 실패목록: [], 처리중목록: [] };
 
 /**
  * 마이페이지 「주관기관 세부 안내」 — 이 기관에 지금 적용 중인 L3 문서.
@@ -1563,7 +1563,7 @@ function Login({
     set기준처리중(!완료);
     set기준파싱문구(
       완료
-        ? L3등록사실(결과.결과.조_건수, 결과.결과.파싱품질)
+        ? L3등록사실(결과.결과.조_건수, 결과.결과.파싱품질, 결과.결과.추출방식)
         : 결과.결과.메시지 || "문서를 아직 읽고 있습니다. 끝나면 마이페이지에서 결과를 확인할 수 있습니다.",
     );
     await new Promise((resolve) => setTimeout(resolve, 완료 ? 900 : 2400));
@@ -6476,7 +6476,7 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
   const [기준재조회, set기준재조회] = useState(0);
   const 기준문서 = use현재기준문서(기준재조회);
   /** 방금 이 화면에서 새로 등록한 파일 — 서버 재조회 전에도 먼저 보여줍니다. */
-  const [방금등록, set방금등록] = useState<{ 파일명: string; 안내: string | null } | null>(null);
+  const [방금등록, set방금등록] = useState<{ 파일명: string; 안내: string | null; ocr?: boolean } | null>(null);
   const [교체확인, set교체확인] = useState<File | null>(null);
   /** 서버가 읽고 있는 파일 이름 — 이 동안 `L3읽는중` 창을 띄웁니다. */
   const [기준읽는중, set기준읽는중] = useState<string | null>(null);
@@ -6504,9 +6504,13 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
       set기준실패(결과.실패);
     } else if (결과.종류 === "완료") {
       const r = 결과.결과;
-      const 사실 = L3등록사실(r.조_건수, r.파싱품질);
+      const 사실 = L3등록사실(r.조_건수, r.파싱품질, r.추출방식);
       // 이름은 서버가 '지금 판정에 쓴다' 고 답한 문서를 씁니다(동시에 올린 다른 문서가 이겼을 수 있음)
-      set방금등록({ 파일명: r.적용중_문서 ?? 파일.name, 안내: r.파싱품질 === "warn" ? 사실 : null });
+      set방금등록({
+        파일명: r.적용중_문서 ?? 파일.name,
+        안내: r.파싱품질 === "warn" ? 사실 : null,
+        ocr: r.추출방식 === "ocr",
+      });
       notify(`기준 문서를 교체했습니다 — ${사실}`);
     } else {
       // 2분이 지나도 처리 중 — 서버 안내("끝날 때까지는 기존 규정으로 판정합니다")를 그대로 씁니다
@@ -6682,7 +6686,12 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
           </label>
         </header>
         <article>
-          <span className="institution-badge">사용자 등록</span>
+          {/* 스캔본을 OCR 로 읽은 문서는 금액·조번호 오인식 가능성을 배지로 먼저 알립니다(안내 문구는 아래 small). */}
+          {(방금등록 ? 방금등록.ocr : 기준문서.ocr) ? (
+            <span className="institution-badge warn">OCR 인식</span>
+          ) : (
+            <span className="institution-badge">사용자 등록</span>
+          )}
           <div>
             <b>{지금기준파일 ?? "등록된 기준 문서가 없습니다"}</b>
             {/* 주의: 2026-11-03 — 여기 「2026.03.02 등록」이 하드코딩되어 있어서 어떤 문서든
