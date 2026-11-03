@@ -14,6 +14,7 @@
 
 import { 프로필읽기, 프로필저장 } from "./api";
 import { API켜짐 } from "./config";
+import { 인증오류 } from "./http";
 import { 선택사업 } from "./program";
 
 export type 협약정보 = {
@@ -117,8 +118,8 @@ export function 사업협약(사업명: string): 협약정보 {
  * 주의: **사용자가 마이페이지에서 '직접 고친' 값만** 이 브라우저에 기억합니다.
  *
  *    홈·사이드바·마이페이지가 각자 값을 들고 있어서, 마이페이지에서 고쳐도 홈은
- *    옛 값이 그대로 남았습니다. mock 서버는 저장을 안 받고 운영 서버의 `PUT /api/profile`
- *    도 아직 스텁이라, 서버만 믿으면 고친 값이 새로고침에 사라집니다.
+ *    옛 값이 그대로 남았습니다. mock 서버와 게스트는 서버에 저장되지 않아서, 서버만 믿으면
+ *    고친 값이 새로고침에 사라집니다. (운영 서버의 `PUT /api/profile` 은 2026-11-03부터 저장합니다.)
  *
  * 주의: **서버가 준 값은 여기 안 넣습니다** (2026-09-06). 전에는 `협약읽기()` 결과를
  *    그대로 기억했는데, 서버의 2024 날짜가 브라우저에 남아 있어서 코드를 고쳐도
@@ -236,10 +237,17 @@ export async function 서버협약읽기(): Promise<협약정보 | null> {
   }
 }
 
-export type 저장결과 = "저장됨" | "서버가안받음" | "실패";
+export type 저장결과 = "저장됨" | "서버가안받음" | "로그인필요" | "실패";
 
-export async function 협약쓰기(c: 협약정보): Promise<저장결과> {
-  if (!API켜짐()) return "서버가안받음";
+/**
+ * 마이페이지 협약 네 값을 서버에 저장합니다. 저장되면 다음 점검부터 판정에 반영됩니다.
+ *
+ * 주의: 게스트(로그인 안 함)는 서버가 401 을 줍니다. 「실패」가 아니라 「로그인필요」로 돌려줘서
+ *    화면이 "이 브라우저에만 저장했다"고 안내하게 합니다.
+ * 주의: 날짜 형식·기간 역순·음수 금액은 422 이고 서버가 한국어 사유를 줍니다. 그 문장을 `사유` 로 넘깁니다.
+ */
+export async function 협약쓰기(c: 협약정보): Promise<{ 결과: 저장결과; 사유: string | null }> {
+  if (!API켜짐()) return { 결과: "서버가안받음", 사유: null };
   try {
     const r = (await 프로필저장({
       협약: {
@@ -249,9 +257,11 @@ export async function 협약쓰기(c: 협약정보): Promise<저장결과> {
         협약종료일: c.종료일 || null,
       },
     })) as Record<string, unknown>;
-    return r?.["저장"] === false ? "서버가안받음" : "저장됨";
-  } catch {
-    return "실패";
+    return { 결과: r?.["저장"] === false ? "서버가안받음" : "저장됨", 사유: null };
+  } catch (e) {
+    if (e instanceof 인증오류 && e.상태 === 401) return { 결과: "로그인필요", 사유: null };
+    const 상태코드 = (e as { status?: number } | null)?.status;
+    return { 결과: "실패", 사유: 상태코드 === 422 && e instanceof Error ? e.message : null };
   }
 }
 
