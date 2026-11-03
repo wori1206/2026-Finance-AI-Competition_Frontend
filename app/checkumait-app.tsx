@@ -12,7 +12,8 @@ import type { 비목후보, 심층질문항목, 답변항목 } from "../lib/serv
 import { API켜짐 } from "../lib/config";
 import { 판정실행 } from "../lib/judge";
 import { 정규화하기 } from "../lib/normalize";
-import { 비목목록, 계획추가, 규정업로드, L3현재문서목록, 계획삭제 } from "../lib/api";
+import { 비목목록, 계획추가, 규정업로드, 규정처리기다리기, L3현재문서목록, 계획삭제 } from "../lib/api";
+import type { L3처리결과 } from "../lib/server-types";
 import { 체크저장, 일정변경저장, 일정등록 } from "../lib/tasks";
 import { 기본규정, 서버규정읽기, type 적용규정항목 } from "../lib/norms";
 import { 기관검색, 사업요약, 기관저장, 선택기관, 기본기관명, type 기관 } from "../lib/orgs";
@@ -349,7 +350,7 @@ function use적용규정(사업명: string): 적용규정항목[] {
   return 값;
 }
 
-const 빈기준문서: L3현재문서요약 = { 파일명: null, 안내: null, 실패목록: [] };
+const 빈기준문서: L3현재문서요약 = { 파일명: null, 안내: null, 등록일: null, 실패목록: [], 처리중목록: [] };
 
 /**
  * 마이페이지 「주관기관 세부 안내」 — 이 기관에 지금 적용 중인 L3 문서.
@@ -376,6 +377,208 @@ function use현재기준문서(재조회?: unknown): L3현재문서요약 {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [재조회]);
   return 값;
+}
+
+/**
+ * 기준 문서(L3)를 서버가 읽는 동안 띄우는 창. 온보딩 「설정 완료」와 마이페이지 「파일 교체」가 같이 씁니다.
+ *
+ * 주의: 판정 모달(`AiCheckingOverlay`)과 '같은 클래스' 를 씁니다 — 프로토타입 디자인이 이미
+ *    그 모양이라, 새 스타일을 만들면 한 서비스에 로딩 모양이 두 가지가 됩니다.
+ */
+function L3읽는중({
+  파일명,
+  문구,
+  반영됨 = false,
+}: {
+  파일명: string;
+  문구: string;
+  /** 다 읽어 판정 기준에 반영됐을 때만 세 단계를 모두 켭니다. 아직 읽는 중이면 첫 단계만 켭니다. */
+  반영됨?: boolean;
+}) {
+  return (
+    <div className="ai-checking-backdrop">
+      <section
+        className="ai-checking-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="l3-parsing-title"
+      >
+        <span className="ai-checking-visual" aria-hidden="true">
+          <span className="ai-checking-spinner" />
+          <Icon name="sparkSolid" size={20} />
+          <i className="ai-check-spark ai-check-spark-one">
+            <Icon name="sparkSolid" size={9} />
+          </i>
+          <i className="ai-check-spark ai-check-spark-two">
+            <Icon name="sparkSolid" size={7} />
+          </i>
+        </span>
+        <h2 id="l3-parsing-title">기준 문서를 읽고 있어요</h2>
+        <p>{문구 || "조·항을 나누고 금액 기준과 사전승인 조건을 찾고 있습니다."}</p>
+        <div className="ai-checking-steps">
+          {["문서 업로드", "조·항 분리", "기준 반영"].map((label, i) => (
+            <span className={반영됨 || i === 0 ? "active" : ""} key={label}>
+              <i />
+              <b>{label}</b>
+            </span>
+          ))}
+        </div>
+        <small>{파일명}</small>
+      </section>
+    </div>
+  );
+}
+
+/** 기준 문서를 읽지 못했을 때 `L3실패창` 에 넘기는 값. */
+type L3실패 = {
+  파일명: string;
+  /** 서버 `메시지`(실패 이유와 다음 할 일, 지금 판정에 쓰는 규정까지 담긴 문장). */
+  메시지: string;
+  /** 지금 판정에 쓰는 기준 문서. `null` 이면 공통 관리 기준만으로 판정합니다. 모르면 생략합니다. */
+  적용중?: string | null;
+  /** 창 제목·부제. 생략하면 「읽지 못했습니다 / 반영되지 않았습니다」. */
+  제목?: string;
+  부제?: string;
+};
+
+/**
+ * 기준 문서(L3)를 읽지 못했을 때 띄우는 창. 온보딩과 마이페이지가 같이 씁니다.
+ *
+ * 주의: 2026-11-03 — 실패를 토스트(2.3초)나 1.8초짜리 문구로만 알리고 넘어가서, 사용자는 올린
+ *    규정이 판정에 쓰이는 줄 알았습니다. 서버가 실패 이유와 '지금 판정에 쓰는 문서'를 주므로
+ *    (`실패사유`·`적용중_문서`) 사용자가 닫을 때까지 보여주고, 다시 올릴 길을 같은 창에 둡니다.
+ *    모양은 마이페이지 「기준 문서 교체」 확인 창(`file-replace-modal`)과 같습니다.
+ */
+function L3실패창({
+  실패,
+  닫기,
+  다시올리기,
+  넘어가기,
+}: {
+  실패: L3실패;
+  /** ×·「닫기」 — 창만 닫습니다. */
+  닫기: () => void;
+  다시올리기: (파일: File) => void;
+  /** 주면 「닫기」 대신 이 버튼을 둡니다(온보딩의 「건너뛰고 계속」). */
+  넘어가기?: { 문구: string; 동작: () => void };
+}) {
+  return (
+    <div className="modal-backdrop">
+      <section
+        className="modal narrow file-replace-modal l3-fail-modal"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="l3-fail-title"
+        aria-describedby="l3-fail-message"
+      >
+        <header>
+          <div>
+            <h2 id="l3-fail-title">{실패.제목 ?? "기준 문서를 읽지 못했습니다"}</h2>
+            <p>{실패.부제 ?? "올린 문서는 판정에 반영되지 않았습니다."}</p>
+          </div>
+          <button onClick={닫기} aria-label="닫기">×</button>
+        </header>
+        <dl className="file-replace-list">
+          <div>
+            <dt>올린 문서</dt>
+            <dd>{실패.파일명}</dd>
+          </div>
+          {실패.적용중 !== undefined && (
+            <div>
+              <dt>판정에 쓰는 문서</dt>
+              <dd>{실패.적용중 ?? "없음 · 공통 관리 기준만 적용"}</dd>
+            </div>
+          )}
+        </dl>
+        <p className="file-replace-notice" id="l3-fail-message">
+          <span>ⓘ</span>
+          {실패.메시지}
+        </p>
+        <footer>
+          {넘어가기 ? (
+            <button className="outline" onClick={넘어가기.동작}>{넘어가기.문구}</button>
+          ) : (
+            <button className="outline" onClick={닫기}>닫기</button>
+          )}
+          {/* 주의: 서버가 .doc·.docx 를 415 로 거부하므로 고를 수 있게 두지 않습니다. */}
+          <label className="primary institution-file-replace">
+            <input
+              type="file"
+              accept=".pdf,.hwp,.hwpx"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (file) 다시올리기(file);
+              }}
+            />
+            <Icon name="upload" size={14} />
+            다시 올리기
+          </label>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+/** 예외를 사용자 문장으로 바꿉니다. 브라우저 원문("Failed to fetch" 등)은 보여주지 않습니다. */
+function 오류사유(e: unknown): string {
+  if (e instanceof Error) {
+    if (e.name === "TypeError") return "서버에 연결하지 못했습니다.";      // fetch 네트워크 오류
+    if (e.name === "TimeoutError" || e.name === "AbortError") return "서버 응답이 너무 늦습니다.";
+    if (e.message) return e.message;                                       // 413·415·401 등 서버 안내
+  }
+  return "알 수 없는 오류입니다.";
+}
+
+type L3처리 =
+  | { 종류: "완료"; 결과: L3처리결과 }
+  | { 종류: "처리중"; 결과: L3처리결과 }
+  | { 종류: "실패"; 실패: L3실패 };
+
+/**
+ * 기준 문서 하나를 올리고 서버가 다 읽을 때까지 기다려 결과를 셋 중 하나로 돌려줍니다. 예외를 던지지 않습니다.
+ * 온보딩과 마이페이지가 같이 씁니다.
+ *
+ * 주의: 업로드 자체가 실패하면(413·415·네트워크·30MB 초과) 서버에 문서가 생기지 않았으니 판정 기준도
+ *    그대로입니다. 업로드는 됐는데 결과 조회가 실패하면(401·404 등) 서버는 계속 읽고 있을 수 있어서
+ *    '반영 안 됨' 이라고 단정하지 않고 마이페이지에서 확인하라고 안내합니다.
+ */
+async function 기준문서처리(파일: File): Promise<L3처리> {
+  const 바뀌지않음 = "판정 기준은 바뀌지 않았습니다.";
+  if (파일.size > 30 * 1024 * 1024) {
+    return { 종류: "실패", 실패: { 파일명: 파일.name, 메시지: `기준 문서는 30MB 이하만 등록할 수 있습니다. ${바뀌지않음}` } };
+  }
+  let 접수: L3처리결과;
+  try {
+    접수 = await 규정업로드(파일, 선택기관());
+  } catch (e) {
+    return { 종류: "실패", 실패: { 파일명: 파일.name, 메시지: `문서를 올리지 못했습니다 — ${오류사유(e)} ${바뀌지않음}` } };
+  }
+  let r: L3처리결과;
+  try {
+    r = await 규정처리기다리기(접수);
+  } catch (e) {
+    return {
+      종류: "실패",
+      실패: {
+        파일명: 파일.name,
+        제목: "처리 결과를 확인하지 못했습니다",
+        부제: "문서는 올라갔지만 다 읽었는지 확인하지 못했습니다.",
+        메시지: `${오류사유(e)} 잠시 뒤 마이페이지 「주관기관 세부 안내」에서 결과를 확인해 주세요.`,
+      },
+    };
+  }
+  if (r.상태 === "실패") {
+    return {
+      종류: "실패",
+      실패: {
+        파일명: 파일.name,
+        메시지: r.메시지 || "문서를 읽지 못했습니다. 다시 올려 주세요.",
+        적용중: r.적용중_문서 ?? null,
+      },
+    };
+  }
+  return { 종류: r.상태 === "완료" ? "완료" : "처리중", 결과: r };
 }
 
 /**
@@ -1326,6 +1529,47 @@ function Login({
   const [기준파일드래그중, set기준파일드래그중] = useState(false);
   const [기준파싱중, set기준파싱중] = useState(false);
   const [기준파싱문구, set기준파싱문구] = useState("");
+  /** 기준 문서를 읽지 못했을 때 띄우는 창의 내용. 사용자가 닫거나 다시 올릴 때까지 둡니다. */
+  const [기준실패, set기준실패] = useState<L3실패 | null>(null);
+  /** 서버가 다 읽어 판정 기준에 반영했는가 / 2분이 지나도 아직 읽는 중인가. */
+  const [기준반영됨, set기준반영됨] = useState(false);
+  const [기준처리중, set기준처리중] = useState(false);
+  /**
+   * 온보딩 기준 문서 올리기 — 업로드한 뒤 서버가 다 읽을 때까지 기다려 결과대로 갈립니다.
+   *
+   * 주의: 2026-11-03 — 예전엔 202(접수) 응답만 보고 다음 단계로 넘어가서, 읽지 못한 문서도
+   *    등록된 것처럼 보였고 업로드 오류는 1.8초 뒤 사라졌습니다. 이제 실패하면 실패 창을 띄우고
+   *    이 단계에 머뭅니다. 기준 문서는 선택사항이라 창에서 「건너뛰고 계속」으로 넘어갈 수 있습니다.
+   *    실패한 파일은 선택에서 비웁니다 — 남겨 두면 「설정 완료」가 같은 파일을 또 올립니다.
+   */
+  const 기준문서올리기 = async (파일: File) => {
+    set기준실패(null);
+    set기준반영됨(false);
+    set기준처리중(false);
+    set기준파싱중(true);
+    set기준파싱문구("");
+    const 결과 = await 기준문서처리(파일);
+    if (결과.종류 === "실패") {
+      set기준파싱중(false);
+      setCriteriaBlob(null);
+      setCriteriaFile("");
+      set기준실패(결과.실패);
+      return;
+    }
+    // 완료면 읽은 조 수를, 2분이 지나도 읽는 중이면 서버 안내("끝날 때까지는 기존 규정으로 판정")를
+    // 보여 주고 넘어갑니다. 읽는 중인 문서를 '반영됨' 으로 그리지 않습니다(다음 화면 문구도 나뉩니다).
+    const 완료 = 결과.종류 === "완료";
+    set기준반영됨(완료);
+    set기준처리중(!완료);
+    set기준파싱문구(
+      완료
+        ? L3등록사실(결과.결과.조_건수, 결과.결과.파싱품질)
+        : 결과.결과.메시지 || "문서를 아직 읽고 있습니다. 끝나면 마이페이지에서 결과를 확인할 수 있습니다.",
+    );
+    await new Promise((resolve) => setTimeout(resolve, 완료 ? 900 : 2400));
+    set기준파싱중(false);
+    setStep("ready");
+  };
   // 주의: Supabase 에 실제로 만들어 둔 계정과 '똑같아야' 합니다.
   //    (Supabase → Authentication → Users 에서 보이는 이메일)
   //    비밀번호는 코드에 넣지 않습니다. 시연 때 직접 입력하세요.
@@ -1987,15 +2231,13 @@ function Login({
                 </span>
                 <em>{criteriaFile ? "파일 변경" : "파일 찾기"}</em>
               </label>
-              {/* 주의: 바꾼 파일이 판정에 쓰인다고 오해하지 않게 밝힙니다. 올린 문서를
-                  엔진에 넣으려면 파싱·재적재가 필요한데 MVP 범위 밖입니다.
-                  (2026-09-07 — '지금 적용 중인 파일'을 여기서 지어내지 않습니다.
-                  게스트 상태라 서버도 아직 그 답을 모릅니다 — 로그인 후 마이페이지가
-                  실제 값을 보여줍니다.) */}
+              {/* 주의: 2026-11-03 — 기관당 기준 문서는 하나입니다. 서버가 새 문서를 읽으면 바로
+                  그 문서로 판정하고, 읽지 못하면 기존 문서를 계속 씁니다(백엔드 `l3_parse.적용문서_정리`).
+                  예전 문구 「기관 검토 후 반영」은 실제로 없는 절차였습니다. */}
               <p className="onboarding-notice">
                 {!criteriaBlob
                   ? "등록한 문서는 기관별 금액 기준, 사전승인·심의 조건, 필요 증빙 판단에 사용됩니다."
-                  : "새로 올린 문서는 기관 검토 후 판정 기준에 반영됩니다. 그때까지는 기존에 등록된 기준 문서가 계속 적용됩니다."}
+                  : "올린 문서를 읽고 나면 바로 이 문서로 판정합니다. 읽지 못하면 기존에 등록된 기준 문서를 계속 씁니다."}
               </p>
               <div className="onboarding-actions">
                 <button
@@ -2014,27 +2256,7 @@ function Login({
                       setStep("ready");
                       return;
                     }
-                    set기준파싱중(true);
-                    set기준파싱문구("");
-                    try {
-                      const r = await 규정업로드(criteriaBlob, 선택기관());
-                      /* 서버는 접수까지만 하고 202 로 돌려줍니다(`routes_l3.py` §5).
-                         조 건수가 오면 파싱이 이미 끝난 것이고, 없으면 진행 중입니다.
-                         주의: `파싱품질` 도 같이 봅니다 — warn/fail 이면 문구를 구분해 안내합니다. */
-                      set기준파싱문구(L3등록사실(r?.조_건수, r?.파싱품질));
-                      await new Promise((r) => setTimeout(r, 900));
-                      setStep("ready");
-                    } catch (e) {
-                      set기준파싱문구(
-                        `등록에 실패했습니다${e instanceof Error ? ` — ${e.message}` : ""}`,
-                      );
-                      await new Promise((r) => setTimeout(r, 1800));
-                      /* 주의: 실패해도 온보딩을 막지 않습니다 — 기준 문서는 선택사항이고,
-                         여기서 가두면 서비스에 들어가지도 못합니다. */
-                      setStep("ready");
-                    } finally {
-                      set기준파싱중(false);
-                    }
+                    await 기준문서올리기(criteriaBlob);
                   }}
                 >
                   {기준파싱중 ? "등록 중…" : "설정 완료"}
@@ -2042,43 +2264,24 @@ function Login({
               </div>
             </>
           )}
-          {기준파싱중 && (
-            /* 주의: 판정 모달(`AiCheckingOverlay`)과 '같은 클래스' 를 씁니다 —
-               프로토타입 디자인이 이미 그 모양이라, 새 스타일을 만들면 한 서비스에
-               로딩 모양이 두 가지가 됩니다. */
-            <div className="ai-checking-backdrop">
-              <section
-                className="ai-checking-modal"
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="l3-parsing-title"
-              >
-                <span className="ai-checking-visual" aria-hidden="true">
-                  <span className="ai-checking-spinner" />
-                  <Icon name="sparkSolid" size={20} />
-                  <i className="ai-check-spark ai-check-spark-one">
-                    <Icon name="sparkSolid" size={9} />
-                  </i>
-                  <i className="ai-check-spark ai-check-spark-two">
-                    <Icon name="sparkSolid" size={7} />
-                  </i>
-                </span>
-                <h2 id="l3-parsing-title">기준 문서를 읽고 있어요</h2>
-                <p>
-                  {기준파싱문구 ||
-                    "조·항을 나누고 금액 기준과 사전승인 조건을 찾고 있습니다."}
-                </p>
-                <div className="ai-checking-steps">
-                  {["문서 업로드", "조·항 분리", "기준 반영"].map((label, i) => (
-                    <span className={기준파싱문구 || i === 0 ? "active" : ""} key={label}>
-                      <i />
-                      <b>{label}</b>
-                    </span>
-                  ))}
-                </div>
-                <small>{criteriaFile}</small>
-              </section>
-            </div>
+          {기준파싱중 && <L3읽는중 파일명={criteriaFile} 문구={기준파싱문구} 반영됨={기준반영됨} />}
+          {기준실패 && (
+            <L3실패창
+              실패={기준실패}
+              닫기={() => set기준실패(null)}
+              넘어가기={{
+                문구: "건너뛰고 계속",
+                동작: () => {
+                  set기준실패(null);
+                  setStep("ready");
+                },
+              }}
+              다시올리기={(파일) => {
+                setCriteriaBlob(파일);
+                setCriteriaFile(파일.name);
+                void 기준문서올리기(파일);
+              }}
+            />
           )}
           {step === "ready" && (
             <>
@@ -2088,10 +2291,12 @@ function Login({
               <h1>준비됐어요. 써도돼요를 둘러볼까요?</h1>
               <p>
                 선택한 사업 기준으로 초기 설정을 완료했습니다. 지출 계획을 작성하면{" "}
-                {criteriaFile
+                {criteriaFile && !기준처리중
                   ? "사업 공통 규정과 기관 세부기준을 함께"
                   : "우선 사업 공통 규정을 기준으로"}{" "}
                 확인합니다.
+                {/* 주의: 2분이 지나도 서버가 읽는 중이면 아직 판정에 쓰이지 않습니다 — 반영된 것처럼 말하지 않습니다. */}
+                {기준처리중 && " 올린 기관 세부기준은 다 읽은 뒤 반영되며, 결과는 마이페이지에서 확인할 수 있습니다."}
               </p>
               <div className="ready-project">
                 <Icon name="check" size={20} />
@@ -2102,7 +2307,7 @@ function Login({
                       않습니다(고른 적 없으면 안 보여줍니다). */}
                   <small>
                     {institution}
-                    {criteriaFile ? ` · ${criteriaFile}` : ""}
+                    {criteriaFile ? ` · ${criteriaFile}${기준처리중 ? " (읽는 중)" : ""}` : ""}
                   </small>
                 </span>
               </div>
@@ -6268,10 +6473,47 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
    * `lib/orgs.ts:107 적용중_기준파일` 하드코딩 대체용, 서버 커밋 `7fcd665`).
    * fail 문서는 숨기지 않고 `기준문서.실패목록`으로 따로 받아 구분해서 보여줍니다.
    */
-  const 기준문서 = use현재기준문서();
+  const [기준재조회, set기준재조회] = useState(0);
+  const 기준문서 = use현재기준문서(기준재조회);
   /** 방금 이 화면에서 새로 등록한 파일 — 서버 재조회 전에도 먼저 보여줍니다. */
   const [방금등록, set방금등록] = useState<{ 파일명: string; 안내: string | null } | null>(null);
   const [교체확인, set교체확인] = useState<File | null>(null);
+  /** 서버가 읽고 있는 파일 이름 — 이 동안 `L3읽는중` 창을 띄웁니다. */
+  const [기준읽는중, set기준읽는중] = useState<string | null>(null);
+  const [기준실패, set기준실패] = useState<L3실패 | null>(null);
+  const 지금기준파일 = 방금등록?.파일명 ?? 기준문서.파일명;
+
+  /**
+   * 기준 문서 교체 — 업로드한 뒤 서버가 다 읽을 때까지 기다려 결과대로 갈립니다.
+   *
+   * 주의: 2026-09-06 — 여기는 '서버를 안 부르고' 화면 이름만 바꾸고 "교체했습니다" 라고
+   *    알리고 있었습니다(실측: /api/l3/upload 요청 0건). 이 제품의 핵심 약속이 깨지던 자리입니다.
+   * 주의: 2026-11-03 — 그 뒤로도 202(접수) 응답만 보고 「적용 중」을 새 파일로 바꿔서, 서버가 읽지
+   *    못한 문서도 적용된 것처럼 보였습니다. 이제 결과를 기다립니다. 완료면 새 문서가 「적용 중」이
+   *    되고(서버가 이전 문서를 판정에서 뺍니다), 실패면 실패 창을 띄우고 「적용 중」은 그대로 둡니다.
+   *    어느 쪽이든 끝나면 `GET /api/l3/current` 를 다시 읽어 실패 목록까지 서버와 맞춥니다.
+   */
+  const 기준문서올리기 = async (파일: File) => {
+    set기준실패(null);
+    set기준읽는중(파일.name);
+    // 주의: 실패를 '성공처럼' 넘기지 않습니다. 조용히 넘기면 사용자는 바뀌지 않은 기준으로
+    //    판정을 받고도 바뀐 줄 압니다. `기준문서처리` 는 예외를 던지지 않습니다.
+    const 결과 = await 기준문서처리(파일);
+    set기준읽는중(null);
+    if (결과.종류 === "실패") {
+      set기준실패(결과.실패);
+    } else if (결과.종류 === "완료") {
+      const r = 결과.결과;
+      const 사실 = L3등록사실(r.조_건수, r.파싱품질);
+      // 이름은 서버가 '지금 판정에 쓴다' 고 답한 문서를 씁니다(동시에 올린 다른 문서가 이겼을 수 있음)
+      set방금등록({ 파일명: r.적용중_문서 ?? 파일.name, 안내: r.파싱품질 === "warn" ? 사실 : null });
+      notify(`기준 문서를 교체했습니다 — ${사실}`);
+    } else {
+      // 2분이 지나도 처리 중 — 서버 안내("끝날 때까지는 기존 규정으로 판정합니다")를 그대로 씁니다
+      notify(결과.결과.메시지 || "문서를 아직 읽고 있습니다. 끝나면 이 화면에 반영됩니다.");
+    }
+    set기준재조회((n) => n + 1);
+  };
 
   /**
    * 협약기간·사업비. 사용자가 고친 값 → 고른 사업의 시연값 순서로 채웁니다.
@@ -6442,12 +6684,35 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
         <article>
           <span className="institution-badge">사용자 등록</span>
           <div>
-            <b>{방금등록?.파일명 ?? 기준문서.파일명 ?? "등록된 기준 문서가 없습니다"}</b>
-            <small>{방금등록?.안내 ?? 기준문서.안내 ?? "2026.03.02 등록"}</small>
+            <b>{지금기준파일 ?? "등록된 기준 문서가 없습니다"}</b>
+            {/* 주의: 2026-11-03 — 여기 「2026.03.02 등록」이 하드코딩되어 있어서 어떤 문서든
+                같은 날짜로 보였습니다. 서버 `등록일` 을 쓰고, 문서가 없으면 판정이 무엇을 쓰는지 밝힙니다. */}
+            <small>
+              {방금등록
+                ? 방금등록.안내 ?? "방금 등록했습니다"
+                : 기준문서.안내 ??
+                  (기준문서.파일명
+                    ? 기준문서.등록일
+                      ? `${기준문서.등록일.replace(/-/g, ".")} 등록`
+                      : "등록됨"
+                    : "기관 세부기준 없이 공통 관리 기준만으로 판정합니다")}
+            </small>
           </div>
         </article>
         {/* 주의: 파싱에 실패한(fail) 문서는 '숨기지 않습니다' — 숨기면 사용자가 올린 파일이
             왜 판정에 적용되지 않는지 알 수 없습니다(2026-09-07). */}
+        {기준문서.처리중목록.map((문서) => (
+          <article key={문서.doc_id}>
+            <span className="institution-badge">읽는 중</span>
+            <div>
+              <b>{문서.원본파일명}</b>
+              <small>
+                다 읽으면 이 문서로 판정합니다.{" "}
+                {지금기준파일 ? "그때까지는 위 문서를 씁니다." : "그때까지는 공통 관리 기준만으로 판정합니다."}
+              </small>
+            </div>
+          </article>
+        ))}
         {기준문서.실패목록.map((문서) => (
           <article key={문서.doc_id} className="institution-file-failed">
             <span className="institution-badge warn">읽지 못함</span>
@@ -6487,41 +6752,22 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
               </div>
               <div>
                 <dt>현재 문서</dt>
-                <dd>{방금등록?.파일명 ?? 기준문서.파일명 ?? "등록된 기준 문서가 없습니다"}</dd>
+                <dd>{지금기준파일 ?? "등록된 기준 문서가 없습니다"}</dd>
               </div>
             </dl>
             <p className="file-replace-notice">
               <span>ⓘ</span>
-              교체하면 기존 문서를 대신해 기관 세부기준으로 등록됩니다.
+              새 문서를 읽고 나면 기존 문서를 대신해 기관 세부기준으로 판정합니다. 읽지 못하면
+              기존 문서를 계속 씁니다.
             </p>
             <footer>
               <button className="outline" onClick={() => set교체확인(null)}>취소</button>
               <button
                 className="primary"
-                onClick={async () => {
-                  // 주의: 2026-09-06 — 여기는 '서버를 안 부르고' 화면 이름만 바꾸고
-                  //    "교체했습니다" 라고 알리고 있었습니다. 실측: /api/l3/upload 요청 0건,
-                  //    tenant.l3_documents 4건 그대로 — 사용자는 등록됐다고 믿는데
-                  //    판정 기준은 '하나도 안 바뀝니다'. 이 제품의 핵심 약속이 깨지던 자리입니다.
+                onClick={() => {
                   const 파일 = 교체확인;
                   set교체확인(null);
-                  try {
-                    const r = await 규정업로드(파일, 선택기관());
-                    // 주의: `파싱품질` warn/fail 이면 "등록했습니다" 성공 톤을 그대로 안 씁니다.
-                    //    fail 은 「지금 적용 중」자리를 이 파일로 안 바꿉니다 — 실제로
-                    //    판정에 반영되는 게 아니므로 바뀐 척하면 안 됩니다.
-                    const 사실 = L3등록사실(r?.조_건수, r?.파싱품질);
-                    if (r?.파싱품질 !== "fail") {
-                      set방금등록({ 파일명: 파일.name, 안내: r?.파싱품질 === "warn" ? 사실 : null });
-                    }
-                    notify(r?.파싱품질 === "fail" ? 사실 : `기준 문서를 등록했습니다 — ${사실}`);
-                  } catch (e) {
-                    // 주의: 실패를 '성공처럼' 넘기지 않습니다. 조용히 넘기면 사용자는
-                    //    바뀌지 않은 기준으로 판정을 받고도 바뀐 줄 압니다.
-                    notify(
-                      `기준 문서 등록에 실패했습니다${e instanceof Error && e.message ? ` — ${e.message}` : ""}`,
-                    );
-                  }
+                  void 기준문서올리기(파일);
                 }}
               >
                 교체하기
@@ -6529,6 +6775,14 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
             </footer>
           </section>
         </div>
+      )}
+      {기준읽는중 && <L3읽는중 파일명={기준읽는중} 문구="" />}
+      {기준실패 && (
+        <L3실패창
+          실패={기준실패}
+          닫기={() => set기준실패(null)}
+          다시올리기={(파일) => void 기준문서올리기(파일)}
+        />
       )}
       {editingProfile && (
         <div className="modal-backdrop">
