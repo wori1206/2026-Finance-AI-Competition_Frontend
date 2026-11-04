@@ -1191,6 +1191,9 @@ pre.ai-inquiry-text{
 .confirm-question-source small{display:block;font-size:12px;font-weight:600;color:var(--text)}
 .confirm-question-source p{margin:5px 0 0;font-size:12px;line-height:1.7;color:var(--sub);white-space:pre-wrap;overflow-wrap:anywhere}
 
+/* 재점검 창은 질문이 길어져도 시작 버튼이 늘 보이게 합니다. */
+.plan-recheck-modal>footer{position:sticky;bottom:0;background:#fff}
+
 /* 결과 화면 「확인한 내용」. 판정 아래에 조용히 둡니다. */
 .ai-confirmed{padding:14px 16px;border:1px solid #e5e8e6;border-radius:8px;background:#fff}
 .ai-confirmed>b{font-size:13px}
