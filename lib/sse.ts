@@ -11,7 +11,7 @@ import type { 답변항목 } from "./server-types";
  *    보내야 해서 못 씁니다. fetch 로 받아 직접 끊어 읽습니다.
  *
  * 주의: 서버가 대기 중 12초마다 `: keep-alive` 주석 줄을 보냅니다 (프록시 idle timeout
- *    방지). event:/data: 로 시작하지 않는 줄은 여기서 자연히 무시됩니다.
+ *    방지). 호출부에는 `keep-alive` 이벤트로 알려 무응답 타이머를 다시 재게 합니다.
  */
 export type SSE핸들러 = (이벤트: string, 데이터: unknown) => void;
 
@@ -52,11 +52,20 @@ export async function SSE(
         : "이 계정으로는 점검할 수 없습니다. 기관 계정 등록을 확인해 주세요.",
     );
   }
-  if (!res.ok || !res.body) throw new Error(`요청에 실패했습니다 (${res.status})`);
+  // 주의: 429(요청 한도)·422(등록되지 않은 사업명 등)·503 은 서버가 이유를 본문에 담아 보냅니다.
+  //    상태코드만 보여주면 사용자가 기다려야 하는지, 입력을 고쳐야 하는지 모릅니다.
+  if (!res.ok || !res.body) {
+    const 본문 = await res.json().catch(() => null) as Record<string, unknown> | null;
+    const 사유 = [본문?.["오류"], 본문?.["detail"]].find((v) => typeof v === "string") as string | undefined;
+    throw Object.assign(new Error(사유 || `요청에 실패했습니다 (${res.status})`), { status: res.status });
+  }
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let 버퍼 = "";
+  // 주의: 서버는 정규화·판정 모두 마지막에 「완료」를 보냅니다. 그 전에 연결이 끊기면
+  //    (모바일 망 전환·프록시 종료) 결과를 못 받은 것이므로 성공으로 넘기지 않습니다.
+  let 완료받음 = false;
 
   for (;;) {
     const { done, value } = await reader.read();
@@ -74,7 +83,12 @@ export async function SSE(
         if (줄.startsWith("event:")) 이름 = 줄.slice(6).trim();
         else if (줄.startsWith("data:")) 데이터줄.push(줄.slice(5).trim());
       }
-      if (!데이터줄.length) continue;         // `: keep-alive` 는 여기서 걸러집니다
+      // 주의: `: keep-alive` 주석은 데이터가 없지만 '서버가 아직 판정 중' 이라는 신호입니다.
+      //    호출부의 무응답 타이머가 이걸로 다시 잽니다(판정 마감 180초 동안 12초마다 옵니다).
+      if (!데이터줄.length) {
+        if (덩어리.trimStart().startsWith(":")) on("keep-alive", null);
+        continue;
+      }
       const 원문 = 데이터줄.join("\n");
       let 값: unknown = 원문;
       try {
@@ -82,8 +96,12 @@ export async function SSE(
       } catch {
         /* 「문의초안」은 JSON 이 아니라 문자열입니다 */
       }
+      if (이름 === "완료") 완료받음 = true;
       on(이름, 값);
     }
+  }
+  if (!완료받음) {
+    throw new Error("서버와 연결이 끊겨 결과를 받지 못했습니다. 잠시 뒤 다시 시도해 주세요.");
   }
 }
 

@@ -171,6 +171,8 @@ export type 심층질문근거 = { doc_id: string; 조번호: string };
 
 export type 심층질문항목 = {
   code: string;
+  /** 이 질문이 속한 비목. 없으면 공통 질문입니다. */
+  비목?: string | null;
   질문문: string;
   유형: "예아니오" | "선택" | "숫자" | "텍스트";
   /** `유형` 이 "선택" 일 때만 채워진다. */

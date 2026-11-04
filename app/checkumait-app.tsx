@@ -26,7 +26,7 @@ import { 상세를계획으로, 판정제목, 행동문구, 시각표기, L3등�
 import { 데모종료, 데모중, 이메일기억, 기억된이메일, 이메일잊기, 팀이름기억, 기억된팀이름 } from "../lib/session";
 import { 초안전부지우기 } from "../lib/inquiry-store";
 import { 선택사업, 사업저장, 사업선택지, 목록에맞추기, 기본사업 } from "../lib/program";
-import { 협약쓰기, 원, 날짜표기, 기간표기, 디데이표기, 지금협약, 협약기억, 기억된협약, 서버협약읽기, type 협약정보 } from "../lib/profile";
+import { 협약쓰기, 원, 날짜표기, 기간표기, 디데이표기, 지금협약, 협약기억, 협약잊기, 기억된협약, 서버협약읽기, 서버협약조회, 빈협약, type 협약정보 } from "../lib/profile";
 import { SendButton } from "./send-button";
 import "./detail-refinement.css";
 
@@ -256,6 +256,12 @@ function 을를(말: string): string {
  * 주의: 예전에는 `Number("".slice(5,7))` 가 그대로 0 이 되어 집행 일정에 「0/0」이
  *    찍혔습니다. 서버 할일에 due_date 가 없을 때 나던 증상입니다.
  */
+/** 이 기기의 오늘 날짜(YYYY-MM-DD, 현지 시간). 클라이언트에서만 부릅니다. */
+function 오늘날짜(): string {
+  const n = new Date();
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+}
+
 function 월일표기(date: string): string {
   const m = Number(date?.slice(5, 7));
   const d = Number(date?.slice(8, 10));
@@ -295,36 +301,63 @@ function use기관(재조회?: unknown): string {
 /**
  * 협약 기간·사업비. 홈·사이드바·마이페이지가 '같은 값' 을 보게 하는 통로입니다.
  *
- * 주의: 순서: 사용자가 마이페이지에서 고친 값 → **서버(`GET /api/profile`)** → 온보딩에서
- *    '고른 사업' 의 시연값.
- *
- * 주의: 2026-09-06 에는 서버를 안 읽었습니다 — 그날 운영 `tenant.profile_agreements` 의 협약기간이
- *    2024 년(이미 만료)으로 하드코딩되어 있어서, 읽으면 D-day 가 「종료」로 되돌아갔습니다.
- *    담당자가 그 행을 고쳤으므로(2026-09-07) 다시 읽되, **사용자가 직접 고친 값이
- *    있으면 서버를 안 부릅니다** — 로컬 값이 서버 값보다 우선합니다. 자세한 사정은
+ * 주의: 순서: **서버(`GET /api/profile`)** → 이 브라우저에 남긴 값(게스트·mock) → 온보딩에서
+ *    '고른 사업' 의 시연값. 서버에 값이 있으면 브라우저 값을 지웁니다. 자세한 사정은
  *    `lib/profile.ts::서버협약읽기`.
  *
  * 주의: 초기값을 '동기' 로 채웁니다. 예전엔 기본값을 그린 다음 효과에서 덮어써서,
  *    홈에 잠깐 다른 금액이 스쳤습니다. 서버 값은 늦게 도착하므로 받아지면 한 번 더
  *    덮어씁니다(짧게 시연값 → 서버값으로 바뀔 수 있습니다 — 없음보다 낫습니다).
  */
-function use협약(재조회?: unknown): 협약정보 {
+const 협약저장알림 = "checkumait-협약저장";
+
+function use협약(재조회?: unknown): 협약정보 & { 예시: boolean } {
   const [값, set값] = useState<협약정보>(지금협약);
+  // 주의: 사용자가 입력한 값이 아니면 화면에 예시라고 표시합니다. 실제 협약기간처럼 보이면 안 됩니다.
+  const [예시, set예시] = useState(true);
+  // 주의: 마이페이지에서 저장해도 이미 떠 있는 사이드바는 다시 읽지 않아 D-day 가 안 보였습니다.
+  const [저장횟수, set저장횟수] = useState(0);
+  useEffect(() => {
+    const 다시읽기 = () => set저장횟수((n) => n + 1);
+    window.addEventListener(협약저장알림, 다시읽기);
+    return () => window.removeEventListener(협약저장알림, 다시읽기);
+  }, []);
   useEffect(() => {
     let 살아있음 = true;
     // 로그인·사업 변경 뒤에는 고른 사업이 달라졌을 수 있으므로 다시 읽습니다.
     set값(지금협약());
-    if (!기억된협약()) {
-      서버협약읽기().then((서버값) => {
-        if (살아있음 && 서버값) set값(서버값);
-      });
-    }
+    set예시(!기억된협약());
+    서버협약읽기().then((서버값) => {
+      if (살아있음 && 서버값) {
+        협약잊기();
+        set값(서버값);
+        set예시(false);
+      }
+    });
     return () => {
       살아있음 = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [재조회]);
-  return 값;
+  }, [재조회, 저장횟수]);
+  return { ...값, 예시 };
+}
+
+/** 이 사업에서 고를 수 있는 비목. `/api/vocab` 이 기준입니다(창업활동비는 일부 사업에만 있습니다). */
+function use비목선택지(): readonly string[] {
+  const [서버비목, set서버비목] = useState<string[] | null>(null);
+  useEffect(() => {
+    if (!API켜짐()) return;
+    let 살아있음 = true;
+    비목목록(현재사업())
+      .then((r) => {
+        if (살아있음 && Array.isArray(r.비목) && r.비목.length) set서버비목(r.비목);
+      })
+      .catch(() => {});
+    return () => {
+      살아있음 = false;
+    };
+  }, []);
+  return 서버비목 ?? EXPENSE_CATEGORIES;
 }
 
 /**
@@ -695,6 +728,8 @@ type CheckQuestion = { label: string; options?: string[] };
 function 질문찾기(라벨: string): CheckQuestion[] {
   const 접기 = (x: string) => x.replace(/\s/g, "");
   const 키 = 접기(라벨.split(" · ")[0]);
+  // 주의: 빈 문자열은 모든 키의 앞부분과 겹칩니다. 그대로 두면 비목 없는 계획이 재료비 질문을 받습니다.
+  if (!키) return [];
   const 후보 = Object.keys(CATEGORY_QUESTIONS);
   const 맞는것 =
     후보.find((k) => 접기(k) === 키) ??
@@ -969,8 +1004,11 @@ export default function CheckumaitApp() {
     set데모기관(데모중()?.기관명 ?? null);
   }, [signedIn]);
   const [route, setRoute] = useState<AppRoute>({ page: "home" });
-  const [plans, setPlans] = useState<ExpensePlan[]>(INITIAL_PLANS);
+  // 주의: 서버 모드에서 예시 계획으로 시작하면 응답이 오기 전까지 실제 계획처럼 보입니다.
+  const [plans, setPlans] = useState<ExpensePlan[]>(() => (API켜짐() ? [] : INITIAL_PLANS));
   const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
+  const [자료받음, set자료받음] = useState(false);
+  const [일정실패, set일정실패] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [mobileNav, setMobileNav] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -986,11 +1024,20 @@ export default function CheckumaitApp() {
   useEffect(() => {
     if (!signedIn) return;
     let 살아있음 = true;
-    Promise.all([planService.listPlans(), planService.listSchedules()]).then(
+    Promise.all([
+      planService.listPlans(),
+      // 주의: 실패를 빈 목록으로 두면 「일정이 없습니다」로 읽혀 마감을 놓칠 수 있습니다.
+      planService.listSchedules().catch((e: unknown) => {
+        console.warn("[CHECKUMAIT] 백엔드에서 일정을 읽지 못했습니다.", e);
+        return null;
+      }),
+    ]).then(
       ([planRows, scheduleRows]) => {
         if (!살아있음) return;
         setPlans(planRows);
-        setSchedules(scheduleRows);
+        setSchedules(scheduleRows ?? []);
+        set일정실패(scheduleRows === null);
+        set자료받음(true);
       },
     );
     return () => {
@@ -1254,7 +1301,7 @@ export default function CheckumaitApp() {
                 로그인 사용자는 온보딩에서 고른 기관과 실제 협약 종료일을 씁니다. */}
             <small>
               {데모기관 ??
-                `${기관}${디데이표기(협약.종료일) ? ` · ${디데이표기(협약.종료일)}` : ""}`}
+                `${기관}${디데이표기(협약.종료일) && !(협약.예시 && API켜짐()) ? ` · ${디데이표기(협약.종료일)}` : ""}`}
             </small>
           </section>
           <div className="account-row">
@@ -1285,6 +1332,12 @@ export default function CheckumaitApp() {
                     데모종료();                        // 주의: 안 지우면 다음 사람이 그 기관으로 들어갑니다
                   이메일잊기();
                   초안전부지우기();                  // 주의: 다음 사람이 앞사람의 문의 글을 보면 안 됩니다
+                  협약잊기();                        // 주의: 다음 계정이 앞 계정의 협약을 자기 기관에 저장하게 됩니다
+                    // 주의: 비우지 않으면 다음 계정이 응답을 받기 전까지 앞 계정의 계획을 봅니다.
+                    setPlans(API켜짐() ? [] : INITIAL_PLANS);
+                    setSchedules([]);
+                    set자료받음(false);
+                    set일정실패(false);
                     window.sessionStorage.removeItem("checkumait-signed-in");
                     setSignedIn(false);
                     setAccountOpen(false);
@@ -1332,13 +1385,15 @@ export default function CheckumaitApp() {
             안 그립니다 — 잘 되는 날 배너가 있으면 그게 더 나쁩니다. */}
         <DataSourceBanner />
         {route.page === "home" && (
-          <HomePage plans={plans} schedules={schedules} go={go} />
+          <HomePage plans={plans} schedules={schedules} go={go} 자료받음={자료받음} 일정실패={일정실패} />
         )}
         {route.page === "plans" && (
           <PlansPage
             plans={plans}
             schedules={schedules}
             go={go}
+            자료받음={자료받음}
+            notify={notify}
             remove={deletePlan}
             update={(plan) =>
               persistPlans(
@@ -1349,11 +1404,20 @@ export default function CheckumaitApp() {
         )}
         {route.page === "plan-new" && (
           <NewPlanPage
-            save={(plan, temporary) => {
+            save={(plan, temporary, 점검오류) => {
               persistPlans([plan, ...plans]);
               if (temporary) {
                 go({ page: "plans" });
                 notify("지출 계획을 임시저장했습니다.");
+              } else if (점검오류) {
+                // 주의: 계획은 서버에 저장됐지만 판정은 실패했습니다. 「점검 완료」라고 하면
+                //    사용자는 결과가 있다고 믿고 넘어갑니다.
+                go({ page: "plan-detail", id: plan.id });
+                notify(`지출 계획은 저장했지만 AI 점검을 마치지 못했습니다. ${점검오류}`);
+              } else if (plan.저장안됨) {
+                // 주의: 서버 장애의 판단불가는 오류가 아니라 정상 응답으로 옵니다.
+                go({ page: "plan-detail", id: plan.id });
+                notify("지출 계획은 저장했지만 점검 결과는 저장되지 않았습니다. 다시 점검해 주세요.");
               } else {
                 go({ page: "plan-detail", id: plan.id });
                 notify("지출 계획을 저장하고 AI 점검을 완료했습니다.");
@@ -1386,6 +1450,8 @@ export default function CheckumaitApp() {
           <SchedulePage
             plans={plans}
             schedules={schedules}
+            자료받음={자료받음}
+            일정실패={일정실패}
             save={persistSchedules}
             추가={(item) => 일정추가하기([item])}
             할일동기화={할일동기화}
@@ -2349,17 +2415,23 @@ function HomePage({
   plans,
   schedules,
   go,
+  자료받음,
+  일정실패,
 }: {
   plans: ExpensePlan[];
   schedules: ScheduleItem[];
   go: (route: AppRoute) => void;
+  /** 계획·일정 응답을 받았는가. 받기 전에 「일정이 없습니다」라고 하면 틀린 말입니다. */
+  자료받음: boolean;
+  일정실패: boolean;
 }) {
   const 사업 = use사업();
   // 주의: 홈에 하드코딩되어 있던 기관명·사업기간·D-day 를 실제 값으로 바꿉니다.
   //    마이페이지와 다른 값이 보이던 자리입니다.
   const 기관 = use기관();
   const 협약 = use협약();
-  const 남음 = 디데이표기(협약.종료일);
+  // 주의: 사용자가 입력한 협약이 없으면 남은 기간을 말할 수 없습니다(예시 모드는 시연용으로 보여 줍니다).
+  const 남음 = 협약.예시 && API켜짐() ? "" : 디데이표기(협약.종료일);
   const counts = {
     all: plans.length,
     safe: plans.filter((p) => p.status === "특이사항 없음").length,
@@ -2377,6 +2449,15 @@ function HomePage({
         Number(b.status === "위험") - Number(a.status === "위험") ||
         b.updatedAt.localeCompare(a.updatedAt, "ko"),
     );
+  // 주의: '다가오는' 일정만 날짜순으로 보여줍니다. 예전에는 받은 순서 그대로 앞 5건이라
+  //    완료한 일·지난 일이 섞여 나왔습니다. 날짜 없는 할일은 캘린더 항목이 아니라 뺍니다.
+  const 오늘 = 오늘날짜();
+  // 주의: 예시 일정은 날짜가 고정이라 지난 날짜를 빼면 예시 모드 홈이 늘 비어 보입니다.
+  const 다가오는일정 = schedules
+    .filter((item) => item.state !== "완료" && !!item.date && (!API켜짐() || item.date >= 오늘))
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(0, 5);
+
   return (
     <div className="page home-v3">
       <header className="home-v3-heading">
@@ -2411,7 +2492,7 @@ function HomePage({
               <Icon name="calendar" size={16} />
               <span>
                 <dt>사업기간</dt>
-                <dd>{기간표기(협약.시작일, 협약.종료일)}</dd>
+                <dd>{기간표기(협약.시작일, 협약.종료일)}{협약.예시 ? " (예시)" : ""}</dd>
               </span>
             </div>
             <div>
@@ -2525,7 +2606,7 @@ function HomePage({
                     {plan.name}
                   </b>
                   <small>
-                    {plan.category} · {won(plan.amount)}
+                    {plan.category || "비목 미정"} · {won(plan.amount)}
                   </small>
                 </span>
                 <Status value={plan.status} />
@@ -2534,7 +2615,7 @@ function HomePage({
           </div>
           <footer>
             <Icon name="bell" size={16} />
-            <span>확인이 필요한 지출 {attentionPlans.length}건이 더 있어요.</span>
+            <span>{자료받음 ? `확인이 필요한 지출이 ${attentionPlans.length}건 있어요.` : "지출 계획을 불러오는 중입니다."}</span>
           </footer>
         </section>
         <section className="home-v3-panel home-v3-schedule">
@@ -2552,7 +2633,16 @@ function HomePage({
             </button>
           </header>
           <div className="home-v3-timeline">
-            {schedules.slice(0, 5).map((item) => (
+            {다가오는일정.length === 0 && (
+              <p className="schedule-detail-empty">
+                {!자료받음
+                  ? "일정을 불러오는 중입니다."
+                  : 일정실패
+                    ? "일정을 불러오지 못했습니다. 새로고침해 주세요."
+                    : "다가오는 일정이 없습니다."}
+              </p>
+            )}
+            {다가오는일정.map((item) => (
               <button
                 className={`home-v3-schedule-row ${
                   item.state === "완료"
@@ -2568,7 +2658,7 @@ function HomePage({
                   <i />
                 </span>
                 <time>
-                  <b>{item.date.slice(5).replace("-", ".")}</b>
+                  <b>{item.date ? item.date.slice(5).replace("-", ".") : "미정"}</b>
                   <small>{item.type}</small>
                 </time>
                 <span>
@@ -2620,6 +2710,7 @@ function AiCheckingOverlay({
     제목?: string | null;
     용도?: string | null;
     금액?: number | null;
+    화면수정있음?: boolean;
   };
   /** 2026-09-07 — 심층질문 답. 안 주면 빈 배열과 같아 예전과 같은 경로로 처리합니다. */
   답변?: 답변항목[];
@@ -2629,8 +2720,8 @@ function AiCheckingOverlay({
   const [stage, setStage] = useState(0);
   const [설명, set설명] = useState("");
   const 진행중 = useRef<Promise<{ 계획: ExpensePlan }> | null>(null);
-  // 주의: 마지막으로 「진행」 이벤트를 받은 시각을 기록합니다. 아래 타임아웃은 절대시간이
-  //    아니라 '마지막 진행 이후 무응답 시간' 을 잽니다. 2026-09-04 에 GPU 콜드 기동
+  // 주의: 마지막으로 「진행」 이벤트나 keep-alive 를 받은 시각을 기록합니다. 아래 타임아웃은 절대시간이
+  //    아니라 '마지막 수신 이후 무응답 시간' 을 잽니다. 2026-09-04 에 GPU 콜드 기동
   //    (진행 이벤트가 5초마다 오는 긴 대기) 대응으로 도입했습니다. GPU 경로는 백엔드에서
   //    제거되었지만, 진행 이벤트 기준 타임아웃은 그대로 유효합니다.
   //    `GPU기동중` 은 서버가 예전에 보내던 기동 문구를 감지합니다. 현재 서버는 이 문구를
@@ -2673,14 +2764,20 @@ function AiCheckingOverlay({
             set설명(문구);
             setStage((s) => Math.min(2, s + 1));
           },
+          // 주의: 서버는 진행 3개를 처음에 한꺼번에 보내고, 판정이 끝날 때까지는 12초마다
+          //    keep-alive 만 보냅니다. 이걸로 다시 재지 않으면 서버 마감(180초) 안에 끝날
+          //    판정도 150초에 「오래 걸립니다」로 끊고, 서버는 그 뒤에 저장합니다.
+          활동: () => {
+            진행시각.current = Date.now();
+          },
         },
         { 대체입력, 답변 },
       );
     }
 
     // 주의: 안전장치 — 어떤 이유로도 '영원히' 도는 일이 없게 합니다.
-    //    절대시간이 아니라 '마지막 진행 이후 무응답' 을 잽니다 — 실제 판정 구간
-    //    (무응답 최대 실측 약 97초)이 이 안에 들어옵니다. 150초 무응답이면 그때는 정말 멈춘 것입니다.
+    //    절대시간이 아니라 '마지막 진행·keep-alive 이후 무응답' 을 잽니다. 서버가 살아 있으면
+    //    12초마다 keep-alive 가 오므로, 150초 동안 아무것도 안 왔으면 그때는 정말 끊긴 것입니다.
     const 무응답한도 = 150000;
     const 시간초과 = window.setInterval(() => {
       if (!살아있음) return;
@@ -2751,15 +2848,21 @@ function PlanRecheckQuestionsModal({
 }: {
   plan: ExpensePlan;
   close: () => void;
-  start: () => void;
+  /** `선택비목` 은 계획에 비목이 없어 이 창에서 고른 값입니다. */
+  start: (선택비목?: string) => void;
 }) {
-  const category = plan.category.split(" · ")[0];
+  // 주의: 1단계에서 임시저장한 계획은 비목이 없습니다. 비목 없이 판정하면 서버가 규칙·한도를
+  //    확인하지 못하므로(틀린 「가능」 위험) 여기서 먼저 고르게 합니다.
+  const [선택비목, set선택비목] = useState("");
+  const 비목선택지 = use비목선택지();
+  const category = (plan.category || 선택비목).split(" · ")[0];
   const feeSubtype = plan.category.split(" · ")[1] || "멘토링";
   // 주의: 서버 비목 라벨(「기계장치」)도 질문표(「기계장치비」)에 맞게 찾습니다.
   //    그냥 대괄호로 찾으면 못 찾고 '외주용역비 질문' 으로 조용히 떨어집니다.
   const 찾은질문 = 질문찾기(category);
-  const questions =
-    category === "지급수수료"
+  const questions = !category
+    ? []
+    : category === "지급수수료"
       ? FEE_QUESTIONS[feeSubtype] || FEE_QUESTIONS["멘토링"]
       : 찾은질문.length
         ? 찾은질문
@@ -2771,34 +2874,78 @@ function PlanRecheckQuestionsModal({
           <div>
             <small>{plan.name}</small>
             <h2 id="plan-recheck-title">추가로 확인할게요</h2>
-            <p>{plan.category} 판단에 필요한 정보만 확인합니다.</p>
+            <p>
+              {category
+                ? `${category} 규정에서 확인할 사항입니다. 답변은 아직 AI 점검에 반영되지 않습니다.`
+                : "비목을 고르면 그 비목의 규정으로 점검합니다."}
+            </p>
           </div>
           <button type="button" onClick={close} aria-label="닫기">×</button>
         </header>
         <div className="plan-recheck-questions">
+          {!plan.category && (
+            <Question
+              label="이 지출의 비목을 골라 주세요."
+              options={[...비목선택지]}
+              value={선택비목}
+              onChange={set선택비목}
+            />
+          )}
           {questions.map((question, index) => (
-            <Question key={`${plan.id}-${index}`} label={question.label} options={question.options} />
+            <Question key={`${plan.id}-${category}-${index}`} label={question.label} options={question.options} />
           ))}
         </div>
         <footer>
           <button className="outline" onClick={close}>취소</button>
-          <button className="primary" onClick={start}>답변하고 AI 점검</button>
+          <button className="primary" disabled={!category} onClick={() => start(plan.category ? undefined : 선택비목)}>
+            AI 점검 시작
+          </button>
         </footer>
       </section>
     </div>
   );
 }
 
+/** 서버에 보내지 않는 변경의 안내. 저장된 것처럼 말하면 새로고침 뒤 사라졌을 때 알 길이 없습니다. */
+const 화면에만반영 = "이 화면에만 반영했습니다. 새로고침하면 사라집니다.";
+
+/**
+ * 서버 모드의 계획 수정. 계획 수정 API 가 없어, 비어 있던 비목을 고른 것 말고는 화면에만 남습니다.
+ * 주의: 판정은 서버의 저장 값으로 하므로 바뀐 금액 옆에 이전 판정이 그대로 보입니다. 표시를 남겨 알립니다.
+ */
+function 서버모드수정(이전: ExpensePlan, 수정: ExpensePlan): { 계획: ExpensePlan; 안내: string } {
+  // 주의: 첨부파일은 수정 창이 따로 저장하므로 계획 값이 같아도 저장한 것이 있을 수 있습니다.
+  if (JSON.stringify(수정) === JSON.stringify(이전)) return { 계획: 이전, 안내: "저장했습니다." };
+  // 서버에 비목이 없는 계획은 여기서 고른 비목으로 점검합니다. 그 외 값은 서버에 저장할 길이 없습니다.
+  const 비목반영 = !이전.category || !!이전.비목직접선택;
+  const 비목골랐다 = 비목반영 && 수정.category !== 이전.category;
+  const 계획 = 비목골랐다 ? { ...수정, 비목직접선택: true } : 수정;
+  const 비목외같음 = JSON.stringify({ ...수정, category: "" }) === JSON.stringify({ ...이전, category: "" });
+  if (비목외같음 && 비목반영) {
+    return { 계획, 안내: "비목을 골랐습니다. AI 점검을 시작하면 이 비목으로 확인합니다." };
+  }
+  return {
+    계획: { ...계획, 화면만수정: true },
+    안내: 계획.비목직접선택
+      ? "고른 비목 말고 고친 내용은 이 화면에만 반영했습니다. 새로고침하면 사라지고 AI 점검에도 반영되지 않습니다."
+      : "이 화면에만 반영했습니다. 새로고침하면 사라지고 AI 점검에도 반영되지 않습니다.",
+  };
+}
+
 function PlansPage({
   plans,
   schedules,
   go,
+  자료받음,
+  notify,
   remove,
   update,
 }: {
   plans: ExpensePlan[];
   schedules: ScheduleItem[];
   go: (route: AppRoute) => void;
+  자료받음: boolean;
+  notify: (message: string) => void;
   remove: (ids: string | string[], skipConfirm?: boolean) => boolean;
   update: (plan: ExpensePlan) => void;
 }) {
@@ -2824,7 +2971,7 @@ function PlansPage({
   const [checking, setChecking] = useState(false);
   const [bulkComplete, setBulkComplete] = useState(false);
   const categories = useMemo(
-    () => Array.from(new Set(plans.map((plan) => plan.category))).sort(),
+    () => Array.from(new Set(plans.map((plan) => plan.category).filter(Boolean))).sort(),
     [plans],
   );
   const filteredRows = plans
@@ -2844,7 +2991,7 @@ function PlansPage({
       sortOrder === "updated"
         ? b.updatedAt.localeCompare(a.updatedAt, "ko")
         : sortOrder === "plannedDate"
-          ? a.plannedDate.localeCompare(b.plannedDate)
+          ? (a.plannedDate || "9999").localeCompare(b.plannedDate || "9999")   // 날짜 없는 계획은 맨 뒤
           : plans.indexOf(a) - plans.indexOf(b),
     );
   const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize));
@@ -3184,12 +3331,12 @@ function PlansPage({
                     </label>
                   </td>
                   <td className="title-cell"><b>{plan.name}</b></td>
-                  <td>{plan.category}</td>
+                  <td>{plan.category || "미정"}</td>
                   <td className="amount-cell"><strong>{won(plan.amount)}</strong></td>
                   <td className="status-cell"><Status value={plan.status} /></td>
                   <td className="action-cell planned-date-cell">
                     <span className="planned-date-content">
-                    <time>{plan.plannedDate.replaceAll("-", ".")}</time>
+                    <time>{plan.plannedDate ? plan.plannedDate.replaceAll("-", ".") : "미정"}</time>
                     {(plan.executionStatus === "결제 완료" ||
                       schedules.some(
                         (schedule) =>
@@ -3248,7 +3395,7 @@ function PlansPage({
               ))}
               {rows.length === 0 && (
                 <tr className="plans-v2-empty-row">
-                  <td colSpan={8}>조건에 맞는 지출 계획이 없습니다.</td>
+                  <td colSpan={8}>{자료받음 ? "조건에 맞는 지출 계획이 없습니다." : "지출 계획을 불러오는 중입니다."}</td>
                 </tr>
               )}
             </tbody>
@@ -3294,6 +3441,7 @@ function PlansPage({
               제목: 대상.name,
               용도: 대상.purpose,
               금액: 대상.amount,
+              화면수정있음: 대상.화면만수정,
             };
           })()}
           onFail={(메시지) => {
@@ -3312,7 +3460,8 @@ function PlansPage({
         <PlanRecheckQuestionsModal
           plan={questionPlan}
           close={() => setQuestionPlan(null)}
-          start={() => {
+          start={(선택비목) => {
+            if (선택비목) update({ ...questionPlan, category: 선택비목, 비목직접선택: true });
             setQuestionPlan(null);
             setChecking(true);
           }}
@@ -3321,9 +3470,21 @@ function PlansPage({
       {bulkComplete && (
         <div className="ai-checking-backdrop">
           <section className="bulk-check-complete" role="dialog" aria-modal="true" aria-labelledby="bulk-complete-title">
-            <span className="bulk-complete-icon"><Icon name="check" size={23} /></span>
-            <h2 id="bulk-complete-title">지출 계획 점검이 완료됐어요</h2>
-            <p>AI 점검 상태와 예상 지출일을 확인해주세요.</p>
+            <span className="bulk-complete-icon">
+              <Icon name={plans.some((plan) => selected.includes(plan.id) && plan.저장안됨) ? "alert" : "check"} size={23} />
+            </span>
+            {/* 주의: 서버가 결과를 저장하지 못했는데 「완료」라고 하면 새로고침 뒤 결과가 사라집니다. */}
+            {plans.some((plan) => selected.includes(plan.id) && plan.저장안됨) ? (
+              <>
+                <h2 id="bulk-complete-title">점검 결과가 저장되지 않았어요</h2>
+                <p>이 결과는 새로고침하면 사라집니다. 다시 점검해 주세요.</p>
+              </>
+            ) : (
+              <>
+                <h2 id="bulk-complete-title">지출 계획 점검이 완료됐어요</h2>
+                <p>AI 점검 상태와 예상 지출일을 확인해주세요.</p>
+              </>
+            )}
             <div className="bulk-complete-summary">
               <span><small>특이사항 없음</small><b>{plans.filter((plan) => selected.includes(plan.id) && plan.status === "특이사항 없음").length}건</b></span>
               <span><small>확인 필요</small><b className="warn">{plans.filter((plan) => selected.includes(plan.id) && plan.status === "확인 필요").length}건</b></span>
@@ -3332,7 +3493,7 @@ function PlansPage({
             <div className="bulk-complete-list">
               {plans.filter((plan) => selected.includes(plan.id)).map((plan) => (
                 <button key={plan.id} onClick={() => go({ page: "plan-detail", id: plan.id })}>
-                  <span><b>{plan.name}</b><small>예상 지출일 {plan.plannedDate.replaceAll("-", ".")}</small></span>
+                  <span><b>{plan.name}</b><small>예상 지출일 {plan.plannedDate ? plan.plannedDate.replaceAll("-", ".") : "미정"}</small></span>
                   <Status value={plan.status} />
                   <span className="bulk-result-arrow">›</span>
                 </button>
@@ -3351,7 +3512,14 @@ function PlansPage({
             setDraft(null);
           }}
           save={() => {
-            update(draft);
+            const 이전 = plans.find((item) => item.id === draft.id);
+            if (API켜짐() && 이전) {
+              const { 계획, 안내 } = 서버모드수정(이전, draft);
+              update(계획);
+              notify(안내);
+            } else {
+              update(draft);
+            }
             setEditing(null);
             setDraft(null);
           }}
@@ -3365,24 +3533,27 @@ function NewPlanPage({
   save,
   cancel,
 }: {
-  save: (plan: ExpensePlan, temporary?: boolean) => void;
+  /** `점검오류` 는 계획은 저장됐지만 판정이 실패했을 때의 사유입니다. */
+  save: (plan: ExpensePlan, temporary?: boolean, 점검오류?: string) => void;
   cancel: () => void;
 }) {
   const [step, setStep] = useState(1);
   const [name, setName] = useState("");
   const [purpose, setPurpose] = useState("");
   const [amount, setAmount] = useState("");
-  const [date, setDate] = useState("2026-09-30");
+  // 주의: 비워 둡니다. 예전 기본값(2026-09-30)은 이미 지난 날이었고, 사용자가 안 고치면 그대로
+  //    집행예정일로 저장되어 할일 기한까지 지난 날짜로 계산됐습니다.
+  const [date, setDate] = useState("");
   const [vendor, setVendor] = useState("");
   const [attachments, setAttachments] = useState<File[]>([]);
-  const [category, setCategory] = useState("외주용역비");
+  // 주의: 비워 둡니다. 초기값을 두면 사용자가 고르지 않은 비목이 추천처럼 보이고 그 비목으로 판정됩니다.
+  const [category, setCategory] = useState("");
   const [feeSubtype, setFeeSubtype] = useState("멘토링");
   const [categoryLoading, setCategoryLoading] = useState(false);
   const [questionsLoading, setQuestionsLoading] = useState(false);
   const [checking, setChecking] = useState(false);
   const [pendingPlan, setPendingPlan] = useState<ExpensePlan | null>(null);
   // ── 서버 연동 상태 ──
-  const [서버비목, set서버비목] = useState<string[] | null>(null);
   // 주의: 예전에는 첫 후보 하나만 들고 있었습니다(`서버추천: string`). 서버는 후보를
   //    '여러 개' 줄 수 있고 그때는 배지도 여러 개 붙어야 하므로 배열로 들고 갑니다.
   const [서버후보, set서버후보] = useState<비목후보[]>([]);
@@ -3423,27 +3594,28 @@ function NewPlanPage({
   );
   // 주의: 비목 라벨을 화면에 하드코딩하지 않습니다 — `/api/vocab` 이 기준 데이터입니다.
   //    (서버가 「기계장치」를 주고, 프론트의 「기계장치비」는 원문에 없는 말입니다)
-  useEffect(() => {
-    if (!API켜짐()) return;
-    let 살아있음 = true;
-    비목목록(현재사업())
-      .then((r) => {
-        if (살아있음 && Array.isArray(r.비목) && r.비목.length) set서버비목(r.비목);
-      })
-      .catch(() => {});
-    return () => {
-      살아있음 = false;
-    };
-  }, []);
+  const 비목선택지 = use비목선택지();
 
-  const 비목선택지: readonly string[] = 서버비목 ?? EXPENSE_CATEGORIES;
+  // 주의: 입력을 바꾸면 이전 정규화는 이 계획의 값이 아닙니다. 남겨 두면 판정이 옛 품목·금액으로 돕니다.
+  //    AI 가 자동으로 고른 비목도 함께 비웁니다. 사용자가 직접 고른 비목은 둡니다.
+  const 자동선택비목 = useRef<string | null>(null);
+  useEffect(() => {
+    set서버정규화(null);
+    set서버후보([]);
+    set서버심층질문([]);
+    set심층답변({});
+    setCategory((v) => (v && v === 자동선택비목.current ? "" : v));
+    자동선택비목.current = null;
+  }, [name, purpose, amount]);
+
   /**
-   * 배지를 달 비목들. 서버가 후보를 주면 '준 만큼 전부', 없으면 예전처럼 키워드
-   * 추정 한 개입니다. 주의: 서버 후보가 하나여도 배지는 하나만 붙습니다 — 개수를
-   * 화면이 정하지 않고 서버가 정합니다.
+   * 배지를 달 비목들. 서버가 후보를 주면 '준 만큼 전부'입니다. 서버 후보가 하나여도 배지는
+   * 하나만 붙습니다 — 개수를 화면이 정하지 않고 서버가 정합니다.
+   * 주의: 키워드 추정은 서버가 없는 예시 모드에서만 씁니다. 서버가 후보를 못 줬는데 키워드
+   *    추정에 배지를 달면 「추천할 비목을 찾지 못했습니다」 문구와 어긋납니다.
    */
   const 추천비목 = useMemo(
-    () => new Set(서버후보.length ? 서버후보.map((c) => c.비목) : [recommendation]),
+    () => new Set(서버후보.length ? 서버후보.map((c) => c.비목) : API켜짐() ? [] : [recommendation]),
     [서버후보, recommendation],
   );
   /** 비목 → 설명. 서버가 `설명` 을 안 보내면 비어 있고, 그러면 설명 줄을 안 그립니다. */
@@ -3453,6 +3625,13 @@ function NewPlanPage({
   );
   const questions =
     category === "지급수수료" ? FEE_QUESTIONS[feeSubtype] : 질문찾기(category);
+  // 주의: 비목 후보가 없으면 서버가 모든 비목의 질문을 줍니다. 고른 비목과 공통 질문만 보여 줍니다.
+  //    서버 비목(「기계장치」)과 서버 없이 쓰는 화면 비목(「기계장치비」)이 달라 앞부분으로 맞춥니다.
+  const 보일심층질문 = useMemo(() => {
+    const 접기 = (x: string) => x.replace(/\s/g, "");
+    const 고른비목 = 접기(category.split(" · ")[0]);
+    return 서버심층질문.filter((q) => !q.비목 || 고른비목.startsWith(접기(q.비목)));
+  }, [서버심층질문, category]);
   useEffect(() => {
     if (!categoryLoading) return;
 
@@ -3484,8 +3663,14 @@ function NewPlanPage({
         set서버후보(r.비목후보);
         set서버심층질문(r.심층질문);
         // 자동 선택은 가장 확신하는 '하나' 만. 배지는 후보 전부에 붙지만 커서는 하나다.
-        const 첫후보 = r.비목후보[0]?.비목;
-        if (첫후보) setCategory(첫후보);
+        // 주의: 후보가 없으면 지금 값을 그대로 둡니다. 처음이면 빈 값이고, 이전 단계로 돌아갔다
+        //    다시 온 경우에는 사용자가 직접 고른 비목이 남습니다.
+        // 주의: 이 사업의 비목 목록에 없는 후보는 화면에 칸이 없어 무엇이 골렸는지 보이지 않습니다.
+        const 첫후보 = r.비목후보.map((c) => c.비목).find((b) => 비목선택지.includes(b));
+        if (첫후보) {
+          setCategory(첫후보);
+          자동선택비목.current = 첫후보;
+        }
       })
       .catch((e: unknown) => {
         if (!살아있음) return;
@@ -3522,7 +3707,8 @@ function NewPlanPage({
       amount: Number(amount.replace(/,/g, "")) || 0,
       plannedDate: date,
       vendor: vendor || "거래처 미정",
-      category: categoryLabel,
+      // 서버가 없는 예시 모드 전용입니다. 1단계 임시저장은 비목이 비어 있어 키워드 추정을 씁니다.
+      category: categoryLabel || recommendation,
       status: temporary
         ? "점검 전"
         : category === "광고선전비"
@@ -3543,18 +3729,21 @@ function NewPlanPage({
         : `${categoryLabel}로 분류했습니다. 입력한 목적과 금액을 바탕으로 결제 전 확인할 항목과 증빙을 정리했습니다.`,
     };
   };
+  const 필수입력됨 = Boolean(name.trim() && purpose.trim() && Number(amount.replace(/,/g, "")) > 0);
   /** 서버에 계획을 만들고 plan_id 를 돌려줍니다. */
   const 서버에저장 = () =>
     계획추가({
       사업명: 현재사업(),
       품목: name,
       금액: Number(amount.replace(/,/g, "")) || 0,
-      용도: purpose || "사업 수행을 위한 지출",
+      용도: purpose,
       제목: name,
       집행예정일: date || undefined,
       거래처: vendor || undefined,
       // 주의: 화면 9 에서 '사용자가 확정한' 비목입니다. 서버가 enum 10종으로 검증합니다.
-      확정비목: category.split(" · ")[0],
+      //    1단계에서 임시저장하면 아직 비목을 고르지 않았으므로 보내지 않습니다 — 보내면 초기값이
+      //    확정비목으로 저장되고, 나중 판정이 그 비목으로 강제됩니다.
+      확정비목: step >= 2 && category ? category.split(" · ")[0] : undefined,
       정규화: 서버정규화 ?? undefined,
     });
 
@@ -3563,9 +3752,9 @@ function NewPlanPage({
    *    예전에는 `attachments` 를 화면에서 보여주기만 하고 저장할 때 그냥 버렸습니다
    *    — 붙인 파일이 상세에서 사라지던 이유입니다.
    */
-  const 저장 = (계획: ExpensePlan, 임시?: boolean) => {
+  const 저장 = (계획: ExpensePlan, 임시?: boolean, 점검오류?: string) => {
     첨부보관(계획.id, attachments);
-    save(계획, 임시);
+    save(계획, 임시, 점검오류);
   };
 
   const submit = () => {
@@ -3732,8 +3921,9 @@ function NewPlanPage({
           <>
             <h2>AI 비목 추천</h2>
             <p className="section-copy">
-              입력한 지출 내용과 목적을 바탕으로 가장 가까운 비목을 자동
-              선택했습니다. 직접 변경할 수 있습니다.
+              {추천비목.size
+                ? "입력한 지출 내용과 목적을 바탕으로 가장 가까운 비목을 자동 선택했습니다. 직접 변경할 수 있습니다."
+                : "추천할 비목을 찾지 못했습니다. 지출 내용에 맞는 비목을 직접 골라 주세요."}
             </p>
             <div className="category-grid">
               {비목선택지.map((item) => {
@@ -3789,22 +3979,22 @@ function NewPlanPage({
             <h2 className="additional-check-title">몇 가지만 추가로 확인할게요</h2>
             <p className="section-copy additional-check-copy">
               {category === "지급수수료"
-                ? `${feeSubtype} 기준으로 필요한 정보만 확인합니다.`
-                : `${category} 판단에 필요한 정보만 확인합니다.`}
+                ? `${feeSubtype} 기준에서 확인할 사항입니다.`
+                : `${category} 규정에서 확인할 사항입니다.`}
             </p>
             <div className="auto-check-note">
               <Icon name="check" />
               <span>
-                <b>입력 내용으로 먼저 확인했어요</b>예상 금액·지출일·사용
-                목적은 자동 점검에 반영됩니다.
+                <b>입력한 내용으로 점검합니다</b>품목·예상 금액·사용
+                목적이 자동 점검에 반영됩니다.
               </span>
             </div>
             <div className="question-list">
               {/* 주의: 2026-09-07 — 서버가 준 심층질문(check_items 기반, 근거 조항 딸림)이
                   있으면 그걸 그립니다. 서버가 비면(폼 경로 초기·API 꺼짐 등) 예전 하드코딩
                   질문표로 폴백합니다 — 「비어도 화면이 안 죽는다」 원칙, `정규화하기`/`normalize.ts` 와 같습니다. */}
-              {서버심층질문.length > 0
-                ? 서버심층질문.map((q) =>
+              {보일심층질문.length > 0
+                ? 보일심층질문.map((q) =>
                     q.유형 === "숫자" || q.유형 === "텍스트" ? (
                       <div className="question" key={q.code}>
                         <b>
@@ -3855,7 +4045,7 @@ function NewPlanPage({
             </div>
             <div className="info-note">
               <Icon name="spark" />
-              답변을 반영해 공통 기준과 비목별 기준을 함께 점검합니다.
+              답변은 아직 AI 점검에 반영되지 않습니다. 품목·금액·사용 목적으로 공통 기준과 비목별 기준을 점검합니다.
             </div>
           </>
         )}
@@ -3873,12 +4063,14 @@ function NewPlanPage({
         >
           {step === 1 ? "취소" : "이전"}
         </button>
-        <button className="outline draft-save" onClick={saveDraft} disabled={categoryLoading || questionsLoading || 저장중}>
+        {/* 주의: 계획 수정이 서버에 저장되지 않아, 비어 있는 채로 임시저장하면 채울 방법이 없고
+            0원·빈 목적으로 판정될 수 있습니다. 필수 항목을 채워야 저장합니다. */}
+        <button className="outline draft-save" onClick={saveDraft} disabled={categoryLoading || questionsLoading || 저장중 || !필수입력됨}>
           임시저장
         </button>
         <button
           className="primary"
-          disabled={categoryLoading || questionsLoading || 저장중 || (step === 1 && (!name || !purpose || !amount))}
+          disabled={categoryLoading || questionsLoading || 저장중 || !필수입력됨 || (step >= 2 && !category)}
           onClick={() => {
             if (step === 1) {
               setCategoryLoading(true);
@@ -3908,13 +4100,13 @@ function NewPlanPage({
           }}
           // 주의: 2026-09-07 — 답 없는(undefined) 문항은 서버로 안 보냅니다.
           //    빈 문자열도 "답 안 함" 취급 — 못 고른 걸 "미상"으로 밀어붙이지 않습니다.
-          답변={서버심층질문
+          답변={보일심층질문
             .filter((q) => 심층답변[q.code])
             .map((q) => ({ code: q.code, 값: 심층질문값(q, 심층답변[q.code]) }))}
           onFail={(메시지) => {
             setChecking(false);
             set연동오류(메시지);
-            저장(pendingPlan);      // 저장은 됐으니 목록으로는 보냅니다
+            저장(pendingPlan, false, 메시지);      // 저장은 됐으니 상세로 보내되, 점검 실패를 알립니다
           }}
           onComplete={(판정된계획) => {
             setChecking(false);
@@ -3951,7 +4143,8 @@ function NewPlanPage({
  * 주의: "숫자"·"텍스트" 는 버튼이 아니라 입력창으로 따로 그립니다 — 여기선 빈 배열.
  */
 function 심층질문옵션(q: 심층질문항목): string[] {
-  if (q.유형 === "선택") return [...q.선택지.map((s) => s.라벨), "확인 필요"];
+  // 주의: 서버 선택지에 「확인 필요」가 이미 있는 질문이 있어, 그대로 붙이면 같은 버튼이 두 개 생깁니다.
+  if (q.유형 === "선택") return Array.from(new Set([...q.선택지.map((s) => s.라벨), "확인 필요"]));
   if (q.유형 === "예아니오") return ["예", "아니오", "확인 필요"];
   return [];
 }
@@ -4219,7 +4412,7 @@ function PlanDetail({
       updatedAt: 시각표기(new Date().toISOString()),
     });
     set집행수정중(false);
-    notify(종류 === "등록" ? "실제 집행 정보를 등록했습니다." : "실제 집행 정보를 수정했습니다.");
+    notify(API켜짐() ? 화면에만반영 : 종류 === "등록" ? "실제 집행 정보를 등록했습니다." : "실제 집행 정보를 수정했습니다.");
   };
 
   /** 수정을 그만둘 때 — 등록돼 있던 값으로 되돌립니다. */
@@ -4294,14 +4487,14 @@ function PlanDetail({
           </header>
           <dl className="expense-v5-plan-grid">
             <Info label="지출 항목" value={plan.name} />
-            <Info label="관련 비목" value={plan.category} />
+            <Info label="관련 비목" value={plan.category || "미정"} />
             <Info
               label="예상 금액"
               value={`${won(plan.amount)} (부가세 포함)`}
             />
             <Info
               label="예상 지출일"
-              value={plan.plannedDate.replaceAll("-", ".")}
+              value={plan.plannedDate ? plan.plannedDate.replaceAll("-", ".") : "미정"}
             />
             <Info label="거래처" value={plan.vendor} />
             <Info label="사업" value={사업} />
@@ -4377,6 +4570,15 @@ function PlanDetail({
               <h2>AI 점검 결과</h2>
             </div>
           </header>
+          {plan.화면만수정 && (
+            <div className="recheck-stale-notice">
+              <Icon name="filePenLine" size={19} />
+              <span>
+                <b>{plan.비목직접선택 ? "고른 비목 말고 이 화면에서 고친 내용은" : "이 화면에서 고친 내용은"} AI 점검에 반영되지 않습니다.</b>
+                <small>점검은 처음 저장한 내용으로 합니다. 고친 내용은 서버에 저장되지 않아 새로고침하면 사라집니다.</small>
+              </span>
+            </div>
+          )}
           {plan.status === "재점검 필요" && (
             <div className="recheck-stale-notice">
               <Icon name="filePenLine" size={19} />
@@ -4393,12 +4595,14 @@ function PlanDetail({
                 {/* 주의: 「조건부」와 「판단불가」는 같은 🟡 인데 할 일이 정반대입니다.
                     판정을 받은 계획이면 판정별 문구를, 아니면 기존 문구를 씁니다. */}
                 <h3>
-                  {판정제목(plan.판정, plan.category) ??
-                    `${plan.category} 기준으로 ${
-                      plan.status === "특이사항 없음"
-                        ? "특이사항이 없습니다."
-                        : "추가 확인이 필요합니다."
-                    }`}
+                  {plan.status === "점검 전" && !plan.판정
+                    ? "아직 AI 점검을 하지 않았습니다."
+                    : 판정제목(plan.판정, plan.category) ??
+                      `${plan.category} 기준으로 ${
+                        plan.status === "특이사항 없음"
+                          ? "특이사항이 없습니다."
+                          : "추가 확인이 필요합니다."
+                      }`}
                 </h3>
                 {행동문구(plan.판정) && (
                   <p className="ai-verdict-action">
@@ -4406,8 +4610,9 @@ function PlanDetail({
                   </p>
                 )}
                 <p>
-                  현재 입력된 내용을 기준으로 확인했으며, 안전한 집행을 위해
-                  아래 항목을 추가로 점검해주세요.
+                  {plan.status === "점검 전" && !plan.판정
+                    ? "AI 점검을 실행하면 규정 근거와 확인할 항목이 여기에 표시됩니다."
+                    : "현재 입력된 내용을 기준으로 확인했으며, 안전한 집행을 위해 아래 항목을 추가로 점검해주세요."}
                 </p>
               </div>
             </div>
@@ -4487,6 +4692,12 @@ function PlanDetail({
                 「그래서 뭐라고 물어보나」는 여기 있습니다. 서버가 준 값이 있을 때만
                 나옵니다 — 없으면 카드 전체를 렌더링하지 않습니다(빈 카드를 남기지 않습니다). */}
             {plan.문의초안 && <문의초안카드 초안={plan.문의초안} notify={notify} />}
+            {plan.저장안됨 && (
+              <p className="ai-result-notice">
+                <span>ⓘ</span>이번 점검 결과는 저장되지 않았습니다. 새로고침하면 사라지니,
+                필요하면 다시 점검해 주세요.
+              </p>
+            )}
             <p className="ai-result-notice">
               <span>ⓘ</span>AI 점검 결과는 참고용이며, 최종 판단과 책임은
               담당기관의 최신 안내를 확인해주세요.
@@ -4544,7 +4755,7 @@ function PlanDetail({
               <header>
                 <div>
                   <h3><i>2</i><span>실제 집행 정보</span></h3>
-                  <small>누적 집행액 계산에 반영되는 정보</small>
+                  <small>{API켜짐() ? "아직 서버에 저장되지 않는 정보" : "누적 집행액 계산에 반영되는 정보"}</small>
                 </div>
                 {plan.executionStatus && <b>{plan.executionStatus}</b>}
               </header>
@@ -4581,7 +4792,9 @@ function PlanDetail({
                 <span>
                   {집행잠김
                     ? "등록을 마쳐 잠겨 있습니다. 값을 바꾸려면 수정하기를 누르세요."
-                    : "등록한 실제 지출액은 누적 집행액에 반영됩니다."}
+                    : API켜짐()
+                      ? "실제 집행 정보는 아직 서버에 저장되지 않아 새로고침하면 사라집니다."
+                      : "등록한 실제 지출액은 누적 집행액에 반영됩니다."}
                 </span>
                 {/* 주의: 상태에 따라 버튼이 하나씩만 뜹니다 — 「등록」과 「수정」이 같이
                     보이면 어느 것이 지금 할 일인지 안 보입니다. */}
@@ -4704,9 +4917,11 @@ function PlanDetail({
               <div>
                 <h2>지출을 {집행확인}하시겠습니까?</h2>
                 <p>
-                  {집행확인 === "등록"
-                    ? "등록하면 누적 집행액에 반영되고, 이후에는 수정하기를 눌러야 값을 바꿀 수 있습니다."
-                    : "바꾼 금액으로 누적 집행액이 다시 계산됩니다."}
+                  {API켜짐()
+                    ? "이 화면에만 반영되고 서버에는 저장되지 않아 새로고침하면 사라집니다."
+                    : 집행확인 === "등록"
+                      ? "등록하면 누적 집행액에 반영되고, 이후에는 수정하기를 눌러야 값을 바꿀 수 있습니다."
+                      : "바꾼 금액으로 누적 집행액이 다시 계산됩니다."}
                 </p>
               </div>
               <button onClick={() => set집행확인(null)}>×</button>
@@ -4746,6 +4961,15 @@ function PlanDetail({
           onFilesSaved={setPlanFiles}
           close={() => setEditing(false)}
           save={() => {
+            // 주의: 계획 수정 API 가 아직 없습니다. 서버 모드에서 재점검을 권하면 판정은 서버의 옛 값으로
+            //    돌아가는데 「변경된 내용으로」 점검한 것처럼 보입니다.
+            if (API켜짐()) {
+              const { 계획, 안내 } = 서버모드수정(plan, draft);
+              update(계획);
+              setEditing(false);
+              notify(안내);
+              return;
+            }
             update({
               ...draft,
               status: "재점검 필요",
@@ -4778,7 +5002,8 @@ function PlanDetail({
         <PlanRecheckQuestionsModal
           plan={plan}
           close={() => setRecheckQuestions(false)}
-          start={() => {
+          start={(선택비목) => {
+            if (선택비목) update({ ...plan, category: 선택비목, 비목직접선택: true });
             setRecheckQuestions(false);
             setRechecking(true);
           }}
@@ -4795,6 +5020,7 @@ function PlanDetail({
             제목: plan.name,
             용도: plan.purpose,
             금액: plan.amount,
+            화면수정있음: plan.화면만수정,
           }}
           onFail={(메시지) => {
             setRechecking(false);
@@ -4818,7 +5044,11 @@ function PlanDetail({
               });
             }
             setRechecking(false);
-            notify("변경된 내용으로 AI 재점검을 완료했습니다.");
+            notify(
+              판정된계획?.저장안됨
+                ? "점검 결과가 저장되지 않았습니다. 다시 점검해 주세요."
+                : "AI 재점검을 완료했습니다.",
+            );
           }}
         />
       )}
@@ -5299,6 +5529,7 @@ function EditPlan({
    */
   const [편집첨부, set편집첨부] = useState<첨부[]>(() => 첨부읽기(plan.id));
   const [첨부오류, set첨부오류] = useState("");
+  const 비목선택지 = use비목선택지();
   useEffect(() => {
     set편집첨부(첨부읽기(plan.id));
     set첨부오류("");
@@ -5315,7 +5546,11 @@ function EditPlan({
         <header>
           <div>
             <h2>지출 계획 수정</h2>
-            <p>입력 내용과 첨부 정보를 모두 수정할 수 있습니다.</p>
+            <p>
+              {API켜짐()
+                ? "수정 내용은 아직 서버에 저장되지 않습니다. 이 화면에만 보이고 AI 점검에는 반영되지 않습니다. 비목이 비어 있는 계획만 여기서 고른 비목으로 점검합니다."
+                : "입력 내용과 첨부 정보를 모두 수정할 수 있습니다."}
+            </p>
           </div>
           <button onClick={close}>×</button>
         </header>
@@ -5366,7 +5601,9 @@ function EditPlan({
               value={plan.category}
               onChange={(e) => setPlan({ ...plan, category: e.target.value })}
             >
-              {EXPENSE_CATEGORIES.map((item) => (
+              {!plan.category && <option value="">비목 선택</option>}
+              {plan.category && !비목선택지.includes(plan.category) && <option>{plan.category}</option>}
+              {비목선택지.map((item) => (
                 <option key={item}>{item}</option>
               ))}
             </select>
@@ -5549,6 +5786,8 @@ function AiChat({ plans }: { plans: ExpensePlan[] }) {
 function SchedulePage({
   plans,
   schedules,
+  자료받음,
+  일정실패,
   save,
   추가,
   할일동기화,
@@ -5556,6 +5795,8 @@ function SchedulePage({
 }: {
   plans: ExpensePlan[];
   schedules: ScheduleItem[];
+  자료받음: boolean;
+  일정실패: boolean;
   save: (items: ScheduleItem[]) => void;
   /** 주의: '새로 만든' 일정 전용. save 는 상태 변경만 서버에 보냅니다. */
   추가: (item: ScheduleItem) => void;
@@ -5592,7 +5833,10 @@ function SchedulePage({
   const 오늘문자 = 오늘
     ? `${오늘.y}-${String(오늘.m).padStart(2, "0")}-${String(오늘.d).padStart(2, "0")}`
     : "2026-08-29";
-  const upcoming = [...schedules].sort((a, b) => a.date.localeCompare(b.date));
+  // 주의: 날짜가 없는 할일(규정에 기한 근거가 없음)은 맨 뒤로 보냅니다.
+  const upcoming = [...schedules].sort((a, b) =>
+    (a.date || "9999").localeCompare(b.date || "9999"),
+  );
   const visibleUpcoming = upcoming.filter((item) => item.state !== "완료");
   const activeUpcoming = visibleUpcoming
     .filter((item) => item.date >= 오늘문자)
@@ -5685,6 +5929,13 @@ function SchedulePage({
           </button>
         </div>
       </header>
+      {(!자료받음 || 일정실패) && (
+        <p className="schedule-detail-empty">
+          {일정실패
+            ? "일정을 불러오지 못했습니다. 새로고침해 주세요. 아래 건수와 달력은 실제 일정이 아닙니다."
+            : "일정을 불러오는 중입니다."}
+        </p>
+      )}
       <section className="schedule-v2-metrics">
         <article>
           <span className="schedule-metric-icon all">
@@ -5838,7 +6089,7 @@ function SchedulePage({
             <div className="schedule-v2-list-view">
               {upcoming.map((item) => (
                 <button key={item.id} onClick={() => setViewing(item)}>
-                  <time>{item.date}</time>
+                  <time>{item.date || "날짜 미정"}</time>
                   <span>
                     <b>{item.title}</b>
                     <small>
@@ -5888,8 +6139,17 @@ function SchedulePage({
               </button>
             </div>
           </header>
+          {upcomingView === "all" && visibleUpcoming.length === 0 && (
+            <p className="schedule-detail-empty">
+              {!자료받음
+                ? "일정을 불러오는 중입니다."
+                : 일정실패
+                  ? "일정을 불러오지 못했습니다. 새로고침해 주세요."
+                  : "남은 일정이 없습니다. 날짜가 없는 할일은 지출 계획 상세에서 확인할 수 있습니다."}
+            </p>
+          )}
           {upcomingView === "all" ? visibleUpcoming.map((item) => {
-            const past = item.date < "2026-08-29";
+            const past = !!item.date && item.date < 오늘문자;
             const activeIndex = activeUpcoming.findIndex(
               (active) => active.id === item.id,
             );
@@ -5967,7 +6227,7 @@ function SchedulePage({
                                 (schedule) => schedule.id !== item.id,
                               ),
                             );
-                            notify("일정을 삭제했습니다.");
+                            notify(API켜짐() ? 화면에만반영 : "일정을 삭제했습니다.");
                           }
                           setOpenMenu(null);
                         }}
@@ -5995,7 +6255,7 @@ function SchedulePage({
                     >
                       <span className="upcoming-plan-name">
                         <b>{group.name}</b>
-                        <small>{group.category}</small>
+                        <small>{group.category || "비목 미정"}</small>
                       </span>
                       <span className="upcoming-plan-meta">
                         <small>일정 수</small>
@@ -6078,13 +6338,18 @@ function SchedulePage({
           plans={plans}
           close={() => setEditing(null)}
           save={(item) => {
+            const 이전 = schedules.find((schedule) => schedule.id === item.id);
             save(
               schedules.map((schedule) =>
                 schedule.id === item.id ? item : schedule,
               ),
             );
             setEditing(null);
-            notify("일정을 수정했습니다.");
+            // 주의: 서버에는 상태만 보냅니다(`lib/tasks.ts`). 제목·날짜·메모는 새로고침하면 돌아갑니다.
+            const 상태만 = !!이전 && JSON.stringify({ ...item, state: 이전.state }) === JSON.stringify(이전);
+            notify(!API켜짐() || 상태만
+              ? "일정을 수정했습니다."
+              : "상태 말고 고친 내용은 이 화면에만 반영했습니다. 새로고침하면 사라집니다.");
           }}
         />
       )}
@@ -6142,7 +6407,7 @@ function ScheduleFormModal({
       id: `s-${Date.now()}`,
       planId: plans[0]?.id || "",
       title: "",
-      date: "2026-09-09",
+      date: 오늘날짜(),
       type: "사전 확인",
       state: "준비 필요",
       memo: "",
@@ -6298,7 +6563,7 @@ function ScheduleDetailModal({
   edit: () => void;
 }) {
   const related = plan
-    ? `${plan.name} · ${plan.category} · ${won(plan.amount)}`
+    ? `${plan.name} · ${plan.category || "비목 미정"} · ${won(plan.amount)}`
     : item.planId === "other"
       ? "기타"
       : "연결된 지출 계획 없음";
@@ -6320,7 +6585,7 @@ function ScheduleDetailModal({
         <dl>
           <div>
             <dt>{item.type === "집행" ? "집행일" : "일정일"}</dt>
-            <dd>{item.date.replaceAll("-", ".")}</dd>
+            <dd>{item.date ? item.date.replaceAll("-", ".") : "날짜 미정"}</dd>
           </div>
           <div>
             <dt>일정 유형</dt>
@@ -6526,6 +6791,11 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
   const [협약, set협약] = useState<협약정보>(지금협약);
   const [협약초안, set협약초안] = useState(협약);
   const [협약저장중, set협약저장중] = useState(false);
+  // 주의: 「예시」는 사용자 값이 아니므로 수정 창에 넣지 않습니다. 하나만 고쳐 저장하면 나머지 예시 값까지
+  //    이 계정의 협약으로 저장되어 판정에 쓰입니다. 「실패」면 서버 값을 모르니 덮어쓰지 못하게 막습니다.
+  const [협약출처, set협약출처] = useState<"서버" | "이 브라우저" | "예시" | "조회중" | "실패">("조회중");
+  // 주의: 읽는 중에 입력하면 도착한 서버 값이 입력을 덮고, 저장하면 읽지 못한 서버 값을 덮어씁니다.
+  const 협약잠김 = 협약출처 === "실패" || 협약출처 === "조회중";
 
   useEffect(() => {
     if (!계정팀이름 || editingProfile) return;
@@ -6549,19 +6819,24 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
     const 기관 = 선택기관();
     setProfile((v) => ({ ...v, host: 기관 }));
     setProfileDraft((v) => ({ ...v, host: 기관 }));
-    // 주의: 협약은 `지금협약()` 하나로 정합니다 — 고친 값이 있으면 그것, 없으면 고른 사업의
-    //    시연값. 고친 값이 '없을 때만' 서버(`GET /api/profile`)를 한 번 더 물어
-    //    맞으면 덮어씁니다(`use협약()` 과 같은 순서 — 자세한 사정은 `lib/profile.ts`).
+    // 주의: 서버에 값이 있으면 서버가 기준이고 브라우저 값은 지웁니다. 서버에 값이 없을 때만 브라우저
+    //    값을 보여 줍니다(`use협약()` 과 같은 순서 — 자세한 사정은 `lib/profile.ts`).
     const 현재협약 = 지금협약();
+    const 기억 = 기억된협약();
     set협약(현재협약);
-    set협약초안(현재협약);
-    if (!기억된협약()) {
-      서버협약읽기().then((서버값) => {
-        if (!살아있음 || !서버값) return;
+    set협약초안(기억 ? 현재협약 : 빈협약);
+    set협약출처("조회중");
+    서버협약조회().then(({ 값: 서버값, 실패 }) => {
+      if (!살아있음) return;
+      if (서버값) {
+        협약잊기();
+        set협약출처("서버");
         set협약(서버값);
         set협약초안(서버값);
-      });
-    }
+        return;
+      }
+      set협약출처(실패 ? "실패" : 기억 ? "이 브라우저" : "예시");
+    });
     return () => {
       살아있음 = false;
     };
@@ -6591,7 +6866,7 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
               className="outline small"
               onClick={() => {
                 setProfileDraft(profile);
-                set협약초안(협약);
+                set협약초안(협약출처 === "서버" || 협약출처 === "이 브라우저" ? 협약 : 빈협약);
                 setEditingProfile(true);
               }}
             >
@@ -6631,6 +6906,18 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
           <div><dt>협약 종료일</dt><dd>{날짜표기(협약.종료일)}</dd></div>
           <div><dt>사업 지원비</dt><dd>{원(협약.정부지원 + 협약.자기부담)}</dd></div>
         </dl>
+        {협약출처 === "예시" && (
+          <p className="section-copy">아직 입력한 협약 정보가 없어 사업 예시 값을 보여 줍니다. 점검에는 쓰이지 않습니다.</p>
+        )}
+        {협약출처 === "이 브라우저" && (
+          <p className="section-copy">이 브라우저에만 남아 있는 값이라 점검에는 쓰이지 않습니다. 맞는 값이면 내 정보 수정에서 저장해 주세요.</p>
+        )}
+        {협약출처 === "실패" && (
+          <p className="section-copy">협약 정보를 불러오지 못했습니다. 지금 보이는 값은 저장된 값이 아닙니다. 새로고침해 주세요.</p>
+        )}
+        {협약출처 === "조회중" && (
+          <p className="section-copy">협약 정보를 불러오는 중입니다.</p>
+        )}
       </section>
       <section className="card rule-library">
         <header className="card-head">
@@ -6799,7 +7086,13 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
             <header>
               <div>
                 <h2 id="profile-edit-title">내 정보 수정</h2>
-                <p>이메일·참여 사업·주관기관은 확인만 가능합니다. 팀 이름과 협약 정보를 수정할 수 있습니다.</p>
+                <p>
+                  {협약출처 === "실패"
+                    ? "이메일·참여 사업·주관기관은 확인만 가능합니다. 협약 정보를 불러오지 못해 지금은 팀 이름만 수정할 수 있습니다."
+                    : 협약출처 === "조회중"
+                      ? "이메일·참여 사업·주관기관은 확인만 가능합니다. 협약 정보를 불러온 뒤에 수정할 수 있습니다."
+                      : "이메일·참여 사업·주관기관은 확인만 가능합니다. 팀 이름과 협약 정보를 수정할 수 있습니다."}
+                </p>
               </div>
               <button onClick={() => setEditingProfile(false)}>×</button>
             </header>
@@ -6834,24 +7127,41 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
                   「사업비 초과」를 판단할 때 전제로 씁니다. */}
               <label>
                 <span>협약 시작일</span>
-                <input type="date" value={협약초안.시작일} onChange={(event) => set협약초안((v) => ({ ...v, 시작일: event.target.value }))} />
+                <input type="date" disabled={협약잠김} value={협약초안.시작일} onChange={(event) => set협약초안((v) => ({ ...v, 시작일: event.target.value }))} />
               </label>
               <label>
                 <span>협약 종료일</span>
-                <input type="date" value={협약초안.종료일} onChange={(event) => set협약초안((v) => ({ ...v, 종료일: event.target.value }))} />
+                <input type="date" disabled={협약잠김} value={협약초안.종료일} onChange={(event) => set협약초안((v) => ({ ...v, 종료일: event.target.value }))} />
               </label>
               <label>
                 <span>정부지원금 (원)</span>
-                <input inputMode="numeric" value={협약초안.정부지원.toLocaleString("ko-KR")} onChange={(event) => set협약초안((v) => ({ ...v, 정부지원: Number(event.target.value.replace(/[^0-9]/g, "")) || 0 }))} />
+                <input inputMode="numeric" disabled={협약잠김} value={협약초안.정부지원.toLocaleString("ko-KR")} onChange={(event) => set협약초안((v) => ({ ...v, 정부지원: Number(event.target.value.replace(/[^0-9]/g, "")) || 0 }))} />
               </label>
               <label>
                 <span>자기부담금 (원)</span>
-                <input inputMode="numeric" value={협약초안.자기부담.toLocaleString("ko-KR")} onChange={(event) => set협약초안((v) => ({ ...v, 자기부담: Number(event.target.value.replace(/[^0-9]/g, "")) || 0 }))} />
+                <input inputMode="numeric" disabled={협약잠김} value={협약초안.자기부담.toLocaleString("ko-KR")} onChange={(event) => set협약초안((v) => ({ ...v, 자기부담: Number(event.target.value.replace(/[^0-9]/g, "")) || 0 }))} />
               </label>
             </div>
             <footer>
               <button className="outline" onClick={() => setEditingProfile(false)}>취소</button>
               <button className="primary" disabled={!profileDraft.host.trim() || 협약저장중} onClick={() => {
+                // 주의: 협약을 '안 고쳤으면' 서버에 보내지 않습니다. 비교 기준은 수정 창을 연 때의 값입니다
+                //    (예시를 보여 주던 계정은 빈 값). 이 브라우저에만 있는 값은 안 고쳐도 보냅니다 —
+                //    안 보내면 화면에는 보이는데 판정에는 쓰이지 않는 상태가 계속됩니다.
+                const 기준 = 협약출처 === "서버" || 협약출처 === "이 브라우저" ? 협약 : 빈협약;
+                const 보낼값있음 =
+                  !협약잠김 &&
+                  (JSON.stringify(협약초안) !== JSON.stringify(기준) || 협약출처 === "이 브라우저");
+                // 주의: 일부만 넣으면 나머지가 0·빈 값으로 저장되어 판정의 전제가 됩니다.
+                //    다른 값을 바꾸기 전에 막습니다. 뒤에서 막으면 취소를 눌러도 팀 이름이 바뀌어 있습니다.
+                if (보낼값있음 && (!협약초안.시작일 || !협약초안.종료일 || !협약초안.정부지원)) {
+                  notify("협약 시작일·종료일·정부지원금을 모두 입력해 주세요.");
+                  return;
+                }
+                if (보낼값있음 && 협약초안.시작일 > 협약초안.종료일) {
+                  notify("협약 시작일이 종료일보다 늦습니다.");
+                  return;
+                }
                 // 화면은 먼저 바꿉니다 — 서버가 못 받아도 시연이 끊기면 안 됩니다.
                 setProfile(profileDraft);
                 // 주의: 팀 이름은 Supabase 계정에 붙여야 다음 로그인에도 남습니다.
@@ -6862,17 +7172,34 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
                 supabase팀이름쓰기(profileDraft.team)
                   .catch(() => false)
                   .finally(() => set팀갱신((n) => n + 1));
-                set협약(협약초안);
-                // 주의: **고친 값을 이 브라우저에 남깁니다** (2026-09-06). 여기가 비어 있어서,
-                //    협약을 고치고 저장해도 새로고침하면 옛 값으로 돌아갔습니다
-                //    — 서버가 준 값이 화면을 덮었기 때문에 저장이 안 되는 것처럼 보였습니다.
-                //    2026-11-03부터 `PUT /api/profile` 이 저장하지만, 게스트·mock 은 서버에 안 남아서 계속 기억합니다.
-                협약기억(협약초안);
                 사업저장(profileDraft.program);
+                if (!보낼값있음) {
+                  setEditingProfile(false);
+                  notify(협약출처 === "실패"
+                    ? "내 정보를 저장했습니다. 협약 정보는 불러오지 못해 저장하지 않았습니다."
+                    : "내 정보를 저장했습니다.");
+                  return;
+                }
+                const 이전협약 = 협약;
+                set협약(협약초안);
                 set협약저장중(true);
                 협약쓰기(협약초안)
                   .then(({ 결과, 사유 }) => {
-                    setEditingProfile(false);
+                    // 주의: 서버가 받으면 서버 값이 기준이므로 로컬 값을 지웁니다. 게스트·mock 은 서버에
+                    //    안 남아서 이 브라우저에 기억합니다. 서버가 거부하면(422 등) 기억하지 않고 화면도
+                    //    되돌립니다 — 거부된 값이 화면에 남으면 판정이 쓰는 값과 어긋납니다.
+                    if (결과 === "저장됨") {
+                      협약잊기();
+                      set협약출처("서버");
+                    } else if (결과 === "실패") set협약(이전협약);
+                    else {
+                      협약기억(협약초안);
+                      set협약출처("이 브라우저");
+                    }
+                    if (결과 !== "실패") {
+                      setEditingProfile(false);
+                      window.dispatchEvent(new Event(협약저장알림));
+                    }
                     notify(
                       결과 === "저장됨"
                         ? "내 정보를 저장했습니다. 다음 점검부터 반영됩니다."
