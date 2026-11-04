@@ -16,7 +16,7 @@ import { 비목목록, 계획추가, 규정업로드, 규정처리기다리기, 
 import type { L3처리결과 } from "../lib/server-types";
 import { 체크저장, 일정변경저장, 일정등록 } from "../lib/tasks";
 import { 기본규정, 서버규정읽기, type 적용규정항목 } from "../lib/norms";
-import { 기관검색, 사업요약, 기관저장, 선택기관, 기본기관명, type 기관 } from "../lib/orgs";
+import { 기관검색, 사업요약, 기관저장, 선택기관, 기본기관명, 계정등록, type 기관 } from "../lib/orgs";
 import { 첨부보관, 첨부읽기, 첨부쓰기, 파일을첨부로, 크기표기, type 첨부 } from "../lib/attachments";
 import { 지금출처, 출처구독, 출처문구 } from "../lib/data-source";
 import { 인증켜짐, 로그인 as supabase로그인, 가입 as supabase가입, 로그아웃 as supabase로그아웃, 이메일 as supabase이메일, 팀이름 as supabase팀이름, 팀이름쓰기 as supabase팀이름쓰기 } from "../lib/supabase";
@@ -1575,14 +1575,64 @@ function Login({
    * 주의: 고른 기관의 slug. '이름이 아니라 이것' 이 서버가 기관을 되찾는 키입니다
    *    — 「경상국립대학교」·「경상국립대학교 창업지원단」·「…창업중심대학사업단」이
    *    같이 있어서 이름으로 되찾으면 다른 기관에 붙습니다.
-   *    등록 API 가 붙는 날 이 값을 그대로 넣습니다 (`lib/orgs.ts::선택기관slug`).
+   *    「다음」을 누르면 이 값으로 계정을 등록합니다 (`lib/orgs.ts::계정등록`).
    */
   const [institutionSlug, setInstitutionSlug] = useState("");
+  const [기관등록중, set기관등록중] = useState(false);
+  const [기관등록오류, set기관등록오류] = useState<string | null>(null);
+  /** 이미 다른 기관에 등록된 계정일 때 다음 단계에서 보여 줄 안내입니다. */
+  const [소속안내, set소속안내] = useState("");
+  /** 계정이 속한 기관에 지금 적용 중인 기준 문서의 파일명. 없으면 "" 입니다. */
+  const [기관문서, set기관문서] = useState("");
   /**
-   * 주의: 2026-09-07 — 온보딩은 '게스트' 라 `GET /api/l3/current` 를 불러도 항상
-   *    0건입니다(`l3_documents.org_id` NOT NULL — 로그인 전엔 org 자체가 없습니다).
-   *    그래서 예전처럼 "이미 적재된 파일"을 지어내지 않고 빈 값으로 시작합니다 —
-   *    사용자가 파일을 고르기 전까지는 정말로 '아직 없는' 것이 맞습니다.
+   * 고른 기관에 계정을 등록하고 다음 단계로 갑니다.
+   *
+   * 주의: 등록이 안 되면 이 단계에 머뭅니다. 넘어가면 기준 문서 업로드와 그 뒤 API 가 전부 403 입니다.
+   *    Supabase·서버 주소 설정 전에는 등록할 대상이 없으므로 예전처럼 넘어갑니다.
+   */
+  const 기관등록하기 = async () => {
+    set기관등록오류(null);
+    set소속안내("");
+    if (!인증켜짐 || !API켜짐()) {
+      기관저장(institution, institutionSlug);
+      setStep("upload");
+      return;
+    }
+    if (!institutionSlug) {
+      set기관등록오류("기관 목록을 서버에서 불러오지 못했습니다. 잠시 뒤 다시 시도해 주세요.");
+      return;
+    }
+    set기관등록중(true);
+    try {
+      const 등록 = await 계정등록(institutionSlug);
+      기관저장(등록.기관명, 등록.slug);
+      setInstitution(등록.기관명);
+      setInstitutionSlug(등록.slug);
+      setInstitutionQuery(등록.기관명);
+      if (등록.slug !== institutionSlug) {
+        set소속안내(`이 계정은 이미 ${등록.기관명} 소속이라 이 기관 기준으로 진행합니다.`);
+      }
+      // 조회에 실패해도 업로드는 할 수 있으니 넘어갑니다. 문서가 있다고 지어내지 않습니다.
+      const 현재 = await L3현재문서목록().catch(() => null);
+      set기관문서(
+        현재?.문서.find((d) => d.파싱품질 === "pass" || d.파싱품질 === "warn")?.원본파일명 ?? "",
+      );
+      setStep("upload");
+    } catch (e: unknown) {
+      set기관등록오류(
+        e instanceof TypeError
+          ? "서버에 연결하지 못했습니다. 잠시 뒤 다시 시도해 주세요."
+          : e instanceof Error
+            ? e.message
+            : "계정을 등록하지 못했습니다. 잠시 뒤 다시 시도해 주세요.",
+      );
+    } finally {
+      set기관등록중(false);
+    }
+  };
+  /**
+   * 주의: 이번에 고른 파일 이름입니다. 기관에 이미 등록된 문서는 여기서 불러오지 않고,
+   *    "이미 적재된 파일"을 지어내지도 않으므로 빈 값으로 시작합니다.
    */
   const [criteriaFile, setCriteriaFile] = useState("");
   /* 주의: 2026-09-07 — 여기가 '파일 이름만' 들고 있었습니다. `File` 이 없으니 업로드할
@@ -1642,10 +1692,8 @@ function Login({
   const [loginEmail, setLoginEmail] = useState("prototype@ssudo.kr");
   const [loginPassword, setLoginPassword] = useState("");
   /**
-   * 회원가입 — 주의: **화면만** 입니다. 아직 서버에 계정을 만들지 않습니다.
-   *    가입을 마치면 온보딩 1단계로 이어지고, 입력한 이메일·팀 이름은 이 탭이
+   * 회원가입. 가입을 마치면 온보딩 1단계로 이어지고, 입력한 이메일·팀 이름은 이 탭이
    *    기억해 사이드바·마이페이지에 그대로 보입니다.
-   *    서버가 붙으면 `가입하기` 안의 '한 곳' 만 실제 호출로 바꾸면 됩니다.
    */
   const [가입, set가입] = useState({
     이메일: "",
@@ -1729,12 +1777,10 @@ function Login({
       가입약관.개인정보;
 
     /**
-     * 주의: **가입은 두 단계인데 지금은 ①만 됩니다.**
+     * 주의: **가입은 두 단계입니다.**
      *      ① Supabase 계정 생성            ← 여기서 합니다
-     *      ② 우리 서버에 (이메일 → 기관) 등록 ← **API 가 아직 없습니다**
-     *    ②가 빠지면 로그인은 되는데 서버가 403 「등록되지 않은 계정이다」를 냅니다.
-     *    그 상태를 조용히 넘기지 않도록 온보딩 뒤 화면이 배너로 말합니다
-     *    (`lib/data-source.ts`).
+     *      ② 우리 서버에 (이메일 → 기관) 등록 ← 온보딩의 기관 선택에서 합니다 (`기관등록하기`)
+     *    ②가 끝나기 전에는 서버가 403 「등록되지 않은 계정입니다」를 냅니다.
      *
      * 주의: Supabase 설정 전(인증켜짐=false)에는 예전처럼 '통과' 시킵니다. 설정이
      *    안 들어간 채로 배포돼도 시연이 막히면 안 됩니다.
@@ -2002,7 +2048,7 @@ function Login({
               {로그인오류 && (
                 <small style={{ color: "var(--red, #c23b3b)" }}>{로그인오류}</small>
               )}
-              <small>계정이 없으신가요? 회원가입 후 참여 사업을 설정하면 바로 이용할 수 있습니다.</small>
+              <small>계정이 없으신가요? 회원가입 후 참여 사업과 주관기관을 설정하면 바로 이용할 수 있습니다.</small>
             </form>
           </div>
           <OnboardingDemo />
@@ -2189,24 +2235,29 @@ function Login({
                   <p>{program}{을를(program)} 운영하는 기관 중 일치하는 곳이 없습니다.</p>
                 )}
               </div>
+              <p className="onboarding-notice">
+                처음 등록하는 계정은 고른 기관으로 등록되고, 등록한 뒤에는 화면에서 바꿀 수 없습니다.
+                이미 등록된 계정은 기존 기관으로 진행합니다.
+              </p>
+              {기관등록오류 && (
+                <p className="onboarding-notice" role="alert" style={{ color: "var(--red, #c23b3b)" }}>
+                  {기관등록오류}
+                </p>
+              )}
               <div className="onboarding-actions">
                 <button
                   className="outline large"
+                  disabled={기관등록중}
                   onClick={() => setStep("project")}
                 >
                   이전
                 </button>
                 <button
                   className="primary large"
-                  disabled={!institution}
-                  onClick={() => {
-                    // 주의: 여기서 고른 기관이 사이드바·홈·마이페이지에 그대로 쓰입니다.
-                    //    slug 는 화면에 안 쓰지만, 서버 명부 등록이 붙는 날 필요합니다.
-                    기관저장(institution, institutionSlug);
-                    setStep("upload");
-                  }}
+                  disabled={!institution || 기관등록중}
+                  onClick={() => void 기관등록하기()}
                 >
-                  다음
+                  {기관등록중 ? "등록 중…" : "다음"}
                 </button>
               </div>
             </>
@@ -2216,9 +2267,21 @@ function Login({
               <p className="login-kicker">기관 세부기준 등록</p>
               <h1>주관기관의 세부기준을 확인해주세요.</h1>
               <p>
-                선택한 주관기관의 사업비 집행기준이 이미 등록되어 있습니다. 다른
-                문서를 쓰려면 아래에서 파일을 바꿀 수 있습니다.
+                주관기관의 세부기준 문서를 올려 주세요. 같은 기관 계정은 이 문서를 함께
+                씁니다. 올리지 않아도 다음 단계로 넘어갈 수 있습니다.
               </p>
+              {소속안내 && (
+                <p className="onboarding-filter-notice">
+                  <span>ⓘ</span>
+                  {소속안내}
+                </p>
+              )}
+              {기관문서 && (
+                <p className="onboarding-filter-notice">
+                  <span>ⓘ</span>
+                  이 기관에는 「{기관문서}」이(가) 적용 중입니다. 새 문서를 읽고 나면 같은 기관의 모든 계정이 새 문서를 기준으로 판정받습니다.
+                </p>
+              )}
               <dl className="onboarding-standards">
                 <div>
                   <dt>선정 사업</dt>
@@ -2231,9 +2294,9 @@ function Login({
                 <div>
                   <dt>적용 기준</dt>
                   <dd>
-                    {criteriaFile
+                    {criteriaFile || 기관문서
                       ? "사업 공통 규정 + 기관 세부기준"
-                      : "사업 공통 규정 우선 적용"}
+                      : "사업 공통 규정"}
                   </dd>
                 </div>
               </dl>
@@ -2262,7 +2325,7 @@ function Login({
                   // 클릭 경로의 accept 와 '같은 규칙' 을 여기서도 겁니다. 드롭은 accept 를
                   // 안 거치므로 .docx 를 추가하면 서버가 415 로 거부합니다 — 미리 막습니다.
                   if (!/\.(pdf|hwp|hwpx)$/i.test(f.name)) {
-                    // 이 화면은 게스트라 `notify` 가 없습니다 — 온보딩이 이미 쓰는
+                    // 이 화면에는 `notify` 가 없습니다 — 온보딩이 이미 쓰는
                     // `기준파싱문구` 자리에 띄웁니다(같은 곳에 결과가 나오니 일관됩니다).
                     set기준파싱문구("PDF·HWP·HWPX 파일만 올릴 수 있습니다.");
                     return;
@@ -2357,7 +2420,7 @@ function Login({
               <h1>준비됐어요. 써도돼요를 둘러볼까요?</h1>
               <p>
                 선택한 사업 기준으로 초기 설정을 완료했습니다. 지출 계획을 작성하면{" "}
-                {criteriaFile && !기준처리중
+                {(criteriaFile && !기준처리중) || 기관문서
                   ? "사업 공통 규정과 기관 세부기준을 함께"
                   : "우선 사업 공통 규정을 기준으로"}{" "}
                 확인합니다.
@@ -2380,13 +2443,8 @@ function Login({
               <div className="onboarding-demo-notice">
                 <Icon name="fileSearch" size={18} />
                 <span>
-                  <b>시연용 데이터가 준비되어 있어요.</b>
-                  <small>작성된 지출 계획과 연결된 집행 일정을 바로 확인할 수 있습니다.</small>
-                  {/* 주의: 「현재 온보딩에서 설정한 내용은 시연 계정에 적용되지 않습니다」를
-                      여기 두었었습니다 (2026-09-05 제거). 온보딩에서 고른 사업·기관은
-                      '이 브라우저에만' 저장되고 시연 계정 데이터는 서버 것이라 안 바뀌는데,
-                      그 사실 자체는 그대로입니다 — 문구만 뺐습니다.
-                      「설정했는데 왜 그대로냐」는 물음이 나오면 그때 다시 답을 답니다. */}
+                  <b>이제 지출 계획을 점검할 수 있어요.</b>
+                  <small>작성한 지출 계획과 연결된 집행 일정은 홈에서 확인할 수 있습니다.</small>
                 </span>
               </div>
               <div className="ready-actions">

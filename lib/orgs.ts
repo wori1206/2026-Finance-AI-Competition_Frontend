@@ -11,7 +11,7 @@
  *    slug → org_id 는 서버 안에서만 풉니다. 프론트는 org_id 를 알 필요가 없습니다.
  */
 
-import { GET } from "./http";
+import { GET, POST } from "./http";
 import { API켜짐 } from "./config";
 
 export type 기관 = {
@@ -57,8 +57,7 @@ const 기관KEY = "checkumait-주관기관";
  *    (「경상국립대학교」·「경상국립대학교 창업지원단」·「…창업중심대학사업단」)
  *    이름으로 되찾으면 '다른 기관에 붙습니다'.
  *
- * 주의: 등록 API 는 아직 '없습니다'. 계약(경로·바디)이 정해지지 않아 호출부는
- *    만들지 않았습니다. 이 값은 API 가 생기면 그대로 넣으면 되는 값입니다.
+ * 주의: 온보딩이 이 값으로 `계정등록()` 을 부릅니다.
  */
 const 기관SLUG_KEY = "checkumait-주관기관-slug";
 
@@ -77,14 +76,21 @@ export function 기관저장(이름: string, slug?: string): void {
   }
 }
 
-/** 지금 고른 기관의 slug. 없으면 "" — 등록 API 가 붙는 날 이 값을 넣습니다. */
-export function 선택기관slug(): string {
-  if (typeof window === "undefined") return "";
-  try {
-    return localStorage.getItem(기관SLUG_KEY)?.trim() || "";
-  } catch {
-    return "";
-  }
+export type 계정등록결과 = {
+  /** 계정이 실제로 속한 기관. 이미 등록된 계정이면 고른 기관과 다를 수 있습니다. */
+  기관명: string;
+  slug: string;
+  새계정: boolean;
+};
+
+/**
+ * 로그인한 계정을 고른 기관에 등록합니다 — `POST /api/accounts`.
+ *
+ * 주의: 이메일은 보내지 않습니다. 서버가 토큰에서 읽습니다. 등록이 안 된 계정은 다른 API 가
+ *    전부 403 이라 기준 문서 업로드도 막힙니다. 이미 등록된 계정은 서버가 현재 기관을 돌려줍니다.
+ */
+export async function 계정등록(slug: string): Promise<계정등록결과> {
+  return (await POST("/api/accounts", { slug })) as 계정등록결과;
 }
 
 export function 선택기관(): string {
