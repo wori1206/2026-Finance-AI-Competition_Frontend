@@ -38,6 +38,11 @@ export type ExpensePlan = {
    *    (`server/inquiry.py`). 값이 없으면 키 자체가 안 옵니다 — 지어내지 않습니다.
    */
   문의초안?: string | null;
+  /**
+   * 주의: 방금 받은 판정을 서버가 '저장하지 않았을 때' true. 새로고침하면 이전 판정이
+   *    다시 보이므로 화면에서 그 사실을 알립니다. 서버에서 다시 읽은 계획에는 없습니다.
+   */
+  저장안됨?: boolean;
   previousStatus?: Exclude<PlanStatus, "점검 전" | "재점검 필요">;
   nextAction: string;
   updatedAt: string;

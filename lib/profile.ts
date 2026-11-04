@@ -139,6 +139,22 @@ export function 협약기억(c: 협약정보): void {
   }
 }
 
+/**
+ * 이 브라우저에 남긴 협약 값을 지웁니다.
+ *
+ * 주의: 로그아웃 때 지우지 않으면 같은 브라우저로 들어온 다음 계정이 앞 계정의 협약을 보고,
+ *    마이페이지에서 저장하면 그 값이 다음 계정의 기관에 들어갑니다. 서버에 저장된 뒤에도
+ *    지웁니다 — 남겨 두면 로컬 값이 서버 값보다 먼저 읽혀, 다른 기기에서 고친 값이 안 보입니다.
+ */
+export function 협약잊기(): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(협약KEY);
+  } catch {
+    /* 무시 */
+  }
+}
+
 export function 기억된협약(): 협약정보 | null {
   if (typeof window === "undefined") return null;
   try {
@@ -221,7 +237,16 @@ export function 지금협약(): 협약정보 {
  *    (`use협약()` 참고). 이 함수 자체는 그 판단을 하지 않고 서버 값만 옮깁니다.
  */
 export async function 서버협약읽기(): Promise<협약정보 | null> {
-  if (!API켜짐()) return null;
+  return (await 서버협약조회()).값;
+}
+
+/**
+ * `서버협약읽기` 와 같지만 「값이 없음」과 「읽지 못함」을 나눕니다.
+ *
+ * 주의: 읽지 못했을 때 저장을 허용하면 빈 값이나 예시 값이 서버의 실제 값을 덮어씁니다.
+ */
+export async function 서버협약조회(): Promise<{ 값: 협약정보 | null; 실패: boolean }> {
+  if (!API켜짐()) return { 값: null, 실패: false };
   try {
     const r = await 프로필읽기();
     const 협약 = (r?.["협약"] ?? {}) as Record<string, unknown>;
@@ -231,11 +256,14 @@ export async function 서버협약읽기(): Promise<협약정보 | null> {
       정부지원: 숫자(협약["정부지원_현금"]),
       자기부담: 숫자(협약["자기부담_현금"]),
     };
-    return 값있음(c) ? c : null;
+    return { 값: 값있음(c) ? c : null, 실패: false };
   } catch {
-    return null;
+    return { 값: null, 실패: true };
   }
 }
+
+/** 아직 입력한 협약 정보가 없을 때의 수정 창 초기값. 예시 값을 저장에 섞지 않으려고 비워 둡니다. */
+export const 빈협약: 협약정보 = { 시작일: "", 종료일: "", 정부지원: 0, 자기부담: 0 };
 
 export type 저장결과 = "저장됨" | "서버가안받음" | "로그인필요" | "실패";
 

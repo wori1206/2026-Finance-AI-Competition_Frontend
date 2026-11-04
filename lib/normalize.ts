@@ -63,7 +63,8 @@ function 심층질문정리(값: unknown): 심층질문항목[] {
     const 필요프로필필드 = Array.isArray(o["필요프로필필드"])
       ? (o["필요프로필필드"] as unknown[]).filter((x): x is string => typeof x === "string")
       : [];
-    return [{ code, 질문문, 유형, 선택지, 근거, 필요프로필필드 }];
+    const 비목 = typeof o["비목"] === "string" ? o["비목"] : null;
+    return [{ code, 비목, 질문문, 유형, 선택지, 근거, 필요프로필필드 }];
   });
 }
 

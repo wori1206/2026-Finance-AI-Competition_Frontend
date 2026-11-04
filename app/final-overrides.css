@@ -207,6 +207,12 @@ body .app-shell .expense-v5 .ai-before-checks>header button.outline:focus-visibl
   margin:0!important;
   white-space:nowrap!important;
 }
+/* 창이 좁으면 파일명 칸(320px)이 제목 칸을 눌러 글자가 세로로 겹칩니다. 파일명을 아래 줄로 내립니다. */
+@media(max-width:1180px){
+  .expense-v5 .expense-v5-evidence-item{height:auto!important;grid-template-columns:minmax(0,1fr) 112px!important}
+  .expense-v5 .expense-v5-evidence-item>.expense-v5-upload{grid-column:2!important}
+  .expense-v5 .expense-v5-evidence-item>.expense-v5-uploaded-file{grid-column:1 / -1!important;grid-row:2!important}
+}
 @media(max-width:680px){
   .expense-v5 .expense-v5-evidence-item{height:auto!important;grid-template-columns:1fr!important;padding:12px 16px!important}
   .expense-v5 .expense-v5-evidence-item>label:first-child{grid-column:1!important;grid-row:1!important}
