@@ -146,6 +146,8 @@ export type 계획상세 = 계획요약 & {
   판정상세: 판정상세;
   할일: 할일[];
   created_at: string | null;
+  /** 판정 전에 답한 내용. 옛 판정에는 없습니다. */
+  사용자답변?: unknown;
 };
 
 export type 할일목록응답 = { 건수: number; 항목: 할일[] };
@@ -184,6 +186,31 @@ export type 심층질문항목 = {
 
 /** `/api/judge` 요청의 `답변[]` 한 칸 — `models.py::답변항목` 과 1:1 대응. */
 export type 답변항목 = { code: string; 값: unknown };
+
+/** `POST /api/questions` 질문의 선택지. `값` 은 예·아니오·모름 중 하나입니다. */
+export type 확인질문선택지 = { 라벨: string; 값: string };
+
+/** 질문의 근거 조문. `doc_id` 는 화면에 그대로 내지 않고 `문서명보기()` 로 바꿉니다. */
+export type 확인질문근거 = {
+  doc_id: string;
+  조번호: string;
+  조제목: string;
+  항호: string;
+  원문: string;
+};
+
+/** 판정 전에 묻는 질문 한 개. `id` 를 `/api/judge` 의 `답변[].code` 로 되돌려 보냅니다. */
+export type 확인질문 = {
+  id: string;
+  질문문: string;
+  이유: string;
+  선택지: 확인질문선택지[];
+  /** 원문을 받지 못하면 null 이고, 그때는 「규정 원문 보기」를 그리지 않습니다. */
+  근거: 확인질문근거 | null;
+};
+
+/** 판정 결과의 `사용자답변[]` 한 칸. `답` 은 예·아니오·모름 중 하나입니다. */
+export type 사용자답변항목 = { 질문문: string; 답: string };
 
 export type 정규화결과 = {
   품목: string | null;

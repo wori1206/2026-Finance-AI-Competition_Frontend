@@ -10,11 +10,11 @@
 
 import { 계획상세 } from "./api";
 import { 판정SSE } from "./sse";
-import { 상세를계획으로, 판정을상태로, 판정설명, 시각표기, 인용정리 } from "./adapt";
+import { 상세를계획으로, 판정을상태로, 판정설명, 시각표기, 인용정리, 사용자답변정리 } from "./adapt";
 import { 초안보관 } from "./inquiry-store";
 import type { ChecklistItem, RuleItem } from "./types";
 import type { ExpensePlan } from "./types";
-import type { 판정값, 답변항목 } from "./server-types";
+import type { 판정값, 답변항목, 사용자답변항목 } from "./server-types";
 
 export type Mock판정 = "가능" | "조건부" | "불가" | "판단불가";
 
@@ -65,8 +65,10 @@ export async function 판정실행(
     mock?: Mock판정;
     signal?: AbortSignal;
     대체입력?: 대체입력;
-    /** 심층질문 답(2026-09-07). 「확인 필요」는 호출부에서 값 "미상" 으로 채워 넣는다. */
+    /** 확인 질문의 답. `code` 는 질문 id, `값` 은 예·아니오·모름입니다. */
     답변?: 답변항목[];
+    /** 답변이 속한 질문 묶음의 키. 질문을 묻지 않았으면 보내지 않습니다. */
+    질문세트?: string | null;
   },
 ): Promise<판정결과> {
   // 주의: 방금 만든 계획은 상세 조회가 '서버 버그로' 500 이 납니다
@@ -119,6 +121,7 @@ export async function 판정실행(
   let 해야할일: ChecklistItem[] = [];
   let 인용: RuleItem[] = [];
   let 문의초안: string | null = null;
+  let 사용자답변: 사용자답변항목[] = [];
   let 저장됨 = false;
   let 서버오류: string | null = null;
 
@@ -158,6 +161,7 @@ export async function 판정실행(
     // 주의: 비어 있어도 종전과 바이트 단위로 같은 경로다(`models.py::판정요청.답변` 기본값 []
     //    → `_사용자프로필값_구성` 이 None 을 돌려준다) — 안 보내던 필드를 뒤늦게 넣어도 안전하다.
     답변: 옵션?.답변 ?? [],
+    ...(옵션?.질문세트 ? { 질문세트: 옵션.질문세트 } : {}),
   };
 
   const 흐름 = (이름: string, 값: unknown) => {
@@ -199,6 +203,9 @@ export async function 판정실행(
         case "문의초안":
           문의초안 = typeof 값 === "string" ? 값 : 문자(v["문의초안"]);
           if (문의초안) 중계.문의초안?.(문의초안);
+          break;
+        case "결과":
+          사용자답변 = 사용자답변정리(v["사용자답변"]);
           break;
         case "저장":
           저장됨 = v["저장"] === true;
@@ -272,6 +279,8 @@ export async function 판정실행(
     // 주의: 스트림으로 온 초안이 '먼저' 입니다. mock 서버는 판정을 저장하지 않아
     //    상세를 다시 읽어도 판정상세가 비어 있습니다.
     문의초안: 최종초안,
+    // 주의: 답 없이 다시 점검한 판정이면 비어 있어야 합니다. 저장되지 않은 판정에 옛 답을 붙이지 않습니다.
+    사용자답변: 스트림값만 || 사용자답변.length ? 사용자답변 : 바탕.사용자답변,
     nextAction: 스트림값만
       ? (해야할일[0]?.label ?? "")
       : 바탕.nextAction || (해야할일[0]?.label ?? ""),

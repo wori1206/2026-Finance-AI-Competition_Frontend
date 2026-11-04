@@ -8,7 +8,7 @@ import type {
   PlanStatus,
   ScheduleItem,
 } from "../lib/types";
-import type { 비목후보, 심층질문항목, 답변항목 } from "../lib/server-types";
+import type { 비목후보, 답변항목, 확인질문, 사용자답변항목 } from "../lib/server-types";
 import { API켜짐 } from "../lib/config";
 import { 판정실행 } from "../lib/judge";
 import { 정규화하기 } from "../lib/normalize";
@@ -20,7 +20,8 @@ import { 기관검색, 사업요약, 기관저장, 선택기관, 기본기관명
 import { 첨부보관, 첨부읽기, 첨부쓰기, 파일을첨부로, 크기표기, type 첨부 } from "../lib/attachments";
 import { 지금출처, 출처구독, 출처문구 } from "../lib/data-source";
 import { 인증켜짐, 로그인 as supabase로그인, 가입 as supabase가입, 로그아웃 as supabase로그아웃, 이메일 as supabase이메일, 팀이름 as supabase팀이름, 팀이름쓰기 as supabase팀이름쓰기 } from "../lib/supabase";
-import { 상세를계획으로, 판정제목, 행동문구, 시각표기, L3등록사실, L3현재문서요약짓기, type L3현재문서요약 } from "../lib/adapt";
+import { 상세를계획으로, 판정제목, 행동문구, 시각표기, L3등록사실, L3현재문서요약짓기, 문서명보기, 답표기, type L3현재문서요약 } from "../lib/adapt";
+import { 질문가져오기, type 질문결과 } from "../lib/questions";
 // 주의: `데모종료` 는 남깁니다 — 「계정 없이 둘러보기」를 없앴어도 예전에 받아 둔
 //    데모 토큰이 브라우저에 2시간 남아 있을 수 있고, 그게 로그인 조회를 가로챕니다.
 import { 데모종료, 데모중, 이메일기억, 기억된이메일, 이메일잊기, 팀이름기억, 기억된팀이름 } from "../lib/session";
@@ -2748,6 +2749,7 @@ function AiCheckingOverlay({
   planId,
   대체입력,
   답변,
+  질문세트,
   제목,
   onComplete,
   onFail,
@@ -2770,8 +2772,10 @@ function AiCheckingOverlay({
     금액?: number | null;
     화면수정있음?: boolean;
   };
-  /** 2026-09-07 — 심층질문 답. 안 주면 빈 배열과 같아 예전과 같은 경로로 처리합니다. */
+  /** 확인 질문의 답. 안 주면 답 없이 판정합니다(목록·상세의 재점검). */
   답변?: 답변항목[];
+  /** 답변이 속한 질문 묶음의 키. */
+  질문세트?: string | null;
   onComplete: (판정된계획?: ExpensePlan) => void;
   onFail?: (메시지: string) => void;
 }) {
@@ -2829,7 +2833,7 @@ function AiCheckingOverlay({
             진행시각.current = Date.now();
           },
         },
-        { 대체입력, 답변 },
+        { 대체입력, 답변, 질문세트 },
       );
     }
 
@@ -2899,6 +2903,13 @@ function AiCheckingOverlay({
   );
 }
 
+/** 재점검 창에서 받은 답. `AiCheckingOverlay` 로 그대로 넘깁니다. */
+type 재점검답 = { 답변: 답변항목[]; 질문세트: string | null };
+
+/**
+ * 재점검 전 확인 창. 서버 모드는 새 지출 계획과 같은 확인 질문을 묻고, 물을 것이 없으면 바로 점검합니다.
+ * 주의: 답 없이 판정하면 전에 「아니오」로 답한 요건이 사라져 틀린 「가능」이 나올 수 있습니다.
+ */
 function PlanRecheckQuestionsModal({
   plan,
   close,
@@ -2907,7 +2918,7 @@ function PlanRecheckQuestionsModal({
   plan: ExpensePlan;
   close: () => void;
   /** `선택비목` 은 계획에 비목이 없어 이 창에서 고른 값입니다. */
-  start: (선택비목?: string) => void;
+  start: (선택비목?: string, 답?: 재점검답) => void;
 }) {
   // 주의: 1단계에서 임시저장한 계획은 비목이 없습니다. 비목 없이 판정하면 서버가 규칙·한도를
   //    확인하지 못하므로(틀린 「가능」 위험) 여기서 먼저 고르게 합니다.
@@ -2925,6 +2936,45 @@ function PlanRecheckQuestionsModal({
       : 찾은질문.length
         ? 찾은질문
         : CATEGORY_QUESTIONS["외주용역비"];
+
+  const 서버모드 = API켜짐();
+  // 비목을 이 창에서 바꾸면 질문도 바뀌므로 어떤 비목으로 받은 질문인지 같이 둡니다.
+  // 주의: 저장된 계획에는 세부유형이 없을 수 있습니다. 예시 모드의 질문표 기본값(멘토링)을 서버로 보내면 안 됩니다.
+  const 세부유형 = category === "지급수수료" ? plan.category.split(" · ")[1] || null : null;
+  const 질문키 = `${category}|${세부유형}`;
+  const [받은, set받은] = useState<{ 키: string; 결과: 질문결과 } | null>(null);
+  const [답, set답] = useState<Record<string, string>>({});
+  const 받는중 = 서버모드 && !!category && 받은?.키 !== 질문키;
+  const 지금결과 = 서버모드 && 받은?.키 === 질문키 ? 받은.결과 : null;
+  const 서버질문 = 지금결과?.질문 ?? [];
+  // id(Q1…)는 묶음마다 다시 매겨지므로 옛 답이 새 질문의 답이 되지 않게 묶음 키를 붙입니다.
+  const 답키 = (q: 확인질문) => `${지금결과?.질문세트}:${q.id}`;
+
+  useEffect(() => {
+    if (!서버모드 || !category) return;
+    let 살아있음 = true;
+    void 질문가져오기({
+      사업명: 현재사업(),
+      확정비목: category,
+      세부유형,
+      품목: plan.name,
+      금액: plan.amount,
+      용도: plan.purpose,
+    }).then((결과) => {
+      if (!살아있음) return;
+      // 물을 것이 없으면 바로 점검합니다. 이 창에서 비목을 고른 경우는 사용자가 시작을 눌러야 합니다.
+      if (!결과.질문.length && plan.category) {
+        start();
+        return;
+      }
+      set받은({ 키: 질문키, 결과 });
+    });
+    return () => {
+      살아있음 = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [서버모드, 질문키]);
+
   return (
     <div className="ai-checking-backdrop" role="presentation">
       <section className="plan-recheck-modal" role="dialog" aria-modal="true" aria-labelledby="plan-recheck-title">
@@ -2933,9 +2983,13 @@ function PlanRecheckQuestionsModal({
             <small>{plan.name}</small>
             <h2 id="plan-recheck-title">추가로 확인할게요</h2>
             <p>
-              {category
-                ? `${category} 규정에서 확인할 사항입니다. 답변은 아직 AI 점검에 반영되지 않습니다.`
-                : "비목을 고르면 그 비목의 규정으로 점검합니다."}
+              {!category
+                ? "비목을 고르면 그 비목의 규정으로 점검합니다."
+                : !서버모드
+                  ? `${category} 규정에서 확인할 사항입니다. 답변은 아직 AI 점검에 반영되지 않습니다.`
+                  : 받는중
+                    ? "규정에서 확인할 사항을 찾고 있어요."
+                    : "답변을 반영해 판정합니다. 모르면 모르겠어요를 눌러 주세요."}
             </p>
           </div>
           <button type="button" onClick={close} aria-label="닫기">×</button>
@@ -2949,13 +3003,36 @@ function PlanRecheckQuestionsModal({
               onChange={set선택비목}
             />
           )}
-          {questions.map((question, index) => (
-            <Question key={`${plan.id}-${category}-${index}`} label={question.label} options={question.options} />
-          ))}
+          {서버모드
+            ? 서버질문.map((q) => (
+                <확인질문카드
+                  key={답키(q)}
+                  질문={q}
+                  값={답[답키(q)]}
+                  onChange={(v) => set답((prev) => ({ ...prev, [답키(q)]: v }))}
+                />
+              ))
+            : questions.map((question, index) => (
+                <Question key={`${plan.id}-${category}-${index}`} label={question.label} options={question.options} />
+              ))}
         </div>
         <footer>
           <button className="outline" onClick={close}>취소</button>
-          <button className="primary" disabled={!category} onClick={() => start(plan.category ? undefined : 선택비목)}>
+          <button
+            className="primary"
+            disabled={!category || 받는중 || 서버질문.some((q) => !답[답키(q)])}
+            onClick={() =>
+              start(
+                plan.category ? undefined : 선택비목,
+                서버질문.length
+                  ? {
+                      답변: 서버질문.map((q) => ({ code: q.id, 값: 답[답키(q)] })),
+                      질문세트: 지금결과?.질문세트 ?? null,
+                    }
+                  : undefined,
+              )
+            }
+          >
             AI 점검 시작
           </button>
         </footer>
@@ -3026,6 +3103,7 @@ function PlansPage({
   const [draft, setDraft] = useState<ExpensePlan | null>(null);
   const [sortOrder, setSortOrder] = useState<"updated" | "created" | "plannedDate">("updated");
   const [questionPlan, setQuestionPlan] = useState<ExpensePlan | null>(null);
+  const [점검답, set점검답] = useState<재점검답 | undefined>();
   const [checking, setChecking] = useState(false);
   const [bulkComplete, setBulkComplete] = useState(false);
   const categories = useMemo(
@@ -3502,6 +3580,8 @@ function PlansPage({
               화면수정있음: 대상.화면만수정,
             };
           })()}
+          답변={점검답?.답변}
+          질문세트={점검답?.질문세트}
           onFail={(메시지) => {
             setChecking(false);
             setBulkComplete(false);
@@ -3518,8 +3598,9 @@ function PlansPage({
         <PlanRecheckQuestionsModal
           plan={questionPlan}
           close={() => setQuestionPlan(null)}
-          start={(선택비목) => {
+          start={(선택비목, 답) => {
             if (선택비목) update({ ...questionPlan, category: 선택비목, 비목직접선택: true });
+            set점검답(답);
             setQuestionPlan(null);
             setChecking(true);
           }}
@@ -3616,10 +3697,14 @@ function NewPlanPage({
   //    '여러 개' 줄 수 있고 그때는 배지도 여러 개 붙어야 하므로 배열로 들고 갑니다.
   const [서버후보, set서버후보] = useState<비목후보[]>([]);
   const [서버정규화, set서버정규화] = useState<Record<string, unknown> | null>(null);
-  // 주의: 2026-09-07 — check_items 기반 심층질문. 비면 예전 하드코딩 질문표로 폴백합니다.
-  const [서버심층질문, set서버심층질문] = useState<심층질문항목[]>([]);
-  // code → 답. 「확인 필요」도 값 그대로 담아 뒀다가 제출 직전에 "미상" 으로 바꿔 보냅니다.
-  const [심층답변, set심층답변] = useState<Record<string, string>>({});
+  // 「AI 점검하기」 때 서버에서 받은 확인 질문입니다. 예시 모드에서는 쓰지 않습니다.
+  const [서버질문, set서버질문] = useState<확인질문[]>([]);
+  const [질문세트, set질문세트] = useState<string | null>(null);
+  // 질문 id → 값(예·아니오·모름).
+  const [질문답변, set질문답변] = useState<Record<string, string>>({});
+  // 지금 들고 있는 질문이 어떤 비목으로 받은 것인지 둡니다. 품목·목적·금액을 고치면 질문 자체가 비워집니다.
+  const 질문키 = `${category}|${feeSubtype}`;
+  const [받은질문키, set받은질문키] = useState<string | null>(null);
   const [새planId, set새planId] = useState<string | null>(null);
   const [저장중, set저장중] = useState(false);
   const [연동오류, set연동오류] = useState<string | null>(null);
@@ -3660,8 +3745,9 @@ function NewPlanPage({
   useEffect(() => {
     set서버정규화(null);
     set서버후보([]);
-    set서버심층질문([]);
-    set심층답변({});
+    set서버질문([]);
+    set질문세트(null);
+    set질문답변({});
     setCategory((v) => (v && v === 자동선택비목.current ? "" : v));
     자동선택비목.current = null;
   }, [name, purpose, amount]);
@@ -3681,15 +3767,9 @@ function NewPlanPage({
     () => new Map(서버후보.flatMap((c) => (c.설명 ? [[c.비목, c.설명] as const] : []))),
     [서버후보],
   );
+  // 예시 모드 전용 질문표입니다. 서버 모드는 `서버질문` 을 그립니다.
   const questions =
     category === "지급수수료" ? FEE_QUESTIONS[feeSubtype] : 질문찾기(category);
-  // 주의: 비목 후보가 없으면 서버가 모든 비목의 질문을 줍니다. 고른 비목과 공통 질문만 보여 줍니다.
-  //    서버 비목(「기계장치」)과 서버 없이 쓰는 화면 비목(「기계장치비」)이 달라 앞부분으로 맞춥니다.
-  const 보일심층질문 = useMemo(() => {
-    const 접기 = (x: string) => x.replace(/\s/g, "");
-    const 고른비목 = 접기(category.split(" · ")[0]);
-    return 서버심층질문.filter((q) => !q.비목 || 고른비목.startsWith(접기(q.비목)));
-  }, [서버심층질문, category]);
   useEffect(() => {
     if (!categoryLoading) return;
 
@@ -3719,7 +3799,6 @@ function NewPlanPage({
         set서버정규화(r.정규화);
         // 주의: 후보가 '비어 있는 것도 정상' 입니다 (운영 서버 폼 경로). 그때는 사용자가 고릅니다.
         set서버후보(r.비목후보);
-        set서버심층질문(r.심층질문);
         // 자동 선택은 가장 확신하는 '하나' 만. 배지는 후보 전부에 붙지만 커서는 하나다.
         // 주의: 후보가 없으면 지금 값을 그대로 둡니다. 처음이면 빈 값이고, 이전 단계로 돌아갔다
         //    다시 온 경우에는 사용자가 직접 고른 비목이 남습니다.
@@ -3744,14 +3823,6 @@ function NewPlanPage({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [categoryLoading]);
-  useEffect(() => {
-    if (!questionsLoading) return;
-    const timer = window.setTimeout(() => {
-      setStep(3);
-      setQuestionsLoading(false);
-    }, 1600);
-    return () => window.clearTimeout(timer);
-  }, [questionsLoading]);
   const buildPlan = (temporary: boolean): ExpensePlan => {
     const base =
       INITIAL_PLANS.find((p) => p.category === category) || INITIAL_PLANS[0];
@@ -3819,11 +3890,11 @@ function NewPlanPage({
     if (!API켜짐()) {
       setPendingPlan(buildPlan(false));
       setChecking(true);
-      return;
+      return Promise.resolve();
     }
     set저장중(true);
     set연동오류(null);
-    서버에저장()
+    return 서버에저장()
       .then((d) => {
         set새planId(String(d.plan_id));
         setPendingPlan(상세를계획으로(d));
@@ -3834,6 +3905,53 @@ function NewPlanPage({
       })
       .finally(() => set저장중(false));
   };
+
+  useEffect(() => {
+    if (!questionsLoading) return;
+
+    // ── 백엔드 없음 → 예전 애니메이션 그대로 ──
+    if (!API켜짐()) {
+      const timer = window.setTimeout(() => {
+        setStep(3);
+        setQuestionsLoading(false);
+      }, 1600);
+      return () => window.clearTimeout(timer);
+    }
+
+    // ── 서버에서 확인 질문 받기 ──
+    let 살아있음 = true;
+    const 질문원문 = 서버정규화?.["질문원문"];
+    void 질문가져오기({
+      사업명: 현재사업(),
+      확정비목: category.split(" · ")[0],
+      세부유형: category === "지급수수료" ? feeSubtype : null,
+      품목: name,
+      금액: Number(amount.replace(/,/g, "")) || 0,
+      용도: purpose,
+      질문원문: typeof 질문원문 === "string" && 질문원문 ? 질문원문 : undefined,
+    }).then((r) => {
+      if (!살아있음) return;
+      // 주의: id(Q1…)는 묶음마다 다시 매겨져 옛 답이 다른 질문의 답으로 나가면 안 됩니다.
+      set서버질문(r.질문);
+      set질문세트(r.질문세트);
+      set질문답변({});
+      if (r.질문.length) {
+        set받은질문키(질문키);
+        set연동오류(null);
+        setStep(3);
+        setQuestionsLoading(false);
+        return;
+      }
+      // 질문이 없거나 실패·제한 시간 초과. 3단계 없이 바로 판정합니다.
+      // 주의: 저장이 끝날 때까지 로딩 창을 둡니다. 먼저 닫으면 2단계 화면이 잠깐 비쳤다가 판정 창이 뜹니다.
+      set받은질문키(null);
+      void submit().finally(() => setQuestionsLoading(false));
+    });
+    return () => {
+      살아있음 = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [questionsLoading]);
 
   const saveDraft = () => {
     if (!API켜짐()) {
@@ -4036,9 +4154,11 @@ function NewPlanPage({
           <>
             <h2 className="additional-check-title">몇 가지만 추가로 확인할게요</h2>
             <p className="section-copy additional-check-copy">
-              {category === "지급수수료"
-                ? `${feeSubtype} 기준에서 확인할 사항입니다.`
-                : `${category} 규정에서 확인할 사항입니다.`}
+              {API켜짐()
+                ? "입력한 지출에 맞춰 규정에서 확인할 사항을 골랐어요."
+                : category === "지급수수료"
+                  ? `${feeSubtype} 기준에서 확인할 사항입니다.`
+                  : `${category} 규정에서 확인할 사항입니다.`}
             </p>
             <div className="auto-check-note">
               <Icon name="check" />
@@ -4048,51 +4168,15 @@ function NewPlanPage({
               </span>
             </div>
             <div className="question-list">
-              {/* 주의: 2026-09-07 — 서버가 준 심층질문(check_items 기반, 근거 조항 딸림)이
-                  있으면 그걸 그립니다. 서버가 비면(폼 경로 초기·API 꺼짐 등) 예전 하드코딩
-                  질문표로 폴백합니다 — 「비어도 화면이 안 죽는다」 원칙, `정규화하기`/`normalize.ts` 와 같습니다. */}
-              {보일심층질문.length > 0
-                ? 보일심층질문.map((q) =>
-                    q.유형 === "숫자" || q.유형 === "텍스트" ? (
-                      <div className="question" key={q.code}>
-                        <b>
-                          {q.질문문}
-                          {q.근거.조번호 && (
-                            <small className="question-basis"> · {q.근거.조번호}</small>
-                          )}
-                        </b>
-                        <div>
-                          <input
-                            className="question-input"
-                            type={q.유형 === "숫자" ? "number" : "text"}
-                            value={심층답변[q.code] === "확인 필요" ? "" : (심층답변[q.code] ?? "")}
-                            onChange={(e) =>
-                              set심층답변((prev) => ({ ...prev, [q.code]: e.target.value }))
-                            }
-                            placeholder="답을 입력하세요"
-                          />
-                          <button
-                            type="button"
-                            className={심층답변[q.code] === "확인 필요" ? "active" : ""}
-                            onClick={() =>
-                              set심층답변((prev) => ({ ...prev, [q.code]: "확인 필요" }))
-                            }
-                          >
-                            확인 필요
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <Question
-                        key={q.code}
-                        label={q.질문문}
-                        options={심층질문옵션(q)}
-                        value={심층답변[q.code]}
-                        onChange={(v) => set심층답변((prev) => ({ ...prev, [q.code]: v }))}
-                        근거조번호={q.근거.조번호 || undefined}
-                      />
-                    ),
-                  )
+              {API켜짐()
+                ? 서버질문.map((q) => (
+                    <확인질문카드
+                      key={`${질문세트}-${q.id}`}
+                      질문={q}
+                      값={질문답변[q.id]}
+                      onChange={(v) => set질문답변((prev) => ({ ...prev, [q.id]: v }))}
+                    />
+                  ))
                 : questions.map((question, index) => (
                     <Question
                       key={`${category}-${feeSubtype}-${index}`}
@@ -4103,7 +4187,10 @@ function NewPlanPage({
             </div>
             <div className="info-note">
               <Icon name="spark" />
-              답변은 아직 AI 점검에 반영되지 않습니다. 품목·금액·사용 목적으로 공통 기준과 비목별 기준을 점검합니다.
+              {/* 주의: 예시 모드는 판정을 부르지 않아 답이 어디에도 쓰이지 않으므로 그 사실을 그대로 둡니다. */}
+              {API켜짐()
+                ? "답변을 반영해 판정합니다. 모르면 모르겠어요를 눌러 주세요."
+                : "답변은 아직 AI 점검에 반영되지 않습니다. 품목·금액·사용 목적으로 공통 기준과 비목별 기준을 점검합니다."}
             </div>
           </>
         )}
@@ -4128,12 +4215,22 @@ function NewPlanPage({
         </button>
         <button
           className="primary"
-          disabled={categoryLoading || questionsLoading || 저장중 || !필수입력됨 || (step >= 2 && !category)}
+          disabled={
+            categoryLoading ||
+            questionsLoading ||
+            저장중 ||
+            !필수입력됨 ||
+            (step >= 2 && !category) ||
+            (step === 3 && 서버질문.some((q) => !질문답변[q.id]))
+          }
           onClick={() => {
             if (step === 1) {
               setCategoryLoading(true);
-            } else if (step === 2) setQuestionsLoading(true);
-            else submit();
+            } else if (step === 2) {
+              // 주의: 「이전」으로 왔다가 그대로 돌아가면 다시 받지 않습니다. 다시 받다 실패하면 답이 사라집니다.
+              if (API켜짐() && 서버질문.length && 받은질문키 === 질문키) setStep(3);
+              else setQuestionsLoading(true);
+            } else submit();
           }}
         >
           {step === 1
@@ -4156,11 +4253,10 @@ function NewPlanPage({
             용도: purpose,
             금액: Number(amount.replace(/,/g, "")) || 0,
           }}
-          // 주의: 2026-09-07 — 답 없는(undefined) 문항은 서버로 안 보냅니다.
-          //    빈 문자열도 "답 안 함" 취급 — 못 고른 걸 "미상"으로 밀어붙이지 않습니다.
-          답변={보일심층질문
-            .filter((q) => 심층답변[q.code])
-            .map((q) => ({ code: q.code, 값: 심층질문값(q, 심층답변[q.code]) }))}
+          답변={서버질문
+            .filter((q) => 질문답변[q.id])
+            .map((q) => ({ code: q.id, 값: 질문답변[q.id] }))}
+          질문세트={서버질문.length ? 질문세트 : null}
           onFail={(메시지) => {
             setChecking(false);
             set연동오류(메시지);
@@ -4197,26 +4293,72 @@ function NewPlanPage({
 }
 
 /**
- * 서버 심층질문 하나를 버튼 목록(라벨)으로 바꿉니다.
- * 주의: "숫자"·"텍스트" 는 버튼이 아니라 입력창으로 따로 그립니다 — 여기선 빈 배열.
+ * 3단계 확인 질문 한 개. 재점검 창이 함께 쓰는 `Question` 과 달리 이유와 규정 원문이 딸려 있습니다.
+ * 주의: 세 버튼은 칸 너비까지 같게 둡니다. 「모르겠어요」가 작거나 흐리면 모른다고 답하기 어려워집니다.
  */
-function 심층질문옵션(q: 심층질문항목): string[] {
-  // 주의: 서버 선택지에 「확인 필요」가 이미 있는 질문이 있어, 그대로 붙이면 같은 버튼이 두 개 생깁니다.
-  if (q.유형 === "선택") return Array.from(new Set([...q.선택지.map((s) => s.라벨), "확인 필요"]));
-  if (q.유형 === "예아니오") return ["예", "아니오", "확인 필요"];
-  return [];
+function 확인질문카드({
+  질문,
+  값,
+  onChange,
+}: {
+  질문: 확인질문;
+  값?: string;
+  onChange: (값: string) => void;
+}) {
+  const 근거 = 질문.근거;
+  return (
+    <div className="question confirm-question">
+      <div className="confirm-question-text">
+        <b>{질문.질문문}</b>
+        {질문.이유 && <p>{질문.이유}</p>}
+      </div>
+      <div className="confirm-question-options" role="group" aria-label={질문.질문문}>
+        {질문.선택지.map((s) => (
+          <button
+            key={s.값}
+            type="button"
+            className={값 === s.값 ? "active" : ""}
+            aria-pressed={값 === s.값}
+            onClick={() => onChange(s.값)}
+          >
+            {s.라벨}
+          </button>
+        ))}
+      </div>
+      {근거 && (
+        <details className="confirm-question-source">
+          <summary>
+            규정 원문 보기
+            <Icon name="arrow" size={13} />
+          </summary>
+          <div>
+            <small>
+              {[문서명보기(근거.doc_id), 근거.조번호, 근거.조제목, 근거.항호].filter(Boolean).join(" ")}
+            </small>
+            <p>{근거.원문}</p>
+          </div>
+        </details>
+      )}
+    </div>
+  );
 }
 
-/**
- * 버튼에 찍힌 '라벨' 을 서버로 보낼 '값' 으로 바꿉니다.
- * 주의: "확인 필요" 는 무조건 "미상" 입니다 — 설계 그대로. `유형` 과 무관합니다.
- * 주의: "선택" 은 라벨(사람이 읽는 말)과 값(서버 코드)이 다를 수 있어 선택지에서 되찾습니다
- *    — 못 찾으면(있을 수 없지만) 라벨을 그대로 보내 완전히 유실되진 않게 합니다.
- */
-function 심층질문값(q: 심층질문항목, 라벨: string): unknown {
-  if (라벨 === "확인 필요") return "미상";
-  if (q.유형 === "선택") return q.선택지.find((s) => s.라벨 === 라벨)?.값 ?? 라벨;
-  return 라벨;
+/** 결과 화면의 「확인한 내용」. 답한 내용이 없는 판정(옛 계획·재점검)에는 그리지 않습니다. */
+function 확인한내용({ 항목 }: { 항목?: 사용자답변항목[] }) {
+  if (!항목?.length) return null;
+  return (
+    <section className="ai-confirmed">
+      <b>확인한 내용</b>
+      <ul>
+        {항목.map((a, index) => (
+          <li key={index}>
+            <span>{a.질문문}</span>
+            <strong>{답표기(a.답)}</strong>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
 }
 
 /**
@@ -4362,6 +4504,7 @@ function PlanDetail({
   const [recheckPrompt, setRecheckPrompt] = useState(false);
   const [recheckQuestions, setRecheckQuestions] = useState(false);
   const [rechecking, setRechecking] = useState(false);
+  const [재점검답값, set재점검답값] = useState<재점검답 | undefined>();
   const [detailMenuOpen, setDetailMenuOpen] = useState(false);
   const [scheduleGroup, setScheduleGroup] = useState<
     "aiChecks" | "evidence" | null
@@ -4674,6 +4817,7 @@ function PlanDetail({
                 </p>
               </div>
             </div>
+            <확인한내용 항목={plan.사용자답변} />
             <div className="ai-explanation">
               <Icon name="spark" size={20} />
               <div>
@@ -5060,8 +5204,9 @@ function PlanDetail({
         <PlanRecheckQuestionsModal
           plan={plan}
           close={() => setRecheckQuestions(false)}
-          start={(선택비목) => {
+          start={(선택비목, 답) => {
             if (선택비목) update({ ...plan, category: 선택비목, 비목직접선택: true });
+            set재점검답값(답);
             setRecheckQuestions(false);
             setRechecking(true);
           }}
@@ -5080,6 +5225,8 @@ function PlanDetail({
             금액: plan.amount,
             화면수정있음: plan.화면만수정,
           }}
+          답변={재점검답값?.답변}
+          질문세트={재점검답값?.질문세트}
           onFail={(메시지) => {
             setRechecking(false);
             notify(메시지);

@@ -4,7 +4,7 @@
 // 주의: 화면 코드(checkumait-app.tsx)를 안 고치려고 여기서 흡수합니다.
 
 import type { ExpensePlan, PlanStatus, ScheduleItem, ChecklistItem, RuleItem } from "./types";
-import type { 계획요약, 계획상세, 할일, 판정값, L3현재문서 } from "./server-types";
+import type { 계획요약, 계획상세, 할일, 판정값, L3현재문서, 사용자답변항목 } from "./server-types";
 import { 초안읽기 } from "./inquiry-store";
 
 /**
@@ -284,6 +284,23 @@ export function 인용정리(인용들: Record<string, unknown>[]): RuleItem[] {
   });
 }
 
+/** 서버 `사용자답변[]` → 화면에 낼 질문과 답. 모양이 맞지 않는 항목은 버립니다. */
+export function 사용자답변정리(값: unknown): 사용자답변항목[] {
+  if (!Array.isArray(값)) return [];
+  return 값.flatMap((항목): 사용자답변항목[] => {
+    if (typeof 항목 !== "object" || 항목 === null) return [];
+    const o = 항목 as Record<string, unknown>;
+    const 질문문 = typeof o["질문문"] === "string" ? o["질문문"] : "";
+    const 답 = typeof o["답"] === "string" ? o["답"] : "";
+    return 질문문 && 답 ? [{ 질문문, 답 }] : [];
+  });
+}
+
+/** 서버 값 「모름」은 사용자가 누른 버튼 그대로 「모르겠어요」로 보여 줍니다. */
+export function 답표기(답: string): string {
+  return 답 === "모름" ? "모르겠어요" : 답;
+}
+
 /** 목록 한 줄 → ExpensePlan (상세 필드는 비어 있습니다) */
 export function 요약을계획으로(s: 계획요약): ExpensePlan {
   return {
@@ -337,6 +354,7 @@ export function 상세를계획으로(d: 계획상세): ExpensePlan {
     문의초안:
       (typeof 상세?.문의초안 === "string" ? 상세.문의초안 : null) ??
       (d.판정 === "판단불가" ? 초안읽기(d.plan_id) : null),
+    사용자답변: 사용자답변정리(d.사용자답변),
   };
 }
 
