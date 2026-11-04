@@ -2717,6 +2717,7 @@ function AiCheckingOverlay({
     제목?: string | null;
     용도?: string | null;
     금액?: number | null;
+    화면수정있음?: boolean;
   };
   /** 2026-09-07 — 심층질문 답. 안 주면 빈 배열과 같아 예전과 같은 경로로 처리합니다. */
   답변?: 답변항목[];
@@ -2920,15 +2921,22 @@ const 화면에만반영 = "이 화면에만 반영했습니다. 새로고침하
  * 주의: 판정은 서버의 저장 값으로 하므로 바뀐 금액 옆에 이전 판정이 그대로 보입니다. 표시를 남겨 알립니다.
  */
 function 서버모드수정(이전: ExpensePlan, 수정: ExpensePlan): { 계획: ExpensePlan; 안내: string } {
-  if (JSON.stringify(수정) === JSON.stringify(이전)) return { 계획: 이전, 안내: "바뀐 내용이 없습니다." };
-  const 비목만골랐다 =
-    !이전.category && JSON.stringify({ ...수정, category: "" }) === JSON.stringify({ ...이전, category: "" });
-  return 비목만골랐다
-    ? { 계획: 수정, 안내: "비목을 골랐습니다. AI 점검을 시작하면 이 비목으로 확인합니다." }
-    : {
-        계획: { ...수정, 화면만수정: true },
-        안내: "이 화면에만 반영했습니다. 새로고침하면 사라지고 AI 점검에도 반영되지 않습니다.",
-      };
+  // 주의: 첨부파일은 수정 창이 따로 저장하므로 계획 값이 같아도 저장한 것이 있을 수 있습니다.
+  if (JSON.stringify(수정) === JSON.stringify(이전)) return { 계획: 이전, 안내: "저장했습니다." };
+  // 서버에 비목이 없는 계획은 여기서 고른 비목으로 점검합니다. 그 외 값은 서버에 저장할 길이 없습니다.
+  const 비목반영 = !이전.category || !!이전.비목직접선택;
+  const 비목골랐다 = 비목반영 && 수정.category !== 이전.category;
+  const 계획 = 비목골랐다 ? { ...수정, 비목직접선택: true } : 수정;
+  const 비목외같음 = JSON.stringify({ ...수정, category: "" }) === JSON.stringify({ ...이전, category: "" });
+  if (비목외같음 && 비목반영) {
+    return { 계획, 안내: "비목을 골랐습니다. AI 점검을 시작하면 이 비목으로 확인합니다." };
+  }
+  return {
+    계획: { ...계획, 화면만수정: true },
+    안내: 계획.비목직접선택
+      ? "고른 비목 말고 고친 내용은 이 화면에만 반영했습니다. 새로고침하면 사라지고 AI 점검에도 반영되지 않습니다."
+      : "이 화면에만 반영했습니다. 새로고침하면 사라지고 AI 점검에도 반영되지 않습니다.",
+  };
 }
 
 function PlansPage({
@@ -3440,6 +3448,7 @@ function PlansPage({
               제목: 대상.name,
               용도: 대상.purpose,
               금액: 대상.amount,
+              화면수정있음: 대상.화면만수정,
             };
           })()}
           onFail={(메시지) => {
@@ -3459,7 +3468,7 @@ function PlansPage({
           plan={questionPlan}
           close={() => setQuestionPlan(null)}
           start={(선택비목) => {
-            if (선택비목) update({ ...questionPlan, category: 선택비목 });
+            if (선택비목) update({ ...questionPlan, category: 선택비목, 비목직접선택: true });
             setQuestionPlan(null);
             setChecking(true);
           }}
@@ -3977,8 +3986,8 @@ function NewPlanPage({
             <h2 className="additional-check-title">몇 가지만 추가로 확인할게요</h2>
             <p className="section-copy additional-check-copy">
               {category === "지급수수료"
-                ? `${feeSubtype} 기준으로 필요한 정보만 확인합니다.`
-                : `${category} 판단에 필요한 정보만 확인합니다.`}
+                ? `${feeSubtype} 기준에서 확인할 사항입니다.`
+                : `${category} 규정에서 확인할 사항입니다.`}
             </p>
             <div className="auto-check-note">
               <Icon name="check" />
@@ -4572,7 +4581,7 @@ function PlanDetail({
             <div className="recheck-stale-notice">
               <Icon name="filePenLine" size={19} />
               <span>
-                <b>이 화면에서 고친 내용은 AI 점검에 반영되지 않습니다.</b>
+                <b>{plan.비목직접선택 ? "고른 비목 말고 이 화면에서 고친 내용은" : "이 화면에서 고친 내용은"} AI 점검에 반영되지 않습니다.</b>
                 <small>점검은 처음 저장한 내용으로 합니다. 고친 내용은 서버에 저장되지 않아 새로고침하면 사라집니다.</small>
               </span>
             </div>
@@ -4753,7 +4762,7 @@ function PlanDetail({
               <header>
                 <div>
                   <h3><i>2</i><span>실제 집행 정보</span></h3>
-                  <small>누적 집행액 계산에 반영되는 정보</small>
+                  <small>{API켜짐() ? "아직 서버에 저장되지 않는 정보" : "누적 집행액 계산에 반영되는 정보"}</small>
                 </div>
                 {plan.executionStatus && <b>{plan.executionStatus}</b>}
               </header>
@@ -4915,9 +4924,11 @@ function PlanDetail({
               <div>
                 <h2>지출을 {집행확인}하시겠습니까?</h2>
                 <p>
-                  {집행확인 === "등록"
-                    ? "등록하면 누적 집행액에 반영되고, 이후에는 수정하기를 눌러야 값을 바꿀 수 있습니다."
-                    : "바꾼 금액으로 누적 집행액이 다시 계산됩니다."}
+                  {API켜짐()
+                    ? "이 화면에만 반영되고 서버에는 저장되지 않아 새로고침하면 사라집니다."
+                    : 집행확인 === "등록"
+                      ? "등록하면 누적 집행액에 반영되고, 이후에는 수정하기를 눌러야 값을 바꿀 수 있습니다."
+                      : "바꾼 금액으로 누적 집행액이 다시 계산됩니다."}
                 </p>
               </div>
               <button onClick={() => set집행확인(null)}>×</button>
@@ -4999,7 +5010,7 @@ function PlanDetail({
           plan={plan}
           close={() => setRecheckQuestions(false)}
           start={(선택비목) => {
-            if (선택비목) update({ ...plan, category: 선택비목 });
+            if (선택비목) update({ ...plan, category: 선택비목, 비목직접선택: true });
             setRecheckQuestions(false);
             setRechecking(true);
           }}
@@ -5016,6 +5027,7 @@ function PlanDetail({
             제목: plan.name,
             용도: plan.purpose,
             금액: plan.amount,
+            화면수정있음: plan.화면만수정,
           }}
           onFail={(메시지) => {
             setRechecking(false);
@@ -5924,6 +5936,13 @@ function SchedulePage({
           </button>
         </div>
       </header>
+      {(!자료받음 || 일정실패) && (
+        <p className="schedule-detail-empty">
+          {일정실패
+            ? "일정을 불러오지 못했습니다. 새로고침해 주세요. 아래 건수와 달력은 실제 일정이 아닙니다."
+            : "일정을 불러오는 중입니다."}
+        </p>
+      )}
       <section className="schedule-v2-metrics">
         <article>
           <span className="schedule-metric-icon all">
@@ -6326,13 +6345,18 @@ function SchedulePage({
           plans={plans}
           close={() => setEditing(null)}
           save={(item) => {
+            const 이전 = schedules.find((schedule) => schedule.id === item.id);
             save(
               schedules.map((schedule) =>
                 schedule.id === item.id ? item : schedule,
               ),
             );
             setEditing(null);
-            notify(API켜짐() ? 화면에만반영 : "일정을 수정했습니다.");
+            // 주의: 서버에는 상태만 보냅니다(`lib/tasks.ts`). 제목·날짜·메모는 새로고침하면 돌아갑니다.
+            const 상태만 = !!이전 && JSON.stringify({ ...item, state: 이전.state }) === JSON.stringify(이전);
+            notify(!API켜짐() || 상태만
+              ? "일정을 수정했습니다."
+              : "상태 말고 고친 내용은 이 화면에만 반영했습니다. 새로고침하면 사라집니다.");
           }}
         />
       )}
@@ -6776,7 +6800,7 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
   const [협약저장중, set협약저장중] = useState(false);
   // 주의: 「예시」는 사용자 값이 아니므로 수정 창에 넣지 않습니다. 하나만 고쳐 저장하면 나머지 예시 값까지
   //    이 계정의 협약으로 저장되어 판정에 쓰입니다. 「실패」면 서버 값을 모르니 덮어쓰지 못하게 막습니다.
-  const [협약출처, set협약출처] = useState<"서버" | "이 브라우저" | "예시" | "조회중" | "실패">("예시");
+  const [협약출처, set협약출처] = useState<"서버" | "이 브라우저" | "예시" | "조회중" | "실패">("조회중");
   // 주의: 읽는 중에 입력하면 도착한 서버 값이 입력을 덮고, 저장하면 읽지 못한 서버 값을 덮어씁니다.
   const 협약잠김 = 협약출처 === "실패" || 협약출처 === "조회중";
 
@@ -7067,7 +7091,13 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
             <header>
               <div>
                 <h2 id="profile-edit-title">내 정보 수정</h2>
-                <p>이메일·참여 사업·주관기관은 확인만 가능합니다. 팀 이름과 협약 정보를 수정할 수 있습니다.</p>
+                <p>
+                  {협약출처 === "실패"
+                    ? "이메일·참여 사업·주관기관은 확인만 가능합니다. 협약 정보를 불러오지 못해 지금은 팀 이름만 수정할 수 있습니다."
+                    : 협약출처 === "조회중"
+                      ? "이메일·참여 사업·주관기관은 확인만 가능합니다. 협약 정보를 불러온 뒤에 수정할 수 있습니다."
+                      : "이메일·참여 사업·주관기관은 확인만 가능합니다. 팀 이름과 협약 정보를 수정할 수 있습니다."}
+                </p>
               </div>
               <button onClick={() => setEditingProfile(false)}>×</button>
             </header>
@@ -7131,6 +7161,10 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
                 //    다른 값을 바꾸기 전에 막습니다. 뒤에서 막으면 취소를 눌러도 팀 이름이 바뀌어 있습니다.
                 if (보낼값있음 && (!협약초안.시작일 || !협약초안.종료일 || !협약초안.정부지원)) {
                   notify("협약 시작일·종료일·정부지원금을 모두 입력해 주세요.");
+                  return;
+                }
+                if (보낼값있음 && 협약초안.시작일 > 협약초안.종료일) {
+                  notify("협약 시작일이 종료일보다 늦습니다.");
                   return;
                 }
                 // 화면은 먼저 바꿉니다 — 서버가 못 받아도 시연이 끊기면 안 됩니다.

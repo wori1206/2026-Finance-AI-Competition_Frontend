@@ -54,6 +54,8 @@ export type 대체입력 = {
   제목?: string | null;
   용도?: string | null;
   금액?: number | null;
+  /** 제목·용도·금액에 서버에 저장되지 않은 화면 수정값이 있으면 true. 이 값으로 대신 판정하지 않습니다. */
+  화면수정있음?: boolean;
 };
 
 export async function 판정실행(
@@ -74,6 +76,11 @@ export async function 판정실행(
   const 대체 = 옵션?.대체입력;
   const 이전 = await 계획상세(planId).catch((e) => {
     if (!대체) throw e;
+    // 주의: 화면에서만 고친 금액으로 판정하면 그 결과가 저장된 계획(다른 금액)에 붙습니다.
+    //    틀린 「가능」이 저장될 수 있으므로 대신 판정하지 않고 멈춥니다.
+    if (대체.화면수정있음) {
+      throw new Error("저장된 계획을 읽지 못해 점검하지 않았습니다. 잠시 후 다시 시도해 주세요.");
+    }
     return {
       plan_id: typeof planId === "string" ? Number(planId) : planId,
       제목: 대체.제목 ?? null,

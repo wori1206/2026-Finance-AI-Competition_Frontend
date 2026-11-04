@@ -48,6 +48,11 @@ export type ExpensePlan = {
    *    하므로 결과 옆에 알립니다. 서버에서 다시 읽은 계획에는 없습니다.
    */
   화면만수정?: boolean;
+  /**
+   * 주의: 서버에 비목이 없는 계획에서 이 화면으로 고른 비목이면 true. 점검은 이 비목으로 하고,
+   *    판정이 저장될 때 서버에도 남습니다(`lib/judge.ts` 의 확정비목).
+   */
+  비목직접선택?: boolean;
   previousStatus?: Exclude<PlanStatus, "점검 전" | "재점검 필요">;
   nextAction: string;
   updatedAt: string;
