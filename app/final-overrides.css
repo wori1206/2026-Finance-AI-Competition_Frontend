@@ -1201,3 +1201,9 @@ pre.ai-inquiry-text{
 .ai-confirmed li{display:flex;align-items:baseline;justify-content:space-between;gap:16px;font-size:13px;line-height:1.55;color:var(--sub)}
 .ai-confirmed li>span{min-width:0}
 .ai-confirmed li>strong{flex:none;font-weight:600;color:var(--text)}
+
+/* 폰 너비: workspace.css 의 max-width:800 규칙은 globals.css 맨 위 @import 로 먼저 읽혀서 globals.css 의 일반 규칙에 진다.
+   그래서 폰에서도 사이드바 여백 236px 이 남아 본문이 154px 로 줄었다. 진 선언을 여기서 다시 적고, 같은 이유로 깨진 폰 화면을 함께 고친다.
+   .sidebar 너비를 고정해야 --sidebar:0 일 때 닫힌 사이드바 내용이 본문 위로 튀어나오지 않는다. */
+@media(max-width:800px){:root{--sidebar:0px}.sidebar{width:236px}.main-area{margin-left:0}.topbar{padding:0 16px}.page{padding:24px 16px 80px}.page-heading{align-items:flex-start}.metric-row{grid-template-columns:repeat(2,1fr)}.summary-stats{grid-template-columns:1fr}.summary-stats div{border-right:0;border-bottom:1px solid var(--line)}.home-grid{grid-template-columns:1fr}.action-row{grid-template-columns:90px 1fr 16px}.project-hero{min-height:220px}.home-status-reference .home-v3-metrics{grid-template-columns:repeat(2,1fr)}.plans-v2-table-scroll{overflow-x:auto!important}.plans-v2-native-table{min-width:760px!important}.plans-v2-tools{flex-wrap:wrap}.plans-v2-table>footer{min-width:0}.expense-v5 .expense-v5-checks>label{height:auto!important}.my-profile-grid>div,.my-profile-grid>div:nth-child(3n+1){padding-left:0}.schedule-v2-calendar>header{position:sticky;left:0;width:calc(100vw - 34px);min-width:0;flex-wrap:wrap;justify-content:center;gap:8px;padding:12px 14px}.schedule-v2-calendar>header>div:first-child{position:static;transform:none}.schedule-v2-calendar>header>div:last-child{margin-left:0}.schedule-detail-empty{padding:14px 16px}}
+@media(max-width:760px){.home-v3-project{min-height:285px!important}.home-v3-project dl{right:21px;bottom:65px;left:21px}.home-v3-project dl>div+div{padding-left:0!important}}
