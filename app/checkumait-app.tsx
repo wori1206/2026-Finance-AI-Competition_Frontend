@@ -314,10 +314,19 @@ function use기관(재조회?: unknown): string {
  *    홈에 잠깐 다른 금액이 스쳤습니다. 서버 값은 늦게 도착하므로 받아지면 한 번 더
  *    덮어씁니다(짧게 시연값 → 서버값으로 바뀔 수 있습니다 — 없음보다 낫습니다).
  */
+const 협약저장알림 = "checkumait-협약저장";
+
 function use협약(재조회?: unknown): 협약정보 & { 예시: boolean } {
   const [값, set값] = useState<협약정보>(지금협약);
   // 주의: 사용자가 입력한 값이 아니면 화면에 예시라고 표시합니다. 실제 협약기간처럼 보이면 안 됩니다.
   const [예시, set예시] = useState(true);
+  // 주의: 마이페이지에서 저장해도 이미 떠 있는 사이드바는 다시 읽지 않아 D-day 가 안 보였습니다.
+  const [저장횟수, set저장횟수] = useState(0);
+  useEffect(() => {
+    const 다시읽기 = () => set저장횟수((n) => n + 1);
+    window.addEventListener(협약저장알림, 다시읽기);
+    return () => window.removeEventListener(협약저장알림, 다시읽기);
+  }, []);
   useEffect(() => {
     let 살아있음 = true;
     // 로그인·사업 변경 뒤에는 고른 사업이 달라졌을 수 있으므로 다시 읽습니다.
@@ -336,7 +345,7 @@ function use협약(재조회?: unknown): 협약정보 & { 예시: boolean } {
       살아있음 = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [재조회]);
+  }, [재조회, 저장횟수]);
   return { ...값, 예시 };
 }
 
@@ -1006,6 +1015,7 @@ export default function CheckumaitApp() {
   const [plans, setPlans] = useState<ExpensePlan[]>(() => (API켜짐() ? [] : INITIAL_PLANS));
   const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
   const [자료받음, set자료받음] = useState(false);
+  const [일정실패, set일정실패] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [mobileNav, setMobileNav] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -1021,11 +1031,19 @@ export default function CheckumaitApp() {
   useEffect(() => {
     if (!signedIn) return;
     let 살아있음 = true;
-    Promise.all([planService.listPlans(), planService.listSchedules()]).then(
+    Promise.all([
+      planService.listPlans(),
+      // 주의: 실패를 빈 목록으로 두면 「일정이 없습니다」로 읽혀 마감을 놓칠 수 있습니다.
+      planService.listSchedules().catch((e: unknown) => {
+        console.warn("[CHECKUMAIT] 백엔드에서 일정을 읽지 못했습니다.", e);
+        return null;
+      }),
+    ]).then(
       ([planRows, scheduleRows]) => {
         if (!살아있음) return;
         setPlans(planRows);
-        setSchedules(scheduleRows);
+        setSchedules(scheduleRows ?? []);
+        set일정실패(scheduleRows === null);
         set자료받음(true);
       },
     );
@@ -1326,6 +1344,7 @@ export default function CheckumaitApp() {
                     setPlans(API켜짐() ? [] : INITIAL_PLANS);
                     setSchedules([]);
                     set자료받음(false);
+                    set일정실패(false);
                     window.sessionStorage.removeItem("checkumait-signed-in");
                     setSignedIn(false);
                     setAccountOpen(false);
@@ -1373,13 +1392,15 @@ export default function CheckumaitApp() {
             안 그립니다 — 잘 되는 날 배너가 있으면 그게 더 나쁩니다. */}
         <DataSourceBanner />
         {route.page === "home" && (
-          <HomePage plans={plans} schedules={schedules} go={go} 자료받음={자료받음} />
+          <HomePage plans={plans} schedules={schedules} go={go} 자료받음={자료받음} 일정실패={일정실패} />
         )}
         {route.page === "plans" && (
           <PlansPage
             plans={plans}
             schedules={schedules}
             go={go}
+            자료받음={자료받음}
+            notify={notify}
             remove={deletePlan}
             update={(plan) =>
               persistPlans(
@@ -1436,6 +1457,8 @@ export default function CheckumaitApp() {
           <SchedulePage
             plans={plans}
             schedules={schedules}
+            자료받음={자료받음}
+            일정실패={일정실패}
             save={persistSchedules}
             추가={(item) => 일정추가하기([item])}
             할일동기화={할일동기화}
@@ -2400,12 +2423,14 @@ function HomePage({
   schedules,
   go,
   자료받음,
+  일정실패,
 }: {
   plans: ExpensePlan[];
   schedules: ScheduleItem[];
   go: (route: AppRoute) => void;
   /** 계획·일정 응답을 받았는가. 받기 전에 「일정이 없습니다」라고 하면 틀린 말입니다. */
   자료받음: boolean;
+  일정실패: boolean;
 }) {
   const 사업 = use사업();
   // 주의: 홈에 하드코딩되어 있던 기관명·사업기간·D-day 를 실제 값으로 바꿉니다.
@@ -2434,8 +2459,9 @@ function HomePage({
   // 주의: '다가오는' 일정만 날짜순으로 보여줍니다. 예전에는 받은 순서 그대로 앞 5건이라
   //    완료한 일·지난 일이 섞여 나왔습니다. 날짜 없는 할일은 캘린더 항목이 아니라 뺍니다.
   const 오늘 = 오늘날짜();
+  // 주의: 예시 일정은 날짜가 고정이라 지난 날짜를 빼면 예시 모드 홈이 늘 비어 보입니다.
   const 다가오는일정 = schedules
-    .filter((item) => item.state !== "완료" && !!item.date && item.date >= 오늘)
+    .filter((item) => item.state !== "완료" && !!item.date && (!API켜짐() || item.date >= 오늘))
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, 5);
 
@@ -2596,7 +2622,7 @@ function HomePage({
           </div>
           <footer>
             <Icon name="bell" size={16} />
-            <span>확인이 필요한 지출이 {attentionPlans.length}건 있어요.</span>
+            <span>{자료받음 ? `확인이 필요한 지출이 ${attentionPlans.length}건 있어요.` : "지출 계획을 불러오는 중입니다."}</span>
           </footer>
         </section>
         <section className="home-v3-panel home-v3-schedule">
@@ -2616,7 +2642,11 @@ function HomePage({
           <div className="home-v3-timeline">
             {다가오는일정.length === 0 && (
               <p className="schedule-detail-empty">
-                {자료받음 ? "다가오는 일정이 없습니다." : "일정을 불러오는 중입니다."}
+                {!자료받음
+                  ? "일정을 불러오는 중입니다."
+                  : 일정실패
+                    ? "일정을 불러오지 못했습니다. 새로고침해 주세요."
+                    : "다가오는 일정이 없습니다."}
               </p>
             )}
             {다가오는일정.map((item) => (
@@ -2852,7 +2882,7 @@ function PlanRecheckQuestionsModal({
             <h2 id="plan-recheck-title">추가로 확인할게요</h2>
             <p>
               {category
-                ? `${category} 판단에 필요한 정보만 확인합니다.`
+                ? `${category} 규정에서 확인할 사항입니다. 답변은 아직 AI 점검에 반영되지 않습니다.`
                 : "비목을 고르면 그 비목의 규정으로 점검합니다."}
             </p>
           </div>
@@ -2874,7 +2904,7 @@ function PlanRecheckQuestionsModal({
         <footer>
           <button className="outline" onClick={close}>취소</button>
           <button className="primary" disabled={!category} onClick={() => start(plan.category ? undefined : 선택비목)}>
-            답변하고 AI 점검
+            AI 점검 시작
           </button>
         </footer>
       </section>
@@ -2882,16 +2912,39 @@ function PlanRecheckQuestionsModal({
   );
 }
 
+/** 서버에 보내지 않는 변경의 안내. 저장된 것처럼 말하면 새로고침 뒤 사라졌을 때 알 길이 없습니다. */
+const 화면에만반영 = "이 화면에만 반영했습니다. 새로고침하면 사라집니다.";
+
+/**
+ * 서버 모드의 계획 수정. 계획 수정 API 가 없어, 비어 있던 비목을 고른 것 말고는 화면에만 남습니다.
+ * 주의: 판정은 서버의 저장 값으로 하므로 바뀐 금액 옆에 이전 판정이 그대로 보입니다. 표시를 남겨 알립니다.
+ */
+function 서버모드수정(이전: ExpensePlan, 수정: ExpensePlan): { 계획: ExpensePlan; 안내: string } {
+  if (JSON.stringify(수정) === JSON.stringify(이전)) return { 계획: 이전, 안내: "바뀐 내용이 없습니다." };
+  const 비목만골랐다 =
+    !이전.category && JSON.stringify({ ...수정, category: "" }) === JSON.stringify({ ...이전, category: "" });
+  return 비목만골랐다
+    ? { 계획: 수정, 안내: "비목을 골랐습니다. AI 점검을 시작하면 이 비목으로 확인합니다." }
+    : {
+        계획: { ...수정, 화면만수정: true },
+        안내: "이 화면에만 반영했습니다. 새로고침하면 사라지고 AI 점검에도 반영되지 않습니다.",
+      };
+}
+
 function PlansPage({
   plans,
   schedules,
   go,
+  자료받음,
+  notify,
   remove,
   update,
 }: {
   plans: ExpensePlan[];
   schedules: ScheduleItem[];
   go: (route: AppRoute) => void;
+  자료받음: boolean;
+  notify: (message: string) => void;
   remove: (ids: string | string[], skipConfirm?: boolean) => boolean;
   update: (plan: ExpensePlan) => void;
 }) {
@@ -3341,7 +3394,7 @@ function PlansPage({
               ))}
               {rows.length === 0 && (
                 <tr className="plans-v2-empty-row">
-                  <td colSpan={8}>조건에 맞는 지출 계획이 없습니다.</td>
+                  <td colSpan={8}>{자료받음 ? "조건에 맞는 지출 계획이 없습니다." : "지출 계획을 불러오는 중입니다."}</td>
                 </tr>
               )}
             </tbody>
@@ -3457,7 +3510,14 @@ function PlansPage({
             setDraft(null);
           }}
           save={() => {
-            update(draft);
+            const 이전 = plans.find((item) => item.id === draft.id);
+            if (API켜짐() && 이전) {
+              const { 계획, 안내 } = 서버모드수정(이전, draft);
+              update(계획);
+              notify(안내);
+            } else {
+              update(draft);
+            }
             setEditing(null);
             setDraft(null);
           }}
@@ -3544,7 +3604,7 @@ function NewPlanPage({
     set심층답변({});
     setCategory((v) => (v && v === 자동선택비목.current ? "" : v));
     자동선택비목.current = null;
-  }, [name, purpose, amount, date, vendor]);
+  }, [name, purpose, amount]);
 
   /**
    * 배지를 달 비목들. 서버가 후보를 주면 '준 만큼 전부'입니다. 서버 후보가 하나여도 배지는
@@ -3923,8 +3983,8 @@ function NewPlanPage({
             <div className="auto-check-note">
               <Icon name="check" />
               <span>
-                <b>입력 내용으로 먼저 확인했어요</b>예상 금액·지출일·사용
-                목적은 자동 점검에 반영됩니다.
+                <b>입력한 내용으로 점검합니다</b>품목·예상 금액·사용
+                목적이 자동 점검에 반영됩니다.
               </span>
             </div>
             <div className="question-list">
@@ -3983,7 +4043,7 @@ function NewPlanPage({
             </div>
             <div className="info-note">
               <Icon name="spark" />
-              답변을 반영해 공통 기준과 비목별 기준을 함께 점검합니다.
+              답변은 아직 AI 점검에 반영되지 않습니다. 품목·금액·사용 목적으로 공통 기준과 비목별 기준을 점검합니다.
             </div>
           </>
         )}
@@ -4350,7 +4410,7 @@ function PlanDetail({
       updatedAt: 시각표기(new Date().toISOString()),
     });
     set집행수정중(false);
-    notify(종류 === "등록" ? "실제 집행 정보를 등록했습니다." : "실제 집행 정보를 수정했습니다.");
+    notify(API켜짐() ? 화면에만반영 : 종류 === "등록" ? "실제 집행 정보를 등록했습니다." : "실제 집행 정보를 수정했습니다.");
   };
 
   /** 수정을 그만둘 때 — 등록돼 있던 값으로 되돌립니다. */
@@ -4508,6 +4568,15 @@ function PlanDetail({
               <h2>AI 점검 결과</h2>
             </div>
           </header>
+          {plan.화면만수정 && (
+            <div className="recheck-stale-notice">
+              <Icon name="filePenLine" size={19} />
+              <span>
+                <b>이 화면에서 고친 내용은 AI 점검에 반영되지 않습니다.</b>
+                <small>점검은 처음 저장한 내용으로 합니다. 고친 내용은 서버에 저장되지 않아 새로고침하면 사라집니다.</small>
+              </span>
+            </div>
+          )}
           {plan.status === "재점검 필요" && (
             <div className="recheck-stale-notice">
               <Icon name="filePenLine" size={19} />
@@ -4721,7 +4790,9 @@ function PlanDetail({
                 <span>
                   {집행잠김
                     ? "등록을 마쳐 잠겨 있습니다. 값을 바꾸려면 수정하기를 누르세요."
-                    : "등록한 실제 지출액은 누적 집행액에 반영됩니다."}
+                    : API켜짐()
+                      ? "실제 집행 정보는 아직 서버에 저장되지 않아 새로고침하면 사라집니다."
+                      : "등록한 실제 지출액은 누적 집행액에 반영됩니다."}
                 </span>
                 {/* 주의: 상태에 따라 버튼이 하나씩만 뜹니다 — 「등록」과 「수정」이 같이
                     보이면 어느 것이 지금 할 일인지 안 보입니다. */}
@@ -4889,9 +4960,10 @@ function PlanDetail({
             // 주의: 계획 수정 API 가 아직 없습니다. 서버 모드에서 재점검을 권하면 판정은 서버의 옛 값으로
             //    돌아가는데 「변경된 내용으로」 점검한 것처럼 보입니다.
             if (API켜짐()) {
-              update(draft);
+              const { 계획, 안내 } = 서버모드수정(plan, draft);
+              update(계획);
               setEditing(false);
-              notify("이 화면에만 반영했습니다. 새로고침하면 사라지고 AI 점검에도 반영되지 않습니다.");
+              notify(안내);
               return;
             }
             update({
@@ -5709,6 +5781,8 @@ function AiChat({ plans }: { plans: ExpensePlan[] }) {
 function SchedulePage({
   plans,
   schedules,
+  자료받음,
+  일정실패,
   save,
   추가,
   할일동기화,
@@ -5716,6 +5790,8 @@ function SchedulePage({
 }: {
   plans: ExpensePlan[];
   schedules: ScheduleItem[];
+  자료받음: boolean;
+  일정실패: boolean;
   save: (items: ScheduleItem[]) => void;
   /** 주의: '새로 만든' 일정 전용. save 는 상태 변경만 서버에 보냅니다. */
   추가: (item: ScheduleItem) => void;
@@ -6053,7 +6129,11 @@ function SchedulePage({
           </header>
           {upcomingView === "all" && visibleUpcoming.length === 0 && (
             <p className="schedule-detail-empty">
-              남은 일정이 없습니다. 날짜가 없는 할일은 지출 계획 상세에서 확인할 수 있습니다.
+              {!자료받음
+                ? "일정을 불러오는 중입니다."
+                : 일정실패
+                  ? "일정을 불러오지 못했습니다. 새로고침해 주세요."
+                  : "남은 일정이 없습니다. 날짜가 없는 할일은 지출 계획 상세에서 확인할 수 있습니다."}
             </p>
           )}
           {upcomingView === "all" ? visibleUpcoming.map((item) => {
@@ -6135,7 +6215,7 @@ function SchedulePage({
                                 (schedule) => schedule.id !== item.id,
                               ),
                             );
-                            notify("일정을 삭제했습니다.");
+                            notify(API켜짐() ? 화면에만반영 : "일정을 삭제했습니다.");
                           }
                           setOpenMenu(null);
                         }}
@@ -6252,7 +6332,7 @@ function SchedulePage({
               ),
             );
             setEditing(null);
-            notify("일정을 수정했습니다.");
+            notify(API켜짐() ? 화면에만반영 : "일정을 수정했습니다.");
           }}
         />
       )}
@@ -6696,7 +6776,9 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
   const [협약저장중, set협약저장중] = useState(false);
   // 주의: 「예시」는 사용자 값이 아니므로 수정 창에 넣지 않습니다. 하나만 고쳐 저장하면 나머지 예시 값까지
   //    이 계정의 협약으로 저장되어 판정에 쓰입니다. 「실패」면 서버 값을 모르니 덮어쓰지 못하게 막습니다.
-  const [협약출처, set협약출처] = useState<"서버" | "이 브라우저" | "예시" | "실패">("예시");
+  const [협약출처, set협약출처] = useState<"서버" | "이 브라우저" | "예시" | "조회중" | "실패">("예시");
+  // 주의: 읽는 중에 입력하면 도착한 서버 값이 입력을 덮고, 저장하면 읽지 못한 서버 값을 덮어씁니다.
+  const 협약잠김 = 협약출처 === "실패" || 협약출처 === "조회중";
 
   useEffect(() => {
     if (!계정팀이름 || editingProfile) return;
@@ -6730,13 +6812,13 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
       set협약출처("이 브라우저");
     } else {
       set협약초안(빈협약);
+      set협약출처("조회중");
       서버협약조회().then(({ 값: 서버값, 실패 }) => {
         if (!살아있음) return;
-        if (실패) set협약출처("실패");
+        set협약출처(실패 ? "실패" : 서버값 ? "서버" : "예시");
         if (!서버값) return;
         set협약(서버값);
         set협약초안(서버값);
-        set협약출처("서버");
       });
     }
     return () => {
@@ -6813,6 +6895,9 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
         )}
         {협약출처 === "실패" && (
           <p className="section-copy">협약 정보를 불러오지 못해 사업 예시 값을 보여 줍니다. 새로고침해 주세요.</p>
+        )}
+        {협약출처 === "조회중" && (
+          <p className="section-copy">협약 정보를 불러오는 중입니다.</p>
         )}
       </section>
       <section className="card rule-library">
@@ -7017,24 +7102,37 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
                   「사업비 초과」를 판단할 때 전제로 씁니다. */}
               <label>
                 <span>협약 시작일</span>
-                <input type="date" disabled={협약출처 === "실패"} value={협약초안.시작일} onChange={(event) => set협약초안((v) => ({ ...v, 시작일: event.target.value }))} />
+                <input type="date" disabled={협약잠김} value={협약초안.시작일} onChange={(event) => set협약초안((v) => ({ ...v, 시작일: event.target.value }))} />
               </label>
               <label>
                 <span>협약 종료일</span>
-                <input type="date" disabled={협약출처 === "실패"} value={협약초안.종료일} onChange={(event) => set협약초안((v) => ({ ...v, 종료일: event.target.value }))} />
+                <input type="date" disabled={협약잠김} value={협약초안.종료일} onChange={(event) => set협약초안((v) => ({ ...v, 종료일: event.target.value }))} />
               </label>
               <label>
                 <span>정부지원금 (원)</span>
-                <input inputMode="numeric" disabled={협약출처 === "실패"} value={협약초안.정부지원.toLocaleString("ko-KR")} onChange={(event) => set협약초안((v) => ({ ...v, 정부지원: Number(event.target.value.replace(/[^0-9]/g, "")) || 0 }))} />
+                <input inputMode="numeric" disabled={협약잠김} value={협약초안.정부지원.toLocaleString("ko-KR")} onChange={(event) => set협약초안((v) => ({ ...v, 정부지원: Number(event.target.value.replace(/[^0-9]/g, "")) || 0 }))} />
               </label>
               <label>
                 <span>자기부담금 (원)</span>
-                <input inputMode="numeric" disabled={협약출처 === "실패"} value={협약초안.자기부담.toLocaleString("ko-KR")} onChange={(event) => set협약초안((v) => ({ ...v, 자기부담: Number(event.target.value.replace(/[^0-9]/g, "")) || 0 }))} />
+                <input inputMode="numeric" disabled={협약잠김} value={협약초안.자기부담.toLocaleString("ko-KR")} onChange={(event) => set협약초안((v) => ({ ...v, 자기부담: Number(event.target.value.replace(/[^0-9]/g, "")) || 0 }))} />
               </label>
             </div>
             <footer>
               <button className="outline" onClick={() => setEditingProfile(false)}>취소</button>
               <button className="primary" disabled={!profileDraft.host.trim() || 협약저장중} onClick={() => {
+                // 주의: 협약을 '안 고쳤으면' 서버에 보내지 않습니다. 비교 기준은 수정 창을 연 때의 값입니다
+                //    (예시를 보여 주던 계정은 빈 값). 이 브라우저에만 있는 값은 안 고쳐도 보냅니다 —
+                //    안 보내면 화면에는 보이는데 판정에는 쓰이지 않는 상태가 계속됩니다.
+                const 기준 = 협약출처 === "서버" || 협약출처 === "이 브라우저" ? 협약 : 빈협약;
+                const 보낼값있음 =
+                  !협약잠김 &&
+                  (JSON.stringify(협약초안) !== JSON.stringify(기준) || 협약출처 === "이 브라우저");
+                // 주의: 일부만 넣으면 나머지가 0·빈 값으로 저장되어 판정의 전제가 됩니다.
+                //    다른 값을 바꾸기 전에 막습니다. 뒤에서 막으면 취소를 눌러도 팀 이름이 바뀌어 있습니다.
+                if (보낼값있음 && (!협약초안.시작일 || !협약초안.종료일 || !협약초안.정부지원)) {
+                  notify("협약 시작일·종료일·정부지원금을 모두 입력해 주세요.");
+                  return;
+                }
                 // 화면은 먼저 바꿉니다 — 서버가 못 받아도 시연이 끊기면 안 됩니다.
                 setProfile(profileDraft);
                 // 주의: 팀 이름은 Supabase 계정에 붙여야 다음 로그인에도 남습니다.
@@ -7046,23 +7144,11 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
                   .catch(() => false)
                   .finally(() => set팀갱신((n) => n + 1));
                 사업저장(profileDraft.program);
-                // 주의: 협약을 '안 고쳤으면' 서버에 보내지 않습니다. 비교 기준은 수정 창을 연 때의 값입니다
-                //    (예시를 보여 주던 계정은 빈 값). 이 브라우저에만 있는 값은 안 고쳐도 보냅니다 —
-                //    안 보내면 화면에는 보이는데 판정에는 쓰이지 않는 상태가 계속됩니다.
-                const 기준 = 협약출처 === "서버" || 협약출처 === "이 브라우저" ? 협약 : 빈협약;
-                const 보낼값있음 =
-                  협약출처 !== "실패" &&
-                  (JSON.stringify(협약초안) !== JSON.stringify(기준) || 협약출처 === "이 브라우저");
                 if (!보낼값있음) {
                   setEditingProfile(false);
                   notify(협약출처 === "실패"
                     ? "내 정보를 저장했습니다. 협약 정보는 불러오지 못해 저장하지 않았습니다."
                     : "내 정보를 저장했습니다.");
-                  return;
-                }
-                // 주의: 일부만 넣으면 나머지가 0·빈 값으로 저장되어 판정의 전제가 됩니다.
-                if (!협약초안.시작일 || !협약초안.종료일 || !협약초안.정부지원) {
-                  notify("협약 시작일·종료일·정부지원금을 모두 입력해 주세요.");
                   return;
                 }
                 const 이전협약 = 협약;
@@ -7081,7 +7167,10 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
                       협약기억(협약초안);
                       set협약출처("이 브라우저");
                     }
-                    if (결과 !== "실패") setEditingProfile(false);
+                    if (결과 !== "실패") {
+                      setEditingProfile(false);
+                      window.dispatchEvent(new Event(협약저장알림));
+                    }
                     notify(
                       결과 === "저장됨"
                         ? "내 정보를 저장했습니다. 다음 점검부터 반영됩니다."

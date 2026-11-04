@@ -43,6 +43,11 @@ export type ExpensePlan = {
    *    다시 보이므로 화면에서 그 사실을 알립니다. 서버에서 다시 읽은 계획에는 없습니다.
    */
   저장안됨?: boolean;
+  /**
+   * 주의: 계획 수정 API 가 없어 이 화면에서만 바꾼 값이 있을 때 true. 판정은 서버의 저장 값으로
+   *    하므로 결과 옆에 알립니다. 서버에서 다시 읽은 계획에는 없습니다.
+   */
+  화면만수정?: boolean;
   previousStatus?: Exclude<PlanStatus, "점검 전" | "재점검 필요">;
   nextAction: string;
   updatedAt: string;
