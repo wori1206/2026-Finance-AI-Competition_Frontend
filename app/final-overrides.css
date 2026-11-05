@@ -580,6 +580,7 @@ body .app-shell .expense-v5 .ai-before-checks>header button.outline:focus-visibl
 .onboarding-login-form input:focus{border-color:#6da792;box-shadow:0 0 0 2px rgba(31,126,100,.09)}
 .onboarding-login-form>button{width:100%;height:44px!important;min-height:44px!important}
 .onboarding-login-form>small{color:#8a918e;font-size:10px;text-align:center}
+.onboarding-login-form>button.onboarding-demo-link{width:auto;height:auto!important;min-height:0!important;margin:0 auto;padding:2px 4px;border:0;background:none;color:#727a76;font-size:10.5px;font-weight:600;text-decoration:underline;cursor:pointer}
 .onboarding-demo-notice{max-width:560px;display:flex;align-items:center;gap:11px;margin:12px auto 0;padding:15px 18px;border:1px solid #d9e8e1;border-radius:7px;background:#f4faf7;color:#176b5b;text-align:left}
 .onboarding-demo-notice>svg{flex:0 0 auto}
 .onboarding-demo-notice b,.onboarding-demo-notice small{display:block}

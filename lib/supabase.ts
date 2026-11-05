@@ -124,7 +124,9 @@ export async function 가입(
     //    담을 칸이 없습니다(`tenant.accounts` 는 email·org_id 뿐) — 그러니
     //    '계정을 가진 쪽' 이 들고 있는 게 맞습니다.
     //    로그인하면 세션에 포함되어 오므로 다른 기기·다른 브라우저에서도 따라옵니다.
-    options: 팀이름?.trim() ? { data: { 팀이름: 팀이름.trim() } } : undefined,
+    //
+    // 주의: 온보딩을 볼 계정은 '새로 가입한 계정' 뿐입니다. 표시가 없는 기존 계정은 바로 홈으로 갑니다.
+    options: { data: { 온보딩필요: true, ...(팀이름?.trim() ? { 팀이름: 팀이름.trim() } : {}) } },
   });
 
   if (error) {
@@ -180,6 +182,34 @@ export async function 팀이름쓰기(이름: string): Promise<boolean> {
   if (!값) return false;
   try {
     const { error } = await supabase().auth.updateUser({ data: { 팀이름: 값 } });
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
+/** 세션 메타데이터의 온보딩 기록. 소속 판단에는 쓰지 않습니다(위 `팀이름` 주의와 같습니다). */
+export type 온보딩기록 = { 필요: boolean; 사업: string | null; 기관: string | null };
+
+/** 지금 세션의 온보딩 기록. 세션이 없으면 null 입니다. */
+export async function 온보딩기록읽기(): Promise<온보딩기록 | null> {
+  if (!인증켜짐) return null;
+  const { data } = await supabase().auth.getSession();
+  const 메타 = data.session?.user?.user_metadata;
+  if (!data.session) return null;
+  const 글자 = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+  return { 필요: 메타?.["온보딩필요"] === true, 사업: 글자(메타?.["사업"]), 기관: 글자(메타?.["기관"]) };
+}
+
+/**
+ * 온보딩을 마쳤다고 계정에 남기고, 고른 사업·기관을 다른 기기에서도 쓰게 합니다.
+ *
+ * 주의: 실패해도 '던지지 않습니다'. 다음 로그인에 온보딩이 한 번 더 뜰 뿐입니다.
+ */
+export async function 온보딩마침(사업: string, 기관: string): Promise<boolean> {
+  if (!인증켜짐) return false;
+  try {
+    const { error } = await supabase().auth.updateUser({ data: { 온보딩필요: false, 사업, 기관 } });
     return !error;
   } catch {
     return false;
