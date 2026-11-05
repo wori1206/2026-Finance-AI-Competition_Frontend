@@ -20,7 +20,7 @@ import { 기본규정, 서버규정읽기, type 적용규정항목 } from "../li
 import { 기관검색, 사업요약, 기관저장, 선택기관, 기본기관명, 계정등록, type 기관 } from "../lib/orgs";
 import { 첨부보관, 첨부읽기, 첨부쓰기, 파일을첨부로, 크기표기, type 첨부 } from "../lib/attachments";
 import { 지금출처, 출처구독, 출처문구 } from "../lib/data-source";
-import { 인증켜짐, 로그인 as supabase로그인, 가입 as supabase가입, 로그아웃 as supabase로그아웃, 이메일 as supabase이메일, 팀이름 as supabase팀이름, 팀이름쓰기 as supabase팀이름쓰기, 온보딩기록읽기, 온보딩마침 } from "../lib/supabase";
+import { 인증켜짐, 로그인 as supabase로그인, 가입 as supabase가입, 로그아웃 as supabase로그아웃, 이메일 as supabase이메일, 팀이름 as supabase팀이름, 팀이름쓰기 as supabase팀이름쓰기, 온보딩기록읽기, 온보딩마침, 재설정링크읽기, 재설정끝내기, 재설정메일보내기, 새비밀번호저장 } from "../lib/supabase";
 import { 상세를계획으로, 판정제목, 행동문구, 시각표기, L3등록사실, L3현재문서요약짓기, 문서명보기, 답표기, type L3현재문서요약 } from "../lib/adapt";
 import { 질문가져오기, type 질문결과 } from "../lib/questions";
 // 주의: `데모종료` 는 남깁니다 — 「계정 없이 둘러보기」를 없앴어도 예전에 받아 둔
@@ -1063,11 +1063,23 @@ export default function CheckumaitApp() {
   const [세션확인중, set세션확인중] = useState(인증켜짐);
   /** 가입하고 온보딩을 마치지 못한 계정이 세션을 가진 채 돌아온 경우입니다. */
   const [온보딩이어가기, set온보딩이어가기] = useState(false);
+  const [재설정, set재설정] = useState<"재설정" | "만료" | null>(null);
   useEffect(() => {
     if (!인증켜짐) return;
     let 살아있음 = true;
     void (async () => {
       try {
+        // 주의: 세션 복원보다 먼저 봅니다. 안 그러면 새 비밀번호를 정하기 전에 앱으로 들어갑니다.
+        const 링크 = 재설정링크읽기();
+        if (링크) {
+          const 세션있음 = 링크 === "재설정" && !!(await supabase이메일());
+          if (!세션있음) await 재설정끝내기();
+          if (살아있음) {
+            set재설정(세션있음 ? "재설정" : "만료");
+            set세션확인중(false);
+          }
+          return;
+        }
         if (await supabase이메일()) {
           const 필요 = await 온보딩기록적용();
           if (!살아있음) return;
@@ -1413,10 +1425,12 @@ export default function CheckumaitApp() {
     return (
       <Login
         이어가기={온보딩이어가기}
+        재설정={재설정}
         onEnter={(destination) => {
           window.sessionStorage.setItem("checkumait-signed-in", "true");
           // 주의: 안 내리면 로그아웃했을 때 로그인 화면 대신 온보딩이 다시 뜹니다.
           set온보딩이어가기(false);
+          set재설정(null);
           setRoute({ page: destination });
           setSignedIn(true);
         }}
@@ -1773,15 +1787,26 @@ const 시연이메일 = "prototype@ssudo.kr";
 function Login({
   onEnter,
   이어가기,
+  재설정,
 }: {
   onEnter: (destination: "home" | "plan-new") => void;
   이어가기: boolean;
+  재설정: "재설정" | "만료" | null;
 }) {
   const [로그인중, set로그인중] = useState(false);
   const [로그인오류, set로그인오류] = useState<string | null>(null);
   const [step, setStep] = useState<
-    "welcome" | "signup" | "project" | "institution" | "upload" | "ready"
-  >(이어가기 ? "project" : "welcome");
+    "welcome" | "signup" | "forgot" | "reset" | "project" | "institution" | "upload" | "ready"
+  >(재설정 === "재설정" ? "reset" : 재설정 === "만료" ? "forgot" : 이어가기 ? "project" : "welcome");
+  const [찾기이메일, set찾기이메일] = useState("");
+  const [찾기상태, set찾기상태] = useState<"입력" | "보내는중" | "보냄">("입력");
+  const [찾기오류, set찾기오류] = useState<string | null>(
+    재설정 === "만료" ? "재설정 링크가 만료되었거나 이미 사용되었습니다. 메일을 다시 받아 주세요." : null,
+  );
+  const [새비번, set새비번] = useState({ 비밀번호: "", 확인: "" });
+  const [새비번저장중, set새비번저장중] = useState(false);
+  const [새비번오류, set새비번오류] = useState<string | null>(null);
+  const [변경완료, set변경완료] = useState(false);
   // 다음 로그인부터 온보딩을 건너뛰도록 계정에 남깁니다. 「설정 완료」로 가는 길이 여럿이라 여기서 받습니다.
   useEffect(() => {
     if (step === "ready") void 온보딩마침(선택사업(), 선택기관());
@@ -1999,6 +2024,174 @@ function Login({
      주의: 온보딩과 '같은 레이아웃'(setup-shell → setup-content)를 씁니다. 다만 4단계
         스테퍼는 안 붙입니다 — 가입은 그 4단계 밖이고, 붙이면 「1/4」가 두 번
         도는 것처럼 보입니다. 대신 위쪽에 가입 → 설정 흐름을 한 줄로 말합니다. */
+  if (step === "forgot") {
+    const 보내기 = async () => {
+      set찾기상태("보내는중");
+      set찾기오류(null);
+      try {
+        await 재설정메일보내기(찾기이메일);
+        set찾기상태("보냄");
+      } catch (e: unknown) {
+        set찾기상태("입력");
+        set찾기오류(e instanceof Error ? e.message : "메일을 보내지 못했습니다.");
+      }
+    };
+    return (
+      <main className="onboarding-setup">
+        <header className="onboarding-nav">
+          <div className="login-brand static">
+            <BrandWord />
+          </div>
+          <button className="outline" onClick={() => setStep("welcome")}>
+            로그인으로
+          </button>
+        </header>
+        <section className="recovery-page">
+          <h1>비밀번호 찾기</h1>
+          <p>가입한 이메일을 입력해 주세요. 비밀번호를 다시 정할 수 있는 링크를 보내 드립니다.</p>
+          <form
+            className="recovery-card"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (찾기이메일.trim().includes("@") && 찾기상태 !== "보내는중") void 보내기();
+            }}
+          >
+            <section className="recovery-note">
+              <b>안내</b>
+              <ul>
+                <li>가입할 때 쓴 이메일로 재설정 메일을 보내 드립니다.</li>
+                <li>메일의 링크를 누르면 새 비밀번호를 정할 수 있습니다.</li>
+                <li>링크는 일정 시간이 지나면 만료되니 받은 뒤 바로 진행해 주세요.</li>
+              </ul>
+            </section>
+            <label>
+              <span>이메일</span>
+              <input
+                type="email"
+                value={찾기이메일}
+                onChange={(e) => {
+                  set찾기이메일(e.target.value);
+                  set찾기상태("입력");
+                }}
+                placeholder="가입한 이메일을 입력하세요"
+                autoComplete="email"
+              />
+            </label>
+            {찾기오류 && <p className="recovery-message error" role="alert"><Icon name="alert" size={16} />{찾기오류}</p>}
+            {찾기상태 === "보냄" && (
+              <p className="recovery-message success" role="status">
+                <Icon name="check" size={16} />
+                입력한 주소로 가입된 계정이 있으면 재설정 메일을 보냈습니다. 메일이 오지 않으면 스팸함을 확인해 주세요.
+              </p>
+            )}
+            <button
+              type="submit"
+              className="primary large"
+              disabled={!찾기이메일.trim().includes("@") || 찾기상태 === "보내는중"}
+            >
+              {찾기상태 === "보내는중" ? "보내는 중…" : 찾기상태 === "보냄" ? "메일 다시 보내기" : "재설정 메일 보내기"}
+            </button>
+          </form>
+        </section>
+      </main>
+    );
+  }
+
+  if (step === "reset") {
+    const 길이맞음 = 새비번.비밀번호.length >= 8;
+    const 일치함 = 새비번.확인.length > 0 && 새비번.비밀번호 === 새비번.확인;
+    const 그만두기 = async () => {
+      await 재설정끝내기();
+      setStep("welcome");
+    };
+    const 저장하기 = async () => {
+      set새비번저장중(true);
+      set새비번오류(null);
+      try {
+        await 새비밀번호저장(새비번.비밀번호);
+        await 재설정끝내기();
+        set변경완료(true);
+        setStep("welcome");
+      } catch (e: unknown) {
+        set새비번오류(e instanceof Error ? e.message : "비밀번호를 바꾸지 못했습니다.");
+      } finally {
+        set새비번저장중(false);
+      }
+    };
+    return (
+      <main className="onboarding-setup">
+        <header className="onboarding-nav">
+          <div className="login-brand static">
+            <BrandWord />
+          </div>
+          <button className="outline" disabled={새비번저장중} onClick={() => void 그만두기()}>
+            로그인으로
+          </button>
+        </header>
+        <section className="recovery-page">
+          <h1>비밀번호 재설정</h1>
+          <p>새 비밀번호를 정해 주세요. 변경하면 새 비밀번호로 다시 로그인합니다.</p>
+          <form
+            className="recovery-card"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (길이맞음 && 일치함 && !새비번저장중) void 저장하기();
+            }}
+          >
+            <section className="recovery-note">
+              <b>유의사항</b>
+              <ul className="recovery-rules">
+                <li className={길이맞음 ? "met" : undefined}>
+                  <Icon name="check" size={14} />
+                  8자 이상으로 만들어 주세요.
+                </li>
+                <li className={일치함 ? "met" : undefined}>
+                  <Icon name="check" size={14} />
+                  두 칸에 같은 비밀번호를 입력해 주세요.
+                </li>
+                <li className="hint">
+                  이전과 다른 비밀번호를 써 주세요. 영문과 숫자를 섞으면 더 안전합니다.
+                </li>
+              </ul>
+            </section>
+            <label>
+              <span>새 비밀번호</span>
+              <input
+                type="password"
+                value={새비번.비밀번호}
+                onChange={(e) => set새비번((v) => ({ ...v, 비밀번호: e.target.value }))}
+                placeholder="8자 이상"
+                autoComplete="new-password"
+                aria-invalid={새비번.비밀번호.length > 0 && !길이맞음}
+              />
+              {새비번.비밀번호.length > 0 && !길이맞음 && <small>8자 이상으로 입력해 주세요.</small>}
+            </label>
+            <label>
+              <span>새 비밀번호 확인</span>
+              <input
+                type="password"
+                value={새비번.확인}
+                onChange={(e) => set새비번((v) => ({ ...v, 확인: e.target.value }))}
+                placeholder="다시 한 번 입력하세요"
+                autoComplete="new-password"
+                aria-invalid={새비번.확인.length > 0 && !일치함}
+              />
+              {새비번.확인.length > 0 && !일치함 && <small>비밀번호가 서로 다릅니다.</small>}
+            </label>
+            {새비번오류 && <p className="recovery-message error" role="alert"><Icon name="alert" size={16} />{새비번오류}</p>}
+            <button
+              type="submit"
+              className="primary large"
+              disabled={!길이맞음 || !일치함 || 새비번저장중}
+            >
+              {새비번저장중 ? "변경 중…" : "비밀번호 변경"}
+            </button>
+          </form>
+        </section>
+      </main>
+    );
+  }
+
   if (step === "signup") {
     const 비번짧음 = 가입.비밀번호.length > 0 && 가입.비밀번호.length < 8;
     const 비번다름 = 가입.비밀번호확인.length > 0 && 가입.비밀번호 !== 가입.비밀번호확인;
@@ -2263,6 +2456,21 @@ function Login({
                     autoComplete="current-password"
                   />
                 </label>
+                {인증켜짐 && (
+                  <button
+                    type="button"
+                    className="login-forgot-link"
+                    onClick={() => {
+                      set찾기이메일(loginEmail);
+                      set찾기상태("입력");
+                      set찾기오류(null);
+                      set변경완료(false);
+                      setStep("forgot");
+                    }}
+                  >
+                    비밀번호를 잊으셨나요?
+                  </button>
+                )}
               </div>
               <button
                 type="submit"
@@ -2285,6 +2493,9 @@ function Login({
               </button>
               {로그인오류 && (
                 <small style={{ color: "var(--red, #c23b3b)" }}>{로그인오류}</small>
+              )}
+              {변경완료 && !로그인오류 && (
+                <small className="login-success" role="status">비밀번호를 변경했습니다. 새 비밀번호로 로그인해 주세요.</small>
               )}
               <small>계정이 없으신가요? 회원가입 후 참여 사업과 주관기관을 설정하면 바로 이용할 수 있습니다.</small>
               {/* 주의: 비밀번호는 코드에 넣지 않습니다. 시연 때 직접 입력합니다. */}
