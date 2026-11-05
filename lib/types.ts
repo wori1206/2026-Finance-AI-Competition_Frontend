@@ -1,4 +1,5 @@
-export type PlanStatus = "점검 전" | "재점검 필요" | "특이사항 없음" | "확인 필요" | "위험";
+// 주의: 「점검 중」은 서버 값이 아니라 판정이 도는 동안 화면에서만 씌우는 값입니다(`CheckumaitApp` 의 `화면계획`).
+export type PlanStatus = "점검 전" | "점검 중" | "재점검 필요" | "특이사항 없음" | "확인 필요" | "위험";
 
 export type ChecklistItem = {
   id: string;
@@ -55,7 +56,7 @@ export type ExpensePlan = {
    *    판정이 저장될 때 서버에도 남습니다(`lib/judge.ts` 의 확정비목).
    */
   비목직접선택?: boolean;
-  previousStatus?: Exclude<PlanStatus, "점검 전" | "재점검 필요">;
+  previousStatus?: Exclude<PlanStatus, "점검 전" | "점검 중" | "재점검 필요">;
   nextAction: string;
   updatedAt: string;
   aiSummary: string;

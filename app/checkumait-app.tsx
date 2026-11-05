@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps } from "react";
 import { INITIAL_PLANS } from "../lib/mock-data";
 import { planService } from "../lib/plan-service";
 import type {
@@ -903,7 +903,9 @@ const displayPlanStatus = (value: PlanStatus) =>
 
 function Status({ value }: { value: PlanStatus }) {
   const key =
-    displayPlanStatus(value) === "점검전"
+    value === "점검 중"
+      ? "checking"
+      : displayPlanStatus(value) === "점검전"
       ? "draft"
       : value === "특이사항 없음"
         ? "safe"
@@ -914,7 +916,9 @@ function Status({ value }: { value: PlanStatus }) {
     <span className={`status status-${key}`}>
       <Icon
         name={
-          key === "draft"
+          key === "checking"
+            ? "spark"
+            : key === "draft"
             ? "fileSearch"
             : key === "safe"
               ? "check"
@@ -1109,6 +1113,69 @@ export default function CheckumaitApp() {
   const 확인 = (요청: 확인요청) =>
     new Promise<boolean>((끝) => set확인대기({ ...요청, 끝 }));
 
+  // 주의: 판정은 1분쯤 걸려서 끝날 때의 화면 값이 시작할 때와 다릅니다. 그래서 닫힌 값 대신 ref 로 읽습니다.
+  const [작업들, set작업들] = useState<판정작업[]>([]);
+  const 작업Ref = useRef<판정작업[]>([]);
+  const 다음작업키 = useRef(1);
+  const 계획Ref = useRef<ExpensePlan[]>(plans);
+  useEffect(() => {
+    계획Ref.current = plans;
+  }, [plans]);
+  const 작업바꾸기 = (바꾸기: (이전: 판정작업[]) => 판정작업[]) => {
+    작업Ref.current = 바꾸기(작업Ref.current);
+    set작업들(작업Ref.current);
+  };
+  const 점검중인가 = (id: string) => 작업Ref.current.some((j) => j.계획.id === id && !j.결과);
+  /** 계획을 넣거나 바꿉니다. 화면에만 씌운 「점검 중」은 저장하지 않습니다. */
+  const 계획반영 = (계획: ExpensePlan) => {
+    const 이전 = 계획Ref.current;
+    const 기존 = 이전.find((p) => p.id === 계획.id);
+    const 값 = 계획.status === "점검 중" ? { ...계획, status: 기존?.status ?? "점검 전" } : 계획;
+    const 다음 = 기존 ? 이전.map((p) => (p.id === 값.id ? 값 : p)) : [값, ...이전];
+    계획Ref.current = 다음;
+    setPlans(다음);
+    void planService.savePlans(다음);
+  };
+  const 판정시작 = (입력: 판정시작입력) => {
+    if (점검중인가(입력.계획.id)) {
+      notify("이미 점검 중인 지출 계획입니다.");
+      return false;
+    }
+    if (!계획Ref.current.some((p) => p.id === 입력.계획.id)) 계획반영(입력.계획);
+    const 키 = 다음작업키.current++;
+    작업바꾸기((이전) => [...이전, { ...입력, 키, 최소화: false }]);
+    return true;
+  };
+  const 판정끝 = (키: number, 판정된계획?: ExpensePlan, 오류?: string) => {
+    const 작업 = 작업Ref.current.find((j) => j.키 === 키);
+    if (!작업) return;
+    // 점검 중에 지운 계획을 결과로 되살리지 않습니다.
+    if (판정된계획 && 계획Ref.current.some((p) => p.id === 판정된계획.id)) 계획반영(판정된계획);
+    if (!작업.접은적) {
+      작업바꾸기((이전) => 이전.filter((j) => j.키 !== 키));
+      작업.끝남(판정된계획, 오류);
+      return;
+    }
+    작업바꾸기((이전) =>
+      이전.map((j) => (j.키 === 키 ? { ...j, 결과: { 오류, 저장안됨: 판정된계획?.저장안됨 } } : j)),
+    );
+    notify(오류 ? `'${작업.계획.name}' 점검을 마치지 못했습니다.` : `'${작업.계획.name}' 점검이 끝났습니다.`);
+    탭제목알림(오류 ? "점검 실패 · 써도돼요" : "점검 완료 · 써도돼요");
+  };
+  const 도는작업있음 = 작업들.some((j) => !j.결과);
+  useEffect(() => {
+    if (!도는작업있음) return;
+    const 경고 = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", 경고);
+    return () => window.removeEventListener("beforeunload", 경고);
+  }, [도는작업있음]);
+  // 주의: 페이지에는 이 값을 넘깁니다. `plans` 자체에 넣으면 판정이 실패했을 때 원래 상태를 잃습니다.
+  const 화면계획 = useMemo(() => {
+    const 도는id = new Set(작업들.filter((j) => !j.결과).map((j) => j.계획.id));
+    if (!도는id.size) return plans;
+    return plans.map((p) => (도는id.has(p.id) ? { ...p, status: "점검 중" as const } : p));
+  }, [plans, 작업들]);
+
   // 주의: 2026-10-29 — 지출계획·일정은 로그인 '뒤에' 불러옵니다.
   //    예전에는 첫 마운트 때 한 번만 불렀는데, 그때는 아직 로그인 전이라 토큰 없이
   //    나갑니다. 서버는 게스트로 보고 0건을 주고, 로그인한 뒤에도 다시 안 불러서
@@ -1272,6 +1339,10 @@ export default function CheckumaitApp() {
   const deletePlan = (ids: string | string[]) => {
     const targets = Array.isArray(ids) ? ids : [ids];
     if (!plans.some((plan) => plan.id === targets[0])) return false;
+    if (targets.some(점검중인가)) {
+      notify("점검 중인 지출 계획은 점검이 끝난 뒤 삭제할 수 있습니다.");
+      return false;
+    }
 
     // 주의: 2026-09-07 — 여기가 **서버를 안 부르고 있었습니다.** localStorage 만 고치고
     //    "삭제했습니다" 라고 알렸는데, 새로고침하면 계획이 '다시 나타났습니다'.
@@ -1426,6 +1497,7 @@ export default function CheckumaitApp() {
                     // 주의: 비우지 않으면 다음 계정이 응답을 받기 전까지 앞 계정의 계획을 봅니다.
                     setPlans(API켜짐() ? [] : INITIAL_PLANS);
                     setSchedules([]);
+                    작업바꾸기(() => []);
                     set자료받음(false);
                     set일정실패(false);
                     window.sessionStorage.removeItem("checkumait-signed-in");
@@ -1475,28 +1547,26 @@ export default function CheckumaitApp() {
             안 그립니다 — 잘 되는 날 배너가 있으면 그게 더 나쁩니다. */}
         <DataSourceBanner />
         {route.page === "home" && (
-          <HomePage plans={plans} schedules={schedules} go={go} 자료받음={자료받음} 일정실패={일정실패} />
+          <HomePage plans={화면계획} schedules={schedules} go={go} 자료받음={자료받음} 일정실패={일정실패} />
         )}
         {route.page === "plans" && (
           <PlansPage
-            plans={plans}
+            plans={화면계획}
+            판정시작={판정시작}
             schedules={schedules}
             go={go}
             자료받음={자료받음}
             notify={notify}
             remove={deletePlan}
             확인={확인}
-            update={(plan) =>
-              persistPlans(
-                plans.map((item) => (item.id === plan.id ? plan : item)),
-              )
-            }
+            update={계획반영}
           />
         )}
         {route.page === "plan-new" && (
           <NewPlanPage
+            판정시작={판정시작}
             save={(plan, temporary, 점검오류) => {
-              persistPlans([plan, ...plans]);
+              계획반영(plan);
               if (temporary) {
                 go({ page: "plans" });
                 notify("지출 계획을 임시저장했습니다.");
@@ -1519,13 +1589,10 @@ export default function CheckumaitApp() {
         )}
         {route.page === "plan-detail" && (
           <PlanDetail
-            plan={plans.find((plan) => plan.id === route.id)}
-            allPlans={plans}
-            update={(plan) =>
-              persistPlans(
-                plans.map((row) => (row.id === plan.id ? plan : row)),
-              )
-            }
+            plan={화면계획.find((plan) => plan.id === route.id)}
+            allPlans={화면계획}
+            판정시작={판정시작}
+            update={계획반영}
             addSchedules={(items) => 일정추가하기(items)}
             할일동기화={할일동기화}
             remove={() => {
@@ -1576,6 +1643,63 @@ export default function CheckumaitApp() {
       )}
       {profileOpen && (
         <ProfileModal close={() => setProfileOpen(false)} />
+      )}
+      {작업들.map((작업, 순번) =>
+        작업.결과 ? (
+          <aside
+            key={작업.키}
+            className={`judge-pill ${작업.결과.오류 || 작업.결과.저장안됨 ? "failed" : "done"}`}
+            role="status"
+            style={{ bottom: 20 + 파일높이 * 순번 }}
+          >
+            <Icon name={작업.결과.오류 || 작업.결과.저장안됨 ? "alert" : "check"} size={18} />
+            <span>
+              <b>{작업.계획.name}</b>
+              <small title={작업.결과.오류}>
+                {작업.결과.오류
+                  ? `점검 실패 · ${작업.결과.오류}`
+                  : 작업.결과.저장안됨
+                    ? "결과가 저장되지 않았어요. 다시 점검해 주세요."
+                    : "AI 점검이 끝났어요."}
+              </small>
+            </span>
+            <button
+              onClick={() => {
+                작업바꾸기((이전) => 이전.filter((j) => j.키 !== 작업.키));
+                go({ page: "plan-detail", id: 작업.계획.id });
+              }}
+            >
+              {작업.결과.오류 ? "계획 보기" : "결과 보기"}
+            </button>
+            <button
+              aria-label="알림 닫기"
+              onClick={() => 작업바꾸기((이전) => 이전.filter((j) => j.키 !== 작업.키))}
+            >
+              ×
+            </button>
+          </aside>
+        ) : (
+          <AiCheckingOverlay
+            key={작업.키}
+            count={작업.count}
+            planId={작업.planId}
+            제목={작업.제목}
+            대체입력={작업.대체입력}
+            답변={작업.답변}
+            질문세트={작업.질문세트}
+            이름={작업.계획.name}
+            순번={순번}
+            최소화={작업.최소화}
+            접기={() => {
+              작업바꾸기((이전) => 이전.map((j) => (j.키 === 작업.키 ? { ...j, 최소화: true, 접은적: true } : j)));
+              // 작성 화면은 이미 제출이 끝났으므로 남아 있으면 같은 내용을 또 낼 수 있습니다.
+              if (route.page === "plan-new") go({ page: "plans" });
+            }}
+            펼치기={() => 작업바꾸기((이전) => 이전.map((j) => (j.키 === 작업.키 ? { ...j, 최소화: false } : j)))}
+            onComplete={(판정된계획) => 판정끝(작업.키, 판정된계획)}
+            onFail={(메시지) => 판정끝(작업.키, undefined, 메시지)}
+          />
+        ),
       )}
       {확인대기 && (
         <ConfirmDialog
@@ -2870,6 +2994,43 @@ function HomePage({
   );
 }
 
+/** 다른 탭을 보고 있을 때 탭 제목으로 알리고, 돌아오면 되돌립니다. */
+function 탭제목알림(제목: string) {
+  if (!document.hidden) return;
+  const 원래제목 = document.title;
+  document.title = 제목;
+  const 돌아옴 = () => {
+    if (document.hidden) return;
+    document.title = 원래제목;
+    document.removeEventListener("visibilitychange", 돌아옴);
+  };
+  document.addEventListener("visibilitychange", 돌아옴);
+}
+
+/** 접은 판정 표시 한 줄의 높이. 여러 건이면 위로 쌓습니다. */
+const 파일높이 = 66;
+
+/** 페이지가 앱 최상단에 맡기는 판정 한 건. 페이지를 옮겨도 판정이 끊기지 않게 최상단이 들고 있습니다. */
+type 판정시작입력 = {
+  계획: ExpensePlan;
+  planId?: string;
+  count: number;
+  제목?: string;
+  대체입력?: ComponentProps<typeof AiCheckingOverlay>["대체입력"];
+  답변?: 답변항목[];
+  질문세트?: string | null;
+  /** 창을 열어 둔 채 끝났을 때만 부릅니다. 접어 두었으면 사용자를 끌고 가지 않고 최상단이 알립니다. */
+  끝남: (판정된계획?: ExpensePlan, 오류?: string) => void;
+};
+
+type 판정작업 = 판정시작입력 & {
+  키: number;
+  최소화: boolean;
+  /** 한 번이라도 접었으면 시작한 페이지가 이미 없을 수 있어 최상단이 끝까지 맡습니다. */
+  접은적?: boolean;
+  결과?: { 오류?: string; 저장안됨?: boolean };
+};
+
 function AiCheckingOverlay({
   count,
   planId,
@@ -2879,7 +3040,18 @@ function AiCheckingOverlay({
   제목,
   onComplete,
   onFail,
+  최소화,
+  접기,
+  펼치기,
+  이름,
+  순번,
 }: {
+  /** 창을 접고 다른 화면을 쓰는 중입니다. 판정은 그대로 진행합니다. */
+  최소화: boolean;
+  접기: () => void;
+  펼치기: () => void;
+  이름: string;
+  순번: number;
   count: number;
   /**
    * 주의: 새 계획 작성 흐름에서만 문구가 다릅니다 (「AI가 지출계획을 작성하고 있어요」).
@@ -2995,9 +3167,22 @@ function AiCheckingOverlay({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [planId]);
+  if (최소화) {
+    return (
+      <aside className="judge-pill" role="status" style={{ bottom: 20 + 파일높이 * 순번 }}>
+        <span className="ai-checking-spinner" aria-hidden="true" />
+        <span>
+          <b>{이름}</b>
+          <small>AI 점검 중 · 보통 1분 정도 걸려요</small>
+        </span>
+        <button onClick={펼치기}>열기</button>
+      </aside>
+    );
+  }
   return (
     <div className="ai-checking-backdrop">
       <section className="ai-checking-modal" role="dialog" aria-modal="true" aria-labelledby="ai-checking-title">
+        <button className="ai-checking-close" onClick={접기} aria-label="창 닫기. 점검은 계속됩니다">×</button>
         <span className="ai-checking-visual" aria-hidden="true">
           <span className="ai-checking-spinner" />
           <Icon name="sparkSolid" size={20} />
@@ -3023,6 +3208,9 @@ function AiCheckingOverlay({
             : count > 1
               ? "AI 판정은 한 건당 1분 정도 걸려요. 잠시만 기다려주세요."
               : "AI 판정은 보통 1분 정도 걸려요. 잠시만 기다려주세요."}
+        </small>
+        <small className="ai-checking-background-note">
+          × 로 창을 닫아도 점검은 계속돼요. 탭을 닫거나 새로고침하면 결과가 저장되지 않을 수 있어요.
         </small>
       </section>
     </div>
@@ -3202,7 +3390,9 @@ function PlansPage({
   remove,
   확인,
   update,
+  판정시작,
 }: {
+  판정시작: (작업: 판정시작입력) => boolean;
   plans: ExpensePlan[];
   schedules: ScheduleItem[];
   go: (route: AppRoute) => void;
@@ -3231,8 +3421,6 @@ function PlansPage({
   const [draft, setDraft] = useState<ExpensePlan | null>(null);
   const [sortOrder, setSortOrder] = useState<"updated" | "created" | "plannedDate">("updated");
   const [questionPlan, setQuestionPlan] = useState<ExpensePlan | null>(null);
-  const [점검답, set점검답] = useState<재점검답 | undefined>();
-  const [checking, setChecking] = useState(false);
   const [bulkComplete, setBulkComplete] = useState(false);
   const categories = useMemo(
     () => Array.from(new Set(plans.map((plan) => plan.category).filter(Boolean))).sort(),
@@ -3369,7 +3557,7 @@ function PlansPage({
         </button>
       </section>
       <nav className="plans-v2-tabs" aria-label="지출 상태 필터">
-        {(["전체", "점검전", "확인 필요", "위험", "특이사항 없음"] as const).map(
+        {(["전체", "점검전", "점검 중", "확인 필요", "위험", "특이사항 없음"] as const).map(
           (label) => (
             <button
               className={filter === label ? "active" : ""}
@@ -3424,6 +3612,7 @@ function PlansPage({
                   >
                     <option value="">전체 상태</option>
                     <option value="점검전">점검전</option>
+                    <option value="점검 중">점검 중</option>
                     <option value="특이사항 없음">특이사항 없음</option>
                     <option value="확인 필요">확인 필요</option>
                     <option value="위험">위험</option>
@@ -3501,7 +3690,7 @@ function PlansPage({
           <div>
             <button
               className="primary small"
-              disabled={selected.length !== 1}
+              disabled={selected.length !== 1 || plans.some((plan) => plan.id === selected[0] && plan.status === "점검 중")}
               onClick={() => {
                 const target = plans.find((plan) => plan.id === selected[0]);
                 if (target) setQuestionPlan(target);
@@ -3693,53 +3882,40 @@ function PlansPage({
           </label>
         </footer>
       </section>
-      {checking && (
-        // 주의: 2026-09-04 — 여기에 `planId` 를 '안 넘기고' 있었습니다. 그러면
-        //    AiCheckingOverlay 가 2.7초짜리 '애니메이션만' 하고 끝납니다
-        //    (`if (!planId || !API켜짐())` 분기). 목록에서 「선택 항목 AI 점검」을
-        //    눌러도 서버 판정이 한 번도 안 돌았고, 그래서 상태가 계속 「점검전」
-        //    이었습니다. 상세 화면은 넘기고 있어서 거기서만 진짜로 돌았습니다.
-        <AiCheckingOverlay
-          count={selected.length}
-          planId={API켜짐() ? selected[0] : undefined}
-          // 주의: 상세 조회가 404·500 이어도 판정을 포기하지 않습니다. 화면이 이미 들고
-          //    있는 값으로 대신 판정합니다 — 없으면 「지출계획 23412 을(를) 찾을 수
-          //    없습니다」가 그대로 사용자에게 튀어나옵니다.
-          대체입력={(() => {
-            const 대상 = plans.find((item) => item.id === selected[0]);
-            if (!대상) return undefined;
-            return {
-              사업명: 현재사업(),
-              확정비목: 대상.category.split(" · ")[0],
-              제목: 대상.name,
-              용도: 대상.purpose,
-              금액: 대상.amount,
-              화면수정있음: 대상.화면만수정,
-            };
-          })()}
-          답변={점검답?.답변}
-          질문세트={점검답?.질문세트}
-          onFail={(메시지) => {
-            setChecking(false);
-            setBulkComplete(false);
-            set점검오류(메시지);
-          }}
-          onComplete={(판정된계획) => {
-            setChecking(false);
-            if (판정된계획) update(판정된계획);   // 목록의 배지가 바로 바뀝니다
-            setBulkComplete(true);
-          }}
-        />
-      )}
       {questionPlan && (
         <PlanRecheckQuestionsModal
           plan={questionPlan}
           close={() => setQuestionPlan(null)}
           start={(선택비목, 답) => {
-            if (선택비목) update({ ...questionPlan, category: 선택비목, 비목직접선택: true });
-            set점검답(답);
+            const 대상 = 선택비목
+              ? { ...questionPlan, category: 선택비목, 비목직접선택: true }
+              : questionPlan;
+            if (선택비목) update(대상);
             setQuestionPlan(null);
-            setChecking(true);
+            set점검오류(null);
+            // 주의: 2026-09-04 — `planId` 를 안 넘기면 판정 없이 애니메이션만 하고 끝납니다.
+            판정시작({
+              계획: 대상,
+              count: 1,
+              planId: API켜짐() ? 대상.id : undefined,
+              // 주의: 상세 조회가 404·500 이어도 화면이 든 값으로 대신 판정합니다.
+              대체입력: {
+                사업명: 현재사업(),
+                확정비목: 대상.category.split(" · ")[0],
+                제목: 대상.name,
+                용도: 대상.purpose,
+                금액: 대상.amount,
+                화면수정있음: 대상.화면만수정,
+              },
+              답변: 답?.답변,
+              질문세트: 답?.질문세트,
+              끝남: (_판정된계획, 오류) => {
+                if (오류) {
+                  setBulkComplete(false);
+                  set점검오류(오류);
+                } else setBulkComplete(true);
+              },
+            });
           }}
         />
       )}
@@ -3808,7 +3984,9 @@ function PlansPage({
 function NewPlanPage({
   save,
   cancel,
+  판정시작,
 }: {
+  판정시작: (작업: 판정시작입력) => boolean;
   /** `점검오류` 는 계획은 저장됐지만 판정이 실패했을 때의 사유입니다. */
   save: (plan: ExpensePlan, temporary?: boolean, 점검오류?: string) => void;
   cancel: () => void;
@@ -3827,8 +4005,6 @@ function NewPlanPage({
   const [feeSubtype, setFeeSubtype] = useState("멘토링");
   const [categoryLoading, setCategoryLoading] = useState(false);
   const [questionsLoading, setQuestionsLoading] = useState(false);
-  const [checking, setChecking] = useState(false);
-  const [pendingPlan, setPendingPlan] = useState<ExpensePlan | null>(null);
   // ── 서버 연동 상태 ──
   // 주의: 예전에는 첫 후보 하나만 들고 있었습니다(`서버추천: string`). 서버는 후보를
   //    '여러 개' 줄 수 있고 그때는 배지도 여러 개 붙어야 하므로 배열로 들고 갑니다.
@@ -3842,7 +4018,6 @@ function NewPlanPage({
   // 지금 들고 있는 질문이 어떤 비목으로 받은 것인지 둡니다. 품목·목적·금액을 고치면 질문 자체가 비워집니다.
   const 질문키 = `${category}|${feeSubtype}`;
   const [받은질문키, set받은질문키] = useState<string | null>(null);
-  const [새planId, set새planId] = useState<string | null>(null);
   const [저장중, set저장중] = useState(false);
   const [연동오류, set연동오류] = useState<string | null>(null);
   const recommendation = useMemo(
@@ -4023,19 +4198,47 @@ function NewPlanPage({
     save(계획, 임시, 점검오류);
   };
 
+  const 점검시작 = (계획: ExpensePlan, planId?: string) => {
+    // 창을 닫으면 이 화면을 떠나므로 첨부파일을 먼저 계획에 붙입니다.
+    첨부보관(계획.id, attachments);
+    판정시작({
+      계획,
+      count: 1,
+      planId,
+      제목: "AI가 지출계획을 작성하고 있어요.",
+      대체입력: {
+        사업명: 현재사업(),
+        확정비목: category.split(" · ")[0],
+        정규화: 서버정규화,
+        제목: name,
+        용도: purpose,
+        금액: Number(amount.replace(/,/g, "")) || 0,
+      },
+      답변: 서버질문
+        .filter((q) => 질문답변[q.id])
+        .map((q) => ({ code: q.id, 값: 질문답변[q.id] })),
+      질문세트: 서버질문.length ? 질문세트 : null,
+      끝남: (판정된계획, 오류) => {
+        if (오류) {
+          set연동오류(오류);
+          저장(계획, false, 오류);      // 저장은 됐으니 상세로 보내되, 점검 실패를 알립니다
+        } else {
+          저장(판정된계획 ?? 계획);
+        }
+      },
+    });
+  };
+
   const submit = () => {
     if (!API켜짐()) {
-      setPendingPlan(buildPlan(false));
-      setChecking(true);
+      점검시작(buildPlan(false));
       return Promise.resolve();
     }
     set저장중(true);
     set연동오류(null);
     return 서버에저장()
       .then((d) => {
-        set새planId(String(d.plan_id));
-        setPendingPlan(상세를계획으로(d));
-        setChecking(true);
+        점검시작(상세를계획으로(d), String(d.plan_id));
       })
       .catch((e: unknown) => {
         set연동오류(e instanceof Error ? e.message : "저장하지 못했습니다");
@@ -4377,34 +4580,6 @@ function NewPlanPage({
               : "결과 확인하기"}
         </button>
       </footer>
-      {checking && pendingPlan && (
-        <AiCheckingOverlay
-          count={1}
-          planId={새planId ?? undefined}
-          제목="AI가 지출계획을 작성하고 있어요."
-          대체입력={{
-            사업명: 현재사업(),
-            확정비목: category.split(" · ")[0],
-            정규화: 서버정규화,
-            제목: name,
-            용도: purpose,
-            금액: Number(amount.replace(/,/g, "")) || 0,
-          }}
-          답변={서버질문
-            .filter((q) => 질문답변[q.id])
-            .map((q) => ({ code: q.id, 값: 질문답변[q.id] }))}
-          질문세트={서버질문.length ? 질문세트 : null}
-          onFail={(메시지) => {
-            setChecking(false);
-            set연동오류(메시지);
-            저장(pendingPlan, false, 메시지);      // 저장은 됐으니 상세로 보내되, 점검 실패를 알립니다
-          }}
-          onComplete={(판정된계획) => {
-            setChecking(false);
-            저장(판정된계획 ?? pendingPlan);
-          }}
-        />
-      )}
       {(categoryLoading || questionsLoading) && (
         <div className="category-analysis-backdrop">
           <section
@@ -4619,6 +4794,7 @@ function 문의초안카드({
 function PlanDetail({
   plan,
   allPlans,
+  판정시작,
   update,
   addSchedules,
   할일동기화,
@@ -4628,6 +4804,7 @@ function PlanDetail({
 }: {
   plan?: ExpensePlan;
   allPlans: ExpensePlan[];
+  판정시작: (작업: 판정시작입력) => boolean;
   update: (plan: ExpensePlan) => void;
   addSchedules: (items: ScheduleItem[]) => void;
   /** 주의: 체크박스는 이걸로 바꿉니다 — 집행 일정까지 같이 움직이고 서버 저장도 여기서. */
@@ -4640,8 +4817,6 @@ function PlanDetail({
   const [editing, setEditing] = useState(false);
   const [recheckPrompt, setRecheckPrompt] = useState(false);
   const [recheckQuestions, setRecheckQuestions] = useState(false);
-  const [rechecking, setRechecking] = useState(false);
-  const [재점검답값, set재점검답값] = useState<재점검답 | undefined>();
   const [detailMenuOpen, setDetailMenuOpen] = useState(false);
   const [scheduleGroup, setScheduleGroup] = useState<
     "aiChecks" | "evidence" | null
@@ -4908,6 +5083,15 @@ function PlanDetail({
               <h2>AI 점검 결과</h2>
             </div>
           </header>
+          {plan.status === "점검 중" && (
+            <div className="recheck-stale-notice">
+              <Icon name="spark" size={19} />
+              <span>
+                <b>AI가 이 지출 계획을 점검하고 있어요.</b>
+                <small>끝나면 알려 드릴게요. 아래 내용은 점검이 끝나면 새 결과로 바뀝니다.</small>
+              </span>
+            </div>
+          )}
           {plan.화면만수정 && (
             <div className="recheck-stale-notice">
               <Icon name="filePenLine" size={19} />
@@ -5315,7 +5499,7 @@ function PlanDetail({
               previousStatus:
                 plan.status === "재점검 필요"
                   ? plan.previousStatus || "확인 필요"
-                  : plan.status === "점검 전"
+                  : plan.status === "점검 전" || plan.status === "점검 중"
                     ? "확인 필요"
                     : plan.status,
               nextAction: "AI 재점검 필요",
@@ -5342,55 +5526,48 @@ function PlanDetail({
           plan={plan}
           close={() => setRecheckQuestions(false)}
           start={(선택비목, 답) => {
-            if (선택비목) update({ ...plan, category: 선택비목, 비목직접선택: true });
-            set재점검답값(답);
+            const 대상 = 선택비목 ? { ...plan, category: 선택비목, 비목직접선택: true } : plan;
+            if (선택비목) update(대상);
             setRecheckQuestions(false);
-            setRechecking(true);
-          }}
-        />
-      )}
-      {rechecking && (
-        <AiCheckingOverlay
-          count={1}
-          planId={API켜짐() ? plan.id : undefined}
-          // 주의: 상세가 404·500 이어도 화면이 든 값으로 판정합니다 (목록과 같은 규칙).
-          대체입력={{
-            사업명: 현재사업(),
-            확정비목: plan.category.split(" · ")[0],
-            제목: plan.name,
-            용도: plan.purpose,
-            금액: plan.amount,
-            화면수정있음: plan.화면만수정,
-          }}
-          답변={재점검답값?.답변}
-          질문세트={재점검답값?.질문세트}
-          onFail={(메시지) => {
-            setRechecking(false);
-            notify(메시지);
-          }}
-          onComplete={(판정된계획) => {
-            if (판정된계획) {
-              // 주의: 서버가 판정·할일·근거를 다 채워서 돌려준 계획입니다
-              update(판정된계획);
-            } else {
-              const status: PlanStatus =
-                plan.category.startsWith("광고선전비")
-                  ? "특이사항 없음"
-                  : "확인 필요";
-              update({
-                ...plan,
-                status,
-                previousStatus: undefined,
-                nextAction: status === "특이사항 없음" ? "집행 준비" : "추가정보 확인",
-                updatedAt: "2026.08.31 방금 전",
-              });
-            }
-            setRechecking(false);
-            notify(
-              판정된계획?.저장안됨
-                ? "점검 결과가 저장되지 않았습니다. 다시 점검해 주세요."
-                : "AI 재점검을 완료했습니다.",
-            );
+            판정시작({
+              계획: 대상,
+              count: 1,
+              planId: API켜짐() ? 대상.id : undefined,
+              // 주의: 상세가 404·500 이어도 화면이 든 값으로 판정합니다 (목록과 같은 규칙).
+              대체입력: {
+                사업명: 현재사업(),
+                확정비목: 대상.category.split(" · ")[0],
+                제목: 대상.name,
+                용도: 대상.purpose,
+                금액: 대상.amount,
+                화면수정있음: 대상.화면만수정,
+              },
+              답변: 답?.답변,
+              질문세트: 답?.질문세트,
+              끝남: (판정된계획, 오류) => {
+                if (오류) {
+                  notify(오류);
+                  return;
+                }
+                if (!판정된계획) {
+                  // 서버가 없는 예시 모드입니다.
+                  const status: PlanStatus =
+                    대상.category.startsWith("광고선전비") ? "특이사항 없음" : "확인 필요";
+                  update({
+                    ...대상,
+                    status,
+                    previousStatus: undefined,
+                    nextAction: status === "특이사항 없음" ? "집행 준비" : "추가정보 확인",
+                    updatedAt: "2026.08.31 방금 전",
+                  });
+                }
+                notify(
+                  판정된계획?.저장안됨
+                    ? "점검 결과가 저장되지 않았습니다. 다시 점검해 주세요."
+                    : "AI 재점검을 완료했습니다.",
+                );
+              },
+            });
           }}
         />
       )}
