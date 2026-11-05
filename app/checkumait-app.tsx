@@ -989,6 +989,46 @@ function BrandWord() {
   );
 }
 
+type 확인요청 = { 제목: string; 설명: string; 실행문구: string };
+
+const 계획삭제문구 = (이름: string): 확인요청 => ({
+  제목: "지출 계획을 삭제할까요?",
+  설명: `'${이름}'을(를) 삭제합니다. 연결된 집행 일정도 함께 삭제됩니다.`,
+  실행문구: "삭제",
+});
+
+/** 삭제 전 확인 창. 브라우저 기본 창 대신 서비스 디자인으로 묻습니다. 기본 선택은 「취소」입니다. */
+function ConfirmDialog({ 요청, 답 }: { 요청: 확인요청; 답: (확인함: boolean) => void }) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") 답(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [답]);
+  return (
+    <div className="modal-backdrop">
+      <section
+        className="modal narrow confirm-modal"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="confirm-title"
+        aria-describedby="confirm-message"
+      >
+        <header>
+          <h2 id="confirm-title">{요청.제목}</h2>
+          <button onClick={() => 답(false)} aria-label="닫기">×</button>
+        </header>
+        <p id="confirm-message">{요청.설명}</p>
+        <footer>
+          <button className="outline" autoFocus onClick={() => 답(false)}>취소</button>
+          <button className="confirm-danger" onClick={() => 답(true)}>{요청.실행문구}</button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
 /** 계정에 남긴 사업·기관을 이 브라우저로 옮기고, 온보딩이 더 필요한지 돌려줍니다. */
 async function 온보딩기록적용(): Promise<boolean> {
   const 기록 = await 온보딩기록읽기();
@@ -1065,6 +1105,9 @@ export default function CheckumaitApp() {
   const [accountOpen, setAccountOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [toast, setToast] = useState("");
+  const [확인대기, set확인대기] = useState<(확인요청 & { 끝: (확인함: boolean) => void }) | null>(null);
+  const 확인 = (요청: 확인요청) =>
+    new Promise<boolean>((끝) => set확인대기({ ...요청, 끝 }));
 
   // 주의: 2026-10-29 — 지출계획·일정은 로그인 '뒤에' 불러옵니다.
   //    예전에는 첫 마운트 때 한 번만 불렀는데, 그때는 아직 로그인 전이라 토큰 없이
@@ -1226,16 +1269,9 @@ export default function CheckumaitApp() {
       });
   };
 
-  const deletePlan = (ids: string | string[], skipConfirm = false) => {
+  const deletePlan = (ids: string | string[]) => {
     const targets = Array.isArray(ids) ? ids : [ids];
-    const target = plans.find((plan) => plan.id === targets[0]);
-    if (
-      !target ||
-      (!skipConfirm && !window.confirm(
-        `'${target.name}' 지출 계획을 삭제할까요? 연결된 집행 일정도 함께 삭제됩니다.`,
-      ))
-    )
-      return false;
+    if (!plans.some((plan) => plan.id === targets[0])) return false;
 
     // 주의: 2026-09-07 — 여기가 **서버를 안 부르고 있었습니다.** localStorage 만 고치고
     //    "삭제했습니다" 라고 알렸는데, 새로고침하면 계획이 '다시 나타났습니다'.
@@ -1449,6 +1485,7 @@ export default function CheckumaitApp() {
             자료받음={자료받음}
             notify={notify}
             remove={deletePlan}
+            확인={확인}
             update={(plan) =>
               persistPlans(
                 plans.map((item) => (item.id === plan.id ? plan : item)),
@@ -1493,7 +1530,10 @@ export default function CheckumaitApp() {
             할일동기화={할일동기화}
             remove={() => {
               const target = plans.find((plan) => plan.id === route.id);
-              if (target && deletePlan(target.id)) go({ page: "plans" });
+              if (!target) return;
+              void 확인(계획삭제문구(target.name)).then((확인함) => {
+                if (확인함 && deletePlan(target.id)) go({ page: "plans" });
+              });
             }}
             back={() => go({ page: "plans" })}
             notify={notify}
@@ -1502,6 +1542,7 @@ export default function CheckumaitApp() {
         {챗봇_켬 && route.page === "ai-chat" && <AiChat plans={plans} />}
         {route.page === "schedule" && (
           <SchedulePage
+            확인={확인}
             plans={plans}
             schedules={schedules}
             자료받음={자료받음}
@@ -1535,6 +1576,15 @@ export default function CheckumaitApp() {
       )}
       {profileOpen && (
         <ProfileModal close={() => setProfileOpen(false)} />
+      )}
+      {확인대기 && (
+        <ConfirmDialog
+          요청={확인대기}
+          답={(확인함) => {
+            확인대기.끝(확인함);
+            set확인대기(null);
+          }}
+        />
       )}
       {toast && <div className="toast">{toast}</div>}
     </div>
@@ -3150,6 +3200,7 @@ function PlansPage({
   자료받음,
   notify,
   remove,
+  확인,
   update,
 }: {
   plans: ExpensePlan[];
@@ -3157,7 +3208,8 @@ function PlansPage({
   go: (route: AppRoute) => void;
   자료받음: boolean;
   notify: (message: string) => void;
-  remove: (ids: string | string[], skipConfirm?: boolean) => boolean;
+  remove: (ids: string | string[]) => boolean;
+  확인: (요청: 확인요청) => Promise<boolean>;
   update: (plan: ExpensePlan) => void;
 }) {
   const [점검오류, set점검오류] = useState<string | null>(null);
@@ -3466,9 +3518,15 @@ function PlansPage({
                 <button
                   className="outline small selection-delete"
                   onClick={() => {
-                    if (!window.confirm(`선택한 ${selected.length}건의 지출 계획을 삭제할까요? 연결된 집행 일정도 모두 함께 삭제됩니다.`)) return;
-                    remove(selected, true);
-                    setSelected([]);
+                    void 확인({
+                      제목: "지출 계획을 삭제할까요?",
+                      설명: `선택한 ${selected.length}건을 삭제합니다. 연결된 집행 일정도 모두 함께 삭제됩니다.`,
+                      실행문구: "삭제",
+                    }).then((확인함) => {
+                      if (!확인함) return;
+                      remove(selected);
+                      setSelected([]);
+                    });
                   }}
                 >
                   <Icon name="trash" size={14} />
@@ -3589,11 +3647,14 @@ function PlansPage({
                           <button
                             className="danger"
                             onClick={() => {
-                              remove(plan.id);
-                              setSelected((value) =>
-                                value.filter((id) => id !== plan.id),
-                              );
                               setOpenMenu(null);
+                              void 확인(계획삭제문구(plan.name)).then((확인함) => {
+                                if (!확인함) return;
+                                remove(plan.id);
+                                setSelected((value) =>
+                                  value.filter((id) => id !== plan.id),
+                                );
+                              });
                             }}
                           >
                             <Icon name="trash" size={14} />
@@ -6073,7 +6134,9 @@ function SchedulePage({
   추가,
   할일동기화,
   notify,
+  확인,
 }: {
+  확인: (요청: 확인요청) => Promise<boolean>;
   plans: ExpensePlan[];
   schedules: ScheduleItem[];
   자료받음: boolean;
@@ -6500,17 +6563,20 @@ function SchedulePage({
                       <button
                         className="danger"
                         onClick={() => {
-                          if (
-                            window.confirm(`'${item.title}' 일정을 삭제할까요?`)
-                          ) {
+                          setOpenMenu(null);
+                          void 확인({
+                            제목: "일정을 삭제할까요?",
+                            설명: `'${item.title}' 일정을 삭제합니다.`,
+                            실행문구: "삭제",
+                          }).then((확인함) => {
+                            if (!확인함) return;
                             save(
                               schedules.filter(
                                 (schedule) => schedule.id !== item.id,
                               ),
                             );
                             notify(API켜짐() ? 화면에만반영 : "일정을 삭제했습니다.");
-                          }
-                          setOpenMenu(null);
+                          });
                         }}
                       >
                         <Icon name="trash" size={14} />
