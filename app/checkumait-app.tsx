@@ -12,14 +12,15 @@ import type { 비목후보, 답변항목, 확인질문, 사용자답변항목 } 
 import { API켜짐 } from "../lib/config";
 import { 판정실행 } from "../lib/judge";
 import { 정규화하기 } from "../lib/normalize";
-import { 비목목록, 계획추가, 규정업로드, 규정처리기다리기, L3현재문서목록, 계획삭제 } from "../lib/api";
+import { 인증오류 } from "../lib/http";
+import { 계획목록, 비목목록, 계획추가, 규정업로드, 규정처리기다리기, L3현재문서목록, 계획삭제 } from "../lib/api";
 import type { L3처리결과 } from "../lib/server-types";
 import { 체크저장, 일정변경저장, 일정등록 } from "../lib/tasks";
 import { 기본규정, 서버규정읽기, type 적용규정항목 } from "../lib/norms";
 import { 기관검색, 사업요약, 기관저장, 선택기관, 기본기관명, 계정등록, type 기관 } from "../lib/orgs";
 import { 첨부보관, 첨부읽기, 첨부쓰기, 파일을첨부로, 크기표기, type 첨부 } from "../lib/attachments";
 import { 지금출처, 출처구독, 출처문구 } from "../lib/data-source";
-import { 인증켜짐, 로그인 as supabase로그인, 가입 as supabase가입, 로그아웃 as supabase로그아웃, 이메일 as supabase이메일, 팀이름 as supabase팀이름, 팀이름쓰기 as supabase팀이름쓰기 } from "../lib/supabase";
+import { 인증켜짐, 로그인 as supabase로그인, 가입 as supabase가입, 로그아웃 as supabase로그아웃, 이메일 as supabase이메일, 팀이름 as supabase팀이름, 팀이름쓰기 as supabase팀이름쓰기, 온보딩기록읽기, 온보딩마침 } from "../lib/supabase";
 import { 상세를계획으로, 판정제목, 행동문구, 시각표기, L3등록사실, L3현재문서요약짓기, 문서명보기, 답표기, type L3현재문서요약 } from "../lib/adapt";
 import { 질문가져오기, type 질문결과 } from "../lib/questions";
 // 주의: `데모종료` 는 남깁니다 — 「계정 없이 둘러보기」를 없앴어도 예전에 받아 둔
@@ -988,8 +989,56 @@ function BrandWord() {
   );
 }
 
+/** 계정에 남긴 사업·기관을 이 브라우저로 옮기고, 온보딩이 더 필요한지 돌려줍니다. */
+async function 온보딩기록적용(): Promise<boolean> {
+  const 기록 = await 온보딩기록읽기();
+  if (기록?.사업) 사업저장(기록.사업);
+  if (기록?.기관) 기관저장(기록.기관);
+  return (기록?.필요 ?? false) || (await 미등록계정());
+}
+
+/**
+ * 표시가 없는 기존 계정 중 서버 명부(tenant.accounts)에 없는 계정을 찾습니다. 이 계정은 온보딩에서
+ * 기관을 골라야 등록되고, 그전에는 모든 API 가 403 입니다.
+ *
+ * 주의: 서버 장애·지연을 미등록으로 보지 않습니다. 장애 때마다 온보딩이 뜨면 안 됩니다.
+ */
+async function 미등록계정(): Promise<boolean> {
+  if (!API켜짐()) return false;
+  const 조회 = 계획목록({ 크기: 1 }).then(
+    () => false,
+    (e: unknown) => e instanceof 인증오류 && e.상태 === 403,
+  );
+  const 시간초과 = new Promise<boolean>((끝) => setTimeout(() => 끝(false), 5000));
+  return Promise.race([조회, 시간초과]);
+}
+
 export default function CheckumaitApp() {
   const [signedIn, setSignedIn] = useState(false);
+  // 주의: 세션을 확인하기 전에 로그인 화면을 그리면 새로고침마다 한 번 번쩍입니다.
+  const [세션확인중, set세션확인중] = useState(인증켜짐);
+  /** 가입하고 온보딩을 마치지 못한 계정이 세션을 가진 채 돌아온 경우입니다. */
+  const [온보딩이어가기, set온보딩이어가기] = useState(false);
+  useEffect(() => {
+    if (!인증켜짐) return;
+    let 살아있음 = true;
+    void (async () => {
+      try {
+        if (await supabase이메일()) {
+          const 필요 = await 온보딩기록적용();
+          if (!살아있음) return;
+          if (필요) set온보딩이어가기(true);
+          else setSignedIn(true);
+        }
+      } catch {
+        /* 세션을 읽지 못하면 로그인 화면으로 갑니다 */
+      }
+      if (살아있음) set세션확인중(false);
+    })();
+    return () => {
+      살아있음 = false;
+    };
+  }, []);
   // 주의: localStorage 를 첫 렌더링에서 읽으면 서버 HTML 과 어긋납니다 — 붙은 뒤에 읽습니다.
   //    (`signedIn` 아래에 있어야 합니다 — 위에 두면 선언 전 참조로 터집니다)
   // 주의: 로그인 '뒤에' 다시 물어야 합니다 — 첫 마운트 때는 아직 세션이 없습니다.
@@ -1252,11 +1301,15 @@ export default function CheckumaitApp() {
     return true;
   };
 
+  if (세션확인중) return null;
   if (!signedIn)
     return (
       <Login
+        이어가기={온보딩이어가기}
         onEnter={(destination) => {
           window.sessionStorage.setItem("checkumait-signed-in", "true");
+          // 주의: 안 내리면 로그아웃했을 때 로그인 화면 대신 온보딩이 다시 뜹니다.
+          set온보딩이어가기(false);
           setRoute({ page: destination });
           setSignedIn(true);
         }}
@@ -1541,16 +1594,24 @@ function OnboardingDemo() {
   );
 }
 
+const 시연이메일 = "prototype@ssudo.kr";
+
 function Login({
   onEnter,
+  이어가기,
 }: {
   onEnter: (destination: "home" | "plan-new") => void;
+  이어가기: boolean;
 }) {
   const [로그인중, set로그인중] = useState(false);
   const [로그인오류, set로그인오류] = useState<string | null>(null);
   const [step, setStep] = useState<
     "welcome" | "signup" | "project" | "institution" | "upload" | "ready"
-  >("welcome");
+  >(이어가기 ? "project" : "welcome");
+  // 다음 로그인부터 온보딩을 건너뛰도록 계정에 남깁니다. 「설정 완료」로 가는 길이 여럿이라 여기서 받습니다.
+  useEffect(() => {
+    if (step === "ready") void 온보딩마침(선택사업(), 선택기관());
+  }, [step]);
   const [program, setProgram] = useState(선택사업);
   const [서버사업, set서버사업] = useState<string[] | null>(null);
   const [institutionQuery, setInstitutionQuery] = useState("");
@@ -1687,11 +1748,9 @@ function Login({
     set기준파싱중(false);
     setStep("ready");
   };
-  // 주의: Supabase 에 실제로 만들어 둔 계정과 '똑같아야' 합니다.
-  //    (Supabase → Authentication → Users 에서 보이는 이메일)
-  //    비밀번호는 코드에 넣지 않습니다. 시연 때 직접 입력하세요.
-  const [loginEmail, setLoginEmail] = useState("prototype@ssudo.kr");
+  const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
+  const 비밀번호칸 = useRef<HTMLInputElement>(null);
   /**
    * 회원가입. 가입을 마치면 온보딩 1단계로 이어지고, 입력한 이메일·팀 이름은 이 탭이
    *    기억해 사이드바·마이페이지에 그대로 보입니다.
@@ -1959,7 +2018,7 @@ function Login({
           <div className="login-brand static">
             <BrandWord />
           </div>
-          <span className="onboarding-login-note">최초 로그인 후 초기 설정이 진행됩니다.</span>
+          <span className="onboarding-login-note">회원가입 후 초기 설정이 진행됩니다.</span>
         </header>
         <section className="onboarding-hero">
           <div className="onboarding-hero-copy">
@@ -1995,7 +2054,10 @@ function Login({
                   //    중지해 둔 GPU 서버를 기동하려 했습니다(`오늘_깨움` 카운터 증가로 확인).
                   //    책임자가 재기동을 금지한 서버라 실제 비용이 발생합니다.
                   //    기동 요청 함수(`GPU깨우기`)와 상태 조회 함수도 `lib/api.ts` 에서 삭제했습니다.
-                  setStep("project");
+                  const 필요 = await 온보딩기록적용();
+                  // 시연 계정은 온보딩까지 보여 주어야 해서 매번 거칩니다.
+                  if (필요 || loginEmail.trim().toLowerCase() === 시연이메일) setStep("project");
+                  else onEnter("home");
                 } catch (e: unknown) {
                   set로그인오류(
                     e instanceof Error ? e.message : "로그인하지 못했습니다.",
@@ -2019,6 +2081,7 @@ function Login({
                 <label>
                   <span>비밀번호</span>
                   <input
+                    ref={비밀번호칸}
                     type="password"
                     value={loginPassword}
                     onChange={(event) => setLoginPassword(event.target.value)}
@@ -2050,6 +2113,19 @@ function Login({
                 <small style={{ color: "var(--red, #c23b3b)" }}>{로그인오류}</small>
               )}
               <small>계정이 없으신가요? 회원가입 후 참여 사업과 주관기관을 설정하면 바로 이용할 수 있습니다.</small>
+              {/* 주의: 비밀번호는 코드에 넣지 않습니다. 시연 때 직접 입력합니다. */}
+              <button
+                type="button"
+                className="onboarding-demo-link"
+                onClick={() => {
+                  setLoginEmail(시연이메일);
+                  setLoginPassword("");
+                  set로그인오류(null);
+                  비밀번호칸.current?.focus();
+                }}
+              >
+                시연용 계정으로 접근하기
+              </button>
             </form>
           </div>
           <OnboardingDemo />
