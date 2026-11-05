@@ -25,7 +25,7 @@ export function supabase(): SupabaseClient {
       auth: {
         persistSession: true,      // 새로고침해도 로그인 유지
         autoRefreshToken: true,    // 만료 전에 알아서 갱신
-        detectSessionInUrl: false, // 이메일 링크·소셜 로그인을 안 씁니다
+        detectSessionInUrl: true,  // 비밀번호 재설정 메일의 링크로 돌아올 때 세션을 받습니다
       },
     });
   }
@@ -214,4 +214,58 @@ export async function 온보딩마침(사업: string, 기관: string): Promise<b
   } catch {
     return false;
   }
+}
+
+
+
+/* ── 비밀번호 찾기 ──────────────────────────────────────────────────────── */
+
+const 재설정KEY = "checkumait-비밀번호재설정";
+let 링크결과: "재설정" | "만료" | null | undefined;
+
+/**
+ * 비밀번호 재설정 메일의 링크로 들어왔는지 봅니다.
+ *
+ * 주의: `supabase()` 를 처음 부르기 전에 불러야 합니다. 클라이언트가 만들어지면 주소의 토큰을 지웁니다.
+ *    새로고침해도 새 비밀번호 화면에 머물도록 이 탭에 기억합니다.
+ */
+export function 재설정링크읽기(): "재설정" | "만료" | null {
+  if (링크결과 !== undefined) return 링크결과;
+  const 해시 = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  if (해시.get("type") === "recovery") window.sessionStorage.setItem(재설정KEY, "1");
+  if (해시.get("error") || 해시.get("error_code")) {
+    링크결과 = "만료";
+    window.history.replaceState(null, "", window.location.pathname);
+  } else {
+    링크결과 = window.sessionStorage.getItem(재설정KEY) ? "재설정" : null;
+  }
+  return 링크결과;
+}
+
+/** 재설정을 끝내거나 그만둡니다. 세션도 닫아 새 비밀번호로 다시 로그인하게 합니다. */
+export async function 재설정끝내기(): Promise<void> {
+  window.sessionStorage.removeItem(재설정KEY);
+  링크결과 = null;
+  await 로그아웃();
+}
+
+/**
+ * 재설정 메일을 보냅니다.
+ *
+ * 주의: 가입 여부를 화면에 알리지 않습니다. 실패는 발송 한도·장애뿐이라 원인만 뭉뚱그려 알립니다.
+ */
+export async function 재설정메일보내기(email: string): Promise<void> {
+  const { error } = await supabase().auth.resetPasswordForEmail(email.trim(), {
+    redirectTo: window.location.origin,
+  });
+  if (error) throw new Error("메일을 보내지 못했습니다. 잠시 뒤 다시 시도해 주세요.");
+}
+
+export async function 새비밀번호저장(비밀번호: string): Promise<void> {
+  const { error } = await supabase().auth.updateUser({ password: 비밀번호 });
+  if (!error) return;
+  if (error.code === "same_password") throw new Error("이전과 다른 비밀번호를 입력해 주세요.");
+  if (error.code === "weak_password") throw new Error("비밀번호가 조건에 맞지 않습니다. 8자 이상으로 정해 주세요.");
+  if (error.status === 401 || error.status === 403) throw new Error("재설정 링크가 만료되었습니다. 메일을 다시 받아 주세요.");
+  throw new Error("비밀번호를 바꾸지 못했습니다. 잠시 뒤 다시 시도해 주세요.");
 }
