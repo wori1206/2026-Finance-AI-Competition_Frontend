@@ -273,7 +273,8 @@ export function 인용정리(인용들: Record<string, unknown>[]): RuleItem[] {
 
   return 순서.map((key) => {
     const g = 그룹.get(key)!;
-    const 항호결합 = g.항호들.join("");
+    // 항 기호(①②)는 이어 쓰고, 별지 칸 이름(지급수수료 유의사항)은 사이를 띄웁니다
+    const 항호결합 = g.항호들.join(g.항호들.every((h) => h.length <= 2) ? "" : " · ");
     return {
       title:
         [g.조번호, g.조제목].filter(Boolean).join(" ") +

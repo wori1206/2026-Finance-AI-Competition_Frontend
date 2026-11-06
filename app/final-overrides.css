@@ -1322,3 +1322,8 @@ input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-ou
 .recovery-message.success{background:var(--brand-soft);color:var(--color-brand)}
 .recovery-message.error{background:var(--color-danger-field-ring);color:var(--color-danger)}
 @media(max-width:560px){.recovery-page{padding-top:36px}.recovery-card{padding:20px}}
+
+/* 규정 원문의 표 (복원 문서) */
+.regulation-table{margin:6px 0;overflow-x:auto}
+.regulation-table table{width:100%;border-collapse:collapse;font-size:12px;line-height:1.6;color:var(--sub)}
+.regulation-table td{padding:5px 8px;border:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}

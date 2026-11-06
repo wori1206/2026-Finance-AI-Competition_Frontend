@@ -5011,7 +5011,7 @@ function 확인질문카드({
             <small>
               {[문서명보기(근거.doc_id), 근거.조번호, 근거.조제목, 근거.항호].filter(Boolean).join(" ")}
             </small>
-            <p>{근거.원문}</p>
+            <규정원문 글={근거.원문} />
           </div>
         </details>
       )}
@@ -5089,6 +5089,72 @@ function 확인한내용({ 항목 }: { 항목?: 사용자답변항목[] }) {
  * 주의: 부가세 기준 미정은 두 경우입니다. 입력이 모름이면 사용자가 고르면 풀립니다. 입력을 이미 골랐는데 나왔으면
  *    규범에 부가세 기준이 없는 경우라(`ontology_gate.py::_후보금액`) 다시 골라도 같으므로 다시 점검하라고 하지 않습니다.
  */
+/** 복원 문서의 표(`| 칸 | 칸 |`)는 표로 그리고, 쪽 표시(`[p.12]`)와 구분선은 뺍니다. 표가 없는 원문은 문단으로 나옵니다. */
+function 규정원문({ 글 }: { 글: string }) {
+  type 블록 = { 표: string[][] } | { 문단: string };
+  const 블록들: 블록[] = [];
+  let 문단: string[] = [];
+  let 표이어짐 = false;
+  const 문단닫기 = () => {
+    if (문단.length) 블록들.push({ 문단: 문단.join(" ") });
+    문단 = [];
+  };
+  for (const 원줄 of 글.replace(/\[p\.\d+\]/g, "").split("\n")) {
+    const 줄 = 원줄.trim();
+    if (!줄) {
+      문단닫기();
+      표이어짐 = false;
+      continue;
+    }
+    if (줄.startsWith("|") || 줄.split("|").length >= 3) {
+      문단닫기();
+      const 칸들 = 줄.replace(/^\|/, "").replace(/\|$/, "").split("|").map((칸) => 칸.trim());
+      if (칸들.every((칸) => !칸 || /^-+$/.test(칸))) continue;
+      const 끝 = 블록들[블록들.length - 1];
+      if (표이어짐 && 끝 && "표" in 끝) 끝.표.push(칸들);
+      else 블록들.push({ 표: [칸들] });
+      표이어짐 = true;
+      continue;
+    }
+    표이어짐 = false;
+    if (줄.startsWith("- ")) 문단닫기();
+    문단.push(줄);
+  }
+  문단닫기();
+  return (
+    <>
+      {블록들.map((블록, i) =>
+        "표" in 블록 ? (
+          <div className="regulation-table" key={i}>
+            <table>
+              <tbody>
+                {블록.표.map((칸들, r) => (
+                  <tr key={r}>
+                    {칸들.map((칸, c) => (
+                      <td key={c}>{칸}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p key={i}>{블록.문단}</p>
+        ),
+      )}
+    </>
+  );
+}
+
+const 부가세_고를수있음 = (부가세?: 부가세구분) => 부가세 !== "포함" && 부가세 !== "공급가액";
+
+/** 코드가 낸 결론은 "가능성" 으로 말하지 않습니다. */
+function 코드판정제목(판정: 코드판정값 | null | undefined, 분류: string): string | null {
+  if (!판정) return null;
+  if (판정.종류 === "부가세기준미정") return "부가세 기준을 알아야 판정할 수 있습니다.";
+  return `${분류 ? `${분류} ` : ""}규정상 집행할 수 없습니다.`;
+}
+
 function 코드판정카드({
   판정,
   부가세,
@@ -5098,7 +5164,7 @@ function 코드판정카드({
   부가세?: 부가세구분;
   다시점검: () => void;
 }) {
-  const 고를수있음 = 판정.종류 === "부가세기준미정" && 부가세 !== "포함" && 부가세 !== "공급가액";
+  const 고를수있음 = 판정.종류 === "부가세기준미정" && 부가세_고를수있음(부가세);
   const 제목 =
     판정.종류 === "한도초과"
       ? "규정의 한도를 넘어요"
@@ -5122,7 +5188,7 @@ function 코드판정카드({
       {판정.발췌 && (
         <div className="ai-code-excerpt">
           <small>규정 원문</small>
-          <p>{판정.발췌}</p>
+          <규정원문 글={판정.발췌} />
         </div>
       )}
       {고를수있음 && (
@@ -5445,6 +5511,8 @@ function PlanDetail({
   };
   // 이번 판정의 분류를 먼저 쓰고, 새로고침 뒤에는 계획에 저장해 둔 세목으로 같은 모양을 만듭니다.
   // 주의: 수정 창에서 화면에만 고친 비목이면 그 값을 그대로 보여 줍니다. 옛 세목을 붙이면 고친 비목과 어긋납니다.
+  // 「확인할 조건」에 이미 있는 문장은 결제 전 확인에 다시 적지 않습니다
+  const 결제전항목 = plan.aiChecks.filter((item) => !plan.조건?.includes(item.label));
   const 표시분류 = plan.화면만수정
     ? plan.category
     : plan.분류?.표시문 ?? (plan.확정세목 ? `${plan.category} > ${plan.확정세목}` : plan.category);
@@ -5620,7 +5688,8 @@ function PlanDetail({
                 <h3>
                   {plan.status === "점검 전" && !plan.판정
                     ? "아직 AI 점검을 하지 않았습니다."
-                    : 판정제목(plan.판정, 표시분류) ??
+                    : 코드판정제목(plan.코드판정, 표시분류) ??
+                      판정제목(plan.판정, 표시분류) ??
                       `${plan.category} 기준으로 ${
                         plan.status === "특이사항 없음"
                           ? "특이사항이 없습니다."
@@ -5629,14 +5698,20 @@ function PlanDetail({
                 </h3>
                 {행동문구(plan.판정) && (
                   <p className="ai-verdict-action">
-                    <b>{행동문구(plan.판정)}</b>
+                    <b>
+                      {plan.코드판정?.종류 === "부가세기준미정" && 부가세_고를수있음(plan.부가세구분)
+                        ? "부가세 포함 여부를 고르면 다시 판정합니다. 모르면 주관기관에 확인하세요."
+                        : 행동문구(plan.판정)}
+                    </b>
                   </p>
                 )}
-                <p>
-                  {plan.status === "점검 전" && !plan.판정
-                    ? "AI 점검을 실행하면 규정 근거와 확인할 항목이 여기에 표시됩니다."
-                    : "현재 입력된 내용을 기준으로 확인했으며, 안전한 집행을 위해 아래 항목을 추가로 점검해주세요."}
-                </p>
+                {(!plan.판정 || 결제전항목.length > 0 || (plan.조건?.length ?? 0) > 0) && (
+                  <p>
+                    {plan.status === "점검 전" && !plan.판정
+                      ? "AI 점검을 실행하면 규정 근거와 확인할 항목이 여기에 표시됩니다."
+                      : "현재 입력된 내용을 기준으로 확인했으며, 안전한 집행을 위해 아래 항목을 추가로 점검해주세요."}
+                  </p>
+                )}
               </div>
             </div>
             {plan.코드판정 && (
@@ -5659,6 +5734,7 @@ function PlanDetail({
                 </p>
               </div>
             </div>
+            {결제전항목.length > 0 && (
             <section className="ai-before-checks">
               <header>
                 <div>
@@ -5677,7 +5753,7 @@ function PlanDetail({
                 </button>
               </header>
               <div>
-                {plan.aiChecks.map((item, index) => (
+                {결제전항목.map((item, index) => (
                   <article key={item.id}>
                     <i>
                       <Icon
@@ -5695,6 +5771,7 @@ function PlanDetail({
                 ))}
               </div>
             </section>
+            )}
             <section className="ai-basis">
               <header>
                 <div>
@@ -5710,7 +5787,7 @@ function PlanDetail({
                     <span>
                       <b>{rule.title}</b>
                       <small>{rule.source}</small>
-                      <p>{rule.description}</p>
+                      <규정원문 글={rule.description} />
                     </span>
                   </article>
                 ))}
