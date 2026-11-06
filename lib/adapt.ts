@@ -361,6 +361,8 @@ export function 상세를계획으로(d: 계획상세): ExpensePlan {
       (typeof 상세?.문의초안 === "string" ? 상세.문의초안 : null) ??
       (d.판정 === "판단불가" ? 초안읽기(d.plan_id) : null),
     사용자답변: 사용자답변정리(d.사용자답변),
+    latestDecisionId: d.latest_decision_id ?? null,
+    내피드백: d.내피드백 ?? null,
   };
 }
 

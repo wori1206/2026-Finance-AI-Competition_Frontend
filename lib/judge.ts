@@ -123,6 +123,7 @@ export async function 판정실행(
   let 문의초안: string | null = null;
   let 사용자답변: 사용자답변항목[] = [];
   let 저장됨 = false;
+  let 저장된판정: number | null = null;
   let 서버오류: string | null = null;
 
   /**
@@ -209,6 +210,7 @@ export async function 판정실행(
           break;
         case "저장":
           저장됨 = v["저장"] === true;
+          저장된판정 = typeof v["decision_id"] === "number" ? v["decision_id"] : null;
           break;
         case "오류":
           // 주의: normalize/judge 는 실패를 HTTP 500 이 아니라 '오류 이벤트' 로 보냅니다.
@@ -276,6 +278,9 @@ export async function 판정실행(
     rules: 스트림값만 ? 인용 : 바탕.rules.length ? 바탕.rules : 인용,
     evidence: 스트림값만 ? [] : 바탕.evidence,
     저장안됨,
+    // 주의: 새 판정이면 이전 판정의 평가를 잇지 않습니다. 다시 읽기에 실패하면 바탕이 옛 판정이라 비워 둡니다.
+    latestDecisionId: 저장안됨 ? null : (저장된판정 ?? 바탕.latestDecisionId ?? null),
+    내피드백: !저장안됨 && 저장된판정 === 바탕.latestDecisionId ? (바탕.내피드백 ?? null) : null,
     // 주의: 스트림으로 온 초안이 '먼저' 입니다. mock 서버는 판정을 저장하지 않아
     //    상세를 다시 읽어도 판정상세가 비어 있습니다.
     문의초안: 최종초안,

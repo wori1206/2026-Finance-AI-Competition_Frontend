@@ -150,6 +150,12 @@ export type 판정상세 = {
   [k: string]: unknown;
 } | null;
 
+export type 판정피드백 = {
+  평가: "맞음" | "틀림";
+  이유: "판정이 다름" | "근거가 다름" | "기타" | null;
+  의견: string | null;
+};
+
 export type 계획상세 = 계획요약 & {
   질문원문: string | null;
   용도: string | null;
@@ -162,6 +168,8 @@ export type 계획상세 = 계획요약 & {
   created_at: string | null;
   /** 판정 전에 답한 내용. 옛 판정에는 없습니다. */
   사용자답변?: unknown;
+  /** 지금 계정이 최신 판정에 남긴 평가. 재점검하면 새 판정이라 비어 있습니다. */
+  내피드백?: 판정피드백 | null;
 };
 
 export type 할일목록응답 = { 건수: number; 항목: 할일[] };

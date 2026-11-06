@@ -8,12 +8,12 @@ import type {
   PlanStatus,
   ScheduleItem,
 } from "../lib/types";
-import type { 비목후보, 답변항목, 확인질문, 사용자답변항목 } from "../lib/server-types";
+import type { 비목후보, 답변항목, 확인질문, 사용자답변항목, 판정피드백 } from "../lib/server-types";
 import { API켜짐 } from "../lib/config";
 import { 판정실행 } from "../lib/judge";
 import { 정규화하기 } from "../lib/normalize";
 import { 인증오류 } from "../lib/http";
-import { 계획목록, 계획상세, 비목목록, 계획추가, 계획수정, 규정업로드, 규정처리기다리기, L3현재문서목록, 계획삭제, 일정수정 } from "../lib/api";
+import { 계획목록, 계획상세, 비목목록, 계획추가, 계획수정, 규정업로드, 규정처리기다리기, L3현재문서목록, 계획삭제, 일정수정, 피드백저장 } from "../lib/api";
 import type { L3처리결과 } from "../lib/server-types";
 import { 체크저장, 일정변경저장, 일정등록, 일정지우기, 점검일정인가 } from "../lib/tasks";
 import { 기본규정, 서버규정읽기, type 적용규정항목 } from "../lib/norms";
@@ -5209,6 +5209,123 @@ function 문의초안카드({
   );
 }
 
+const 틀림이유: { 값: NonNullable<판정피드백["이유"]>; 글: string }[] = [
+  { 값: "판정이 다름", 글: "판정이 달라요" },
+  { 값: "근거가 다름", 글: "근거가 달라요" },
+  { 값: "기타", 글: "기타" },
+];
+
+/** 점검 결과의 「맞았어요 / 틀렸어요」. 맞았어요는 바로 저장하고, 틀렸어요는 이유를 받은 뒤 저장합니다. */
+function 결과평가칸({
+  plan,
+  저장됨,
+  notify,
+}: {
+  plan: ExpensePlan;
+  저장됨: (값: 판정피드백) => void;
+  notify: (message: string) => void;
+}) {
+  const [현재, set현재] = useState<판정피드백 | null>(plan.내피드백 ?? null);
+  const [펼침, set펼침] = useState(false);
+  const [이유, set이유] = useState<판정피드백["이유"]>(plan.내피드백?.이유 ?? null);
+  const [의견, set의견] = useState(plan.내피드백?.의견 ?? "");
+  const [저장중, set저장중] = useState(false);
+
+  const 저장 = (값: 판정피드백, 완료문구: string) => {
+    if (plan.latestDecisionId == null) return;
+    set저장중(true);
+    피드백저장(plan.latestDecisionId, 값)
+      .then((결과) => {
+        set현재(결과);
+        set펼침(false);
+        저장됨(결과);
+        notify(완료문구);
+      })
+      .catch((e: unknown) => notify(`평가를 저장하지 못했습니다. ${오류사유(e)}`))
+      .finally(() => set저장중(false));
+  };
+
+  const 이유글 = 틀림이유.find((항목) => 항목.값 === 현재?.이유)?.글;
+  return (
+    <section className="result-feedback">
+      <div className="result-feedback-head">
+        <b>이 점검 결과가 맞았나요?</b>
+        <div>
+          <button
+            type="button"
+            className={현재?.평가 === "맞음" ? "is-selected" : ""}
+            aria-pressed={현재?.평가 === "맞음"}
+            disabled={저장중}
+            onClick={() => 저장({ 평가: "맞음", 이유: null, 의견: null }, "평가를 저장했습니다.")}
+          >
+            맞았어요
+          </button>
+          <button
+            type="button"
+            className={현재?.평가 === "틀림" || 펼침 ? "is-selected is-wrong" : ""}
+            aria-pressed={현재?.평가 === "틀림"}
+            aria-expanded={펼침}
+            disabled={저장중}
+            onClick={() => set펼침(true)}
+          >
+            틀렸어요
+          </button>
+        </div>
+      </div>
+      {펼침 ? (
+        <form
+          className="result-feedback-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (이유) 저장({ 평가: "틀림", 이유, 의견: 의견.trim() || null }, "의견을 저장했습니다. 고맙습니다.");
+          }}
+        >
+          <fieldset>
+            <legend>어떤 점이 달랐나요?</legend>
+            {틀림이유.map((항목) => (
+              <label key={항목.값}>
+                <input
+                  type="radio"
+                  name="result-feedback-reason"
+                  checked={이유 === 항목.값}
+                  onChange={() => set이유(항목.값)}
+                />
+                {항목.글}
+              </label>
+            ))}
+          </fieldset>
+          <label className="result-feedback-comment">
+            <span>자세한 의견 (선택)</span>
+            <textarea
+              rows={3}
+              maxLength={1000}
+              value={의견}
+              onChange={(e) => set의견(e.target.value)}
+              placeholder="담당기관에서 다르게 안내받았다면 그 내용을 적어 주세요."
+            />
+          </label>
+          <footer>
+            <button type="button" className="outline" disabled={저장중} onClick={() => set펼침(false)}>
+              취소
+            </button>
+            <button type="submit" className="primary" disabled={저장중 || !이유}>
+              저장
+            </button>
+          </footer>
+        </form>
+      ) : (
+        현재?.평가 === "틀림" && (
+          <p className="result-feedback-saved">
+            {이유글}
+            {현재.의견 ? ` · ${현재.의견}` : ""}
+          </p>
+        )
+      )}
+      <small>평가는 서비스 개선에 쓰이며, 이 점검 결과를 바꾸지는 않습니다.</small>
+    </section>
+  );
+}
+
 function PlanDetail({
   plan,
   allPlans,
@@ -5643,6 +5760,15 @@ function PlanDetail({
                 ))}
               </div>
             </section>
+            {/* 주의: 저장된 최신 판정에만 평가를 받습니다. 재점검하면 번호가 바뀌어 칸이 새로 열립니다. */}
+            {plan.latestDecisionId != null && !plan.저장안됨 && plan.status !== "재점검 필요" && (
+              <결과평가칸
+                key={plan.latestDecisionId}
+                plan={plan}
+                저장됨={(값) => update({ ...plan, 내피드백: 값 })}
+                notify={notify}
+              />
+            )}
             {/* 주의: 「판단불가」의 결말입니다. 배지와 해설은 '못 정했다' 까지만 말하고,
                 「그래서 뭐라고 물어보나」는 여기 있습니다. 서버가 준 값이 있을 때만
                 나옵니다 — 없으면 카드 전체를 렌더링하지 않습니다(빈 카드를 남기지 않습니다). */}

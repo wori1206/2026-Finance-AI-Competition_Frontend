@@ -4,6 +4,7 @@
 
 import { GET, POST, PATCH, PUT, DELETE, 인증헤더, 응답처리 } from "./http";
 import type {
+  판정피드백,
   계획목록응답,
   계획상세 as 계획상세형,   // 아래 같은 이름의 '함수' 와 겹쳐서 별칭으로 받습니다
   할일,
@@ -118,6 +119,10 @@ export const 일정수정 = (taskId: number | string, 입력: {
   유형?: 할일["유형"];
   상태?: 할일["상태"];
 }) => PATCH(`/api/tasks/${taskId}`, 입력) as Promise<할일>;
+
+/** 판정 결과의 「맞았어요 / 틀렸어요」. 같은 판정에 다시 보내면 바뀝니다. */
+export const 피드백저장 = (decisionId: number, 입력: 판정피드백) =>
+  PUT(`/api/decisions/${decisionId}/feedback`, 입력) as Promise<판정피드백>;
 
 /** 사용자가 만든 일정만 지워집니다. 규정 점검이 만든 일정은 서버가 거절합니다(409). */
 export const 일정삭제 = (taskId: number | string) =>
