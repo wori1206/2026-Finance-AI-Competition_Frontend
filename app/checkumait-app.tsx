@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps } from "react";
 import { INITIAL_PLANS } from "../lib/mock-data";
 import { planService } from "../lib/plan-service";
-import type {
+import type { 기준문서정보,
   AppRoute,
   ExpensePlan,
   PlanStatus,
@@ -13,7 +13,7 @@ import { API켜짐 } from "../lib/config";
 import { 판정실행 } from "../lib/judge";
 import { 정규화하기 } from "../lib/normalize";
 import { 인증오류 } from "../lib/http";
-import { 계획목록, 계획상세, 비목목록, 계획추가, 계획수정, 규정업로드, 규정처리기다리기, L3현재문서목록, 계획삭제, 일정수정, 피드백저장 } from "../lib/api";
+import { 계획목록, 계획상세, 비목목록, 계획추가, 계획수정, 규정업로드, 규정처리기다리기, 규정적용, 규정거절, L3현재문서목록, 계획삭제, 일정수정, 피드백저장 } from "../lib/api";
 import type { L3처리결과 } from "../lib/server-types";
 import { 체크저장, 일정변경저장, 일정등록, 일정지우기, 점검일정인가 } from "../lib/tasks";
 import { 기본규정, 서버규정읽기, type 적용규정항목 } from "../lib/norms";
@@ -396,7 +396,7 @@ function use적용규정(사업명: string): 적용규정항목[] {
   return 값;
 }
 
-const 빈기준문서: L3현재문서요약 = { 파일명: null, 안내: null, 등록일: null, ocr: false, 실패목록: [], 처리중목록: [] };
+const 빈기준문서: L3현재문서요약 = { 파일명: null, 안내: null, 등록일: null, ocr: false, 실패목록: [], 처리중목록: [], 확인대기목록: [], 조회실패: false };
 
 /**
  * 마이페이지 「주관기관 세부 안내」 — 이 기관에 지금 적용 중인 L3 문서.
@@ -415,7 +415,8 @@ function use현재기준문서(재조회?: unknown): L3현재문서요약 {
         if (살아있음) set값(L3현재문서요약짓기(r?.문서 ?? []));
       })
       .catch(() => {
-        /* 실패해도 조용히 넘어갑니다 — 이 문서 이름은 참고용이지 판정을 막지 않습니다 */
+        // 판정을 막지는 않지만 문서가 없는 것처럼 보이면 안 됩니다
+        if (살아있음) set값({ ...빈기준문서, 조회실패: true });
       });
     return () => {
       살아있음 = false;
@@ -576,9 +577,118 @@ function 오류사유(e: unknown): string {
   return "알 수 없는 오류입니다.";
 }
 
+/** 올린 문서가 이 기관 세부기준이 맞는지 사용자에게 묻는 창의 값. */
+type L3확인 = {
+  doc_id: string;
+  파일명: string;
+  조_건수: number;
+  이유: string | null;
+  /** 지금 판정에 쓰는 문서. `null` 이면 공통 관리 기준만으로 판정합니다. */
+  적용중: string | null;
+};
+
+/**
+ * 읽기는 했지만 세부기준이 맞는지 불확실한 문서를 쓸지 묻는 창. 온보딩과 마이페이지가 같이 씁니다.
+ *
+ * 고르기 전에는 판정에 쓰지 않습니다. ×로 닫으면 마이페이지 「주관기관 세부 안내」에서 다시 고를 수 있습니다.
+ */
+function L3확인창({
+  확인,
+  닫기,
+  적용,
+  거절,
+}: {
+  확인: L3확인;
+  닫기: () => void;
+  적용: (결과: L3처리결과) => void;
+  거절: () => void;
+}) {
+  const [처리중, set처리중] = useState(false);
+  const [오류, set오류] = useState("");
+  const 처리 = async (동작: "적용" | "거절") => {
+    set처리중(true);
+    set오류("");
+    try {
+      if (동작 === "적용") {
+        적용(await 규정적용(확인.doc_id));
+      } else {
+        await 규정거절(확인.doc_id);
+        거절();
+      }
+    } catch (e) {
+      set오류(`처리하지 못했습니다 — ${오류사유(e)}`);
+      set처리중(false);
+    }
+  };
+  return (
+    <div className="modal-backdrop">
+      <section
+        className="modal narrow file-replace-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="l3-confirm-title"
+      >
+        <header>
+          <div>
+            <h2 id="l3-confirm-title">이 문서를 세부기준으로 쓸까요?</h2>
+            <p>이 기관의 사업비 기준 문서가 아닐 수 있습니다.</p>
+          </div>
+          <button onClick={닫기} aria-label="닫기" disabled={처리중}>×</button>
+        </header>
+        <dl className="file-replace-list">
+          <div>
+            <dt>올린 문서</dt>
+            <dd>{확인.파일명}</dd>
+          </div>
+          <div>
+            <dt>찾은 항목</dt>
+            <dd>{확인.조_건수}개</dd>
+          </div>
+          <div>
+            <dt>판정에 쓰는 문서</dt>
+            <dd>{확인.적용중 ?? "없음 · 공통 관리 기준만 적용"}</dd>
+          </div>
+        </dl>
+        {확인.이유 && (
+          <p className="file-replace-notice">
+            <span>ⓘ</span>
+            {확인.이유}
+          </p>
+        )}
+        <p className="section-copy">고르기 전까지 지금 판정에 쓰는 기준을 그대로 둡니다.</p>
+        {오류 && <p className="file-replace-notice" role="alert"><span>ⓘ</span>{오류}</p>}
+        <footer>
+          <button className="outline" disabled={처리중} onClick={() => void 처리("거절")}>올리지 않기</button>
+          <button className="primary" disabled={처리중} onClick={() => void 처리("적용")}>이 문서로 적용</button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+/** 결과 화면 맨 위의 한 줄. 이 판정이 어떤 기준 문서로 점검했는지 알립니다. 판정 값은 바꾸지 않습니다. */
+function 기준문서줄({ 정보, 기준문서보기 }: { 정보: 기준문서정보; 기준문서보기: () => void }) {
+  const 쓴기준 = 정보.문서명 ? `기존 문서 「${정보.문서명}」` : "공통 규정";
+  const [문구, 버튼] =
+    정보.상태 === "적용"
+      ? [`「${정보.문서명}」 기준으로 점검했어요.`, null]
+      : 정보.상태 === "없음"
+        ? ["기관 세부기준 없이 공통 규정으로 점검했어요.", "기준 문서 올리기"]
+        : 정보.상태 === "읽기실패"
+          ? [`읽지 못한 문서가 있어요(「${정보.대기문서명}」). ${쓴기준} 기준으로 점검했어요.`, "다시 올리기"]
+          : [`확인 전인 문서가 있어요(「${정보.대기문서명}」). ${쓴기준} 기준으로 점검했어요.`, "확인하기"];
+  return (
+    <div className={`criteria-basis${정보.상태 === "적용" ? "" : " is-notice"}`}>
+      <span>{문구}</span>
+      {버튼 && <button className="outline small" onClick={기준문서보기}>{버튼}</button>}
+    </div>
+  );
+}
+
 type L3처리 =
   | { 종류: "완료"; 결과: L3처리결과 }
   | { 종류: "처리중"; 결과: L3처리결과 }
+  | { 종류: "확인"; 확인: L3확인 }
   | { 종류: "실패"; 실패: L3실패 };
 
 /**
@@ -620,6 +730,18 @@ async function 기준문서처리(파일: File): Promise<L3처리> {
       실패: {
         파일명: 파일.name,
         메시지: r.메시지 || "문서를 읽지 못했습니다. 다시 올려 주세요.",
+        적용중: r.적용중_문서 ?? null,
+      },
+    };
+  }
+  if (r.상태 === "확인필요") {
+    return {
+      종류: "확인",
+      확인: {
+        doc_id: r.doc_id,
+        파일명: 파일.name,
+        조_건수: r.조_건수 ?? 0,
+        이유: r.검토이유 ?? null,
         적용중: r.적용중_문서 ?? null,
       },
     };
@@ -1740,6 +1862,10 @@ export default function CheckumaitApp() {
             확인={확인}
             addSchedules={(items) => 일정추가하기(items)}
             할일동기화={할일동기화}
+            기준문서보기={() => {
+              go({ page: "rules" });
+              window.setTimeout(() => document.getElementById("institution-criteria")?.scrollIntoView({ block: "center" }), 400);
+            }}
             remove={() => {
               const target = plans.find((plan) => plan.id === route.id);
               if (!target) return;
@@ -2051,6 +2177,10 @@ function Login({
   const [기준파싱문구, set기준파싱문구] = useState("");
   /** 기준 문서를 읽지 못했을 때 띄우는 창의 내용. 사용자가 닫거나 다시 올릴 때까지 둡니다. */
   const [기준실패, set기준실패] = useState<L3실패 | null>(null);
+  /** 세부기준이 맞는지 물어야 하는 문서. */
+  const [기준확인, set기준확인] = useState<L3확인 | null>(null);
+  /** 기준 문서 칸 아래에 띄우는 안내(형식이 맞지 않음, 쓰지 않은 문서 등). */
+  const [기준안내, set기준안내] = useState("");
   /** 서버가 다 읽어 판정 기준에 반영했는가 / 2분이 지나도 아직 읽는 중인가. */
   const [기준반영됨, set기준반영됨] = useState(false);
   const [기준처리중, set기준처리중] = useState(false);
@@ -2074,6 +2204,11 @@ function Login({
       setCriteriaBlob(null);
       setCriteriaFile("");
       set기준실패(결과.실패);
+      return;
+    }
+    if (결과.종류 === "확인") {
+      set기준파싱중(false);
+      set기준확인(결과.확인);
       return;
     }
     // 완료면 읽은 조 수를, 2분이 지나도 읽는 중이면 서버 안내("끝날 때까지는 기존 규정으로 판정")를
@@ -2930,12 +3065,11 @@ function Login({
                   // 클릭 경로의 accept 와 '같은 규칙' 을 여기서도 겁니다. 드롭은 accept 를
                   // 안 거치므로 .docx 를 추가하면 서버가 415 로 거부합니다 — 미리 막습니다.
                   if (!/\.(pdf|hwp|hwpx)$/i.test(f.name)) {
-                    // 이 화면에는 `notify` 가 없습니다 — 온보딩이 이미 쓰는
-                    // `기준파싱문구` 자리에 띄웁니다(같은 곳에 결과가 나오니 일관됩니다).
-                    set기준파싱문구("PDF·HWP·HWPX 파일만 올릴 수 있습니다.");
+                    // 이 화면에는 `notify` 가 없어 칸 아래 안내 자리에 띄웁니다.
+                    set기준안내("PDF·HWP·HWPX 파일만 올릴 수 있습니다.");
                     return;
                   }
-                  set기준파싱문구("");
+                  set기준안내("");
                   setCriteriaBlob(f);
                   setCriteriaFile(f.name);
                 }}
@@ -2948,6 +3082,7 @@ function Login({
                   accept=".pdf,.hwp,.hwpx"
                   onChange={(event) => {
                     const f = event.target.files?.[0] ?? null;
+                    set기준안내("");
                     setCriteriaBlob(f);
                     setCriteriaFile(f?.name || "");
                   }}
@@ -2968,10 +3103,11 @@ function Login({
               {/* 주의: 2026-11-03 — 기관당 기준 문서는 하나입니다. 서버가 새 문서를 읽으면 바로
                   그 문서로 판정하고, 읽지 못하면 기존 문서를 계속 씁니다(백엔드 `l3_parse.적용문서_정리`).
                   예전 문구 「기관 검토 후 반영」은 실제로 없는 절차였습니다. */}
-              <p className="onboarding-notice">
-                {!criteriaBlob
-                  ? "등록한 문서는 기관별 금액 기준, 사전승인·심의 조건, 필요 증빙 판단에 사용됩니다."
-                  : "올린 문서를 읽고 나면 바로 이 문서로 판정합니다. 읽지 못하면 기존에 등록된 기준 문서를 계속 씁니다."}
+              <p className="onboarding-notice" role={기준안내 ? "alert" : undefined}>
+                {기준안내 ||
+                  (!criteriaBlob
+                    ? "등록한 문서는 기관별 금액 기준, 사전승인·심의 조건, 필요 증빙 판단에 사용됩니다."
+                    : "세부기준 문서가 맞으면 읽은 뒤 바로 이 문서로 판정합니다. 맞는지 불확실하면 먼저 묻고, 읽지 못하면 기존 문서를 계속 씁니다.")}
               </p>
               <div className="onboarding-actions">
                 <button
@@ -2999,6 +3135,28 @@ function Login({
             </>
           )}
           {기준파싱중 && <L3읽는중 파일명={criteriaFile} 문구={기준파싱문구} 반영됨={기준반영됨} />}
+          {기준확인 && (
+            <L3확인창
+              확인={기준확인}
+              닫기={() => {
+                set기준확인(null);
+                setCriteriaBlob(null);
+                setCriteriaFile("");
+                set기준안내("아직 쓰지 않은 문서입니다. 설정을 마친 뒤 마이페이지에서 고를 수 있습니다.");
+              }}
+              적용={() => {
+                set기준확인(null);
+                set기준반영됨(true);
+                setStep("ready");
+              }}
+              거절={() => {
+                set기준확인(null);
+                setCriteriaBlob(null);
+                setCriteriaFile("");
+                set기준안내("이 문서는 쓰지 않습니다. 다른 문서를 고르거나 그대로 설정을 마칠 수 있습니다.");
+              }}
+            />
+          )}
           {기준실패 && (
             <L3실패창
               실패={기준실패}
@@ -5416,12 +5574,14 @@ function PlanDetail({
   확인,
   addSchedules,
   할일동기화,
+  기준문서보기,
   remove,
   back,
   notify,
 }: {
   plan?: ExpensePlan;
   allPlans: ExpensePlan[];
+  기준문서보기: () => void;
   확인: (요청: 확인요청) => Promise<boolean>;
   판정시작: (작업: 판정시작입력) => boolean;
   update: (plan: ExpensePlan) => void;
@@ -5698,6 +5858,10 @@ function PlanDetail({
             </div>
           )}
           <div className={`ai-result-frame ${plan.status === "재점검 필요" ? "is-stale" : ""}`}>
+            {/* 판단불가는 규정을 끝까지 적용하지 못한 결과라 어느 기준으로 점검했다고 말하지 않습니다. */}
+            {plan.기준문서 && plan.판정 && plan.판정 !== "판단불가" && (
+              <기준문서줄 정보={plan.기준문서} 기준문서보기={기준문서보기} />
+            )}
             <div className="ai-verdict-row">
               <Status value={plan.status === "재점검 필요" ? plan.previousStatus || "확인 필요" : plan.status} />
               <div>
@@ -8005,6 +8169,7 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
   /** 서버가 읽고 있는 파일 이름 — 이 동안 `L3읽는중` 창을 띄웁니다. */
   const [기준읽는중, set기준읽는중] = useState<string | null>(null);
   const [기준실패, set기준실패] = useState<L3실패 | null>(null);
+  const [기준확인, set기준확인] = useState<L3확인 | null>(null);
   const 지금기준파일 = 방금등록?.파일명 ?? 기준문서.파일명;
 
   /**
@@ -8026,6 +8191,8 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
     set기준읽는중(null);
     if (결과.종류 === "실패") {
       set기준실패(결과.실패);
+    } else if (결과.종류 === "확인") {
+      set기준확인(결과.확인);
     } else if (결과.종류 === "완료") {
       const r = 결과.결과;
       const 사실 = L3등록사실(r.조_건수, r.파싱품질, r.추출방식);
@@ -8140,7 +8307,16 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
           <Info label="선정 사업" value={profile.program} />
           <Info label="주관기관" value={profile.host} />
           <Info label="사업 중복 수혜 여부" value={profile.duplicateBenefit} />
-          <Info label="적용 기준" value="사업 공통 규정 + 기관 세부기준" />
+          <Info
+            label="적용 기준"
+            value={
+              지금기준파일
+                ? "사업 공통 규정 + 기관 세부기준"
+                : 기준문서.조회실패
+                  ? "기관 세부기준을 확인하지 못했습니다"
+                  : "사업 공통 규정"
+            }
+          />
         </dl>
       </section>
       <section className="my-business-heading">
@@ -8201,7 +8377,7 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
           </article>
         ))}
       </section>
-      <section className="card rule-library">
+      <section className="card rule-library" id="institution-criteria">
         <header className="card-head">
           <div>
             <h2>주관기관 세부 안내</h2>
@@ -8239,7 +8415,7 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
             <span className="institution-badge">사용자 등록</span>
           )}
           <div>
-            <b>{지금기준파일 ?? "등록된 기준 문서가 없습니다"}</b>
+            <b>{지금기준파일 ?? (기준문서.조회실패 ? "기준 문서를 불러오지 못했습니다" : "등록된 기준 문서가 없습니다")}</b>
             {/* 주의: 2026-11-03 — 여기 「2026.03.02 등록」이 하드코딩되어 있어서 어떤 문서든
                 같은 날짜로 보였습니다. 서버 `등록일` 을 쓰고, 문서가 없으면 판정이 무엇을 쓰는지 밝힙니다. */}
             <small>
@@ -8250,10 +8426,35 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
                     ? 기준문서.등록일
                       ? `${기준문서.등록일.replace(/-/g, ".")} 등록`
                       : "등록됨"
-                    : "기관 세부기준 없이 공통 관리 기준만으로 판정합니다")}
+                    : 기준문서.조회실패
+                      ? "새로고침해 주세요. 문서가 없다는 뜻은 아닙니다."
+                      : "기관 세부기준 없이 공통 관리 기준만으로 판정합니다")}
             </small>
           </div>
         </article>
+        {기준문서.확인대기목록.map((문서) => (
+          <article key={문서.doc_id} className="institution-file-failed">
+            <span className="institution-badge warn">확인 필요</span>
+            <div>
+              <b>{문서.원본파일명}</b>
+              <small>{문서.검토이유 ?? "세부기준 문서가 맞는지 확인이 필요합니다."} 고르기 전까지 판정에 쓰지 않습니다.</small>
+              <button
+                className="outline small institution-review-button"
+                onClick={() =>
+                  set기준확인({
+                    doc_id: 문서.doc_id,
+                    파일명: 문서.원본파일명,
+                    조_건수: 문서.조_건수,
+                    이유: 문서.검토이유 ?? null,
+                    적용중: 지금기준파일 ?? null,
+                  })
+                }
+              >
+                확인하기
+              </button>
+            </div>
+          </article>
+        ))}
         {/* 주의: 파싱에 실패한(fail) 문서는 '숨기지 않습니다' — 숨기면 사용자가 올린 파일이
             왜 판정에 적용되지 않는지 알 수 없습니다(2026-09-07). */}
         {기준문서.처리중목록.map((문서) => (
@@ -8332,6 +8533,30 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
         </div>
       )}
       {기준읽는중 && <L3읽는중 파일명={기준읽는중} 문구="" />}
+      {기준확인 && (
+        <L3확인창
+          확인={기준확인}
+          닫기={() => {
+            set기준확인(null);
+            set기준재조회((n) => n + 1);
+          }}
+          적용={(r) => {
+            set기준확인(null);
+            set방금등록({
+              파일명: r.적용중_문서 ?? 기준확인.파일명,
+              안내: r.파싱품질 === "warn" ? L3등록사실(r.조_건수, r.파싱품질, r.추출방식) : null,
+              ocr: r.추출방식 === "ocr",
+            });
+            notify("이 문서로 판정합니다.");
+            set기준재조회((n) => n + 1);
+          }}
+          거절={() => {
+            set기준확인(null);
+            notify("이 문서는 판정에 쓰지 않습니다.");
+            set기준재조회((n) => n + 1);
+          }}
+        />
+      )}
       {기준실패 && (
         <L3실패창
           실패={기준실패}

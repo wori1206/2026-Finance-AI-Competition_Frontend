@@ -34,8 +34,10 @@ export type L3현재문서 = {
   시행일: string | null;
   /** 등록한 날(YYYY-MM-DD). */
   등록일?: string | null;
-  파싱품질: "pending" | "pass" | "warn" | "fail" | null;
+  파싱품질: "pending" | "pass" | "warn" | "fail" | "review" | null;
   조_건수: number;
+  /** `파싱품질="review"` 일 때 왜 확인이 필요한지. 사용자에게 보여 줄 문장입니다. */
+  검토이유?: string | null;
   /** 텍스트를 얻은 방식. `"ocr"` 이면 스캔본을 OCR 로 읽은 문서입니다(금액·조번호 오인식 가능). */
   추출방식?: string | null;
 };
@@ -50,12 +52,14 @@ export type L3처리결과 = {
   doc_id: string;
   파일명: string;
   확장자: string;
-  상태: "파싱대기" | "완료" | "실패" | (string & {});
+  /** `확인필요`: 다 읽었지만 세부기준이 맞는지 사용자가 골라야 합니다. `적용안함`: 쓰지 않기로 했습니다. */
+  상태: "파싱대기" | "완료" | "실패" | "확인필요" | "적용안함" | (string & {});
   조_건수: number | null;
   /** 상위 규정을 찾지 못한 참조 목록. */
   미해결참조: Record<string, unknown>[];
   메시지: string | null;
-  파싱품질: "pending" | "pass" | "warn" | "fail" | null;
+  파싱품질: "pending" | "pass" | "warn" | "fail" | "review" | null;
+  검토이유?: string | null;
   /** `상태="실패"` 일 때만. 스캔본·보호문서·조문없음·중단 등. 안내 문구는 `메시지` 에 있습니다. */
   실패사유?: string | null;
   /** 이 기관이 지금 판정에 쓰는 기준 문서 이름. `null` 이면 공통 관리 기준만으로 판정합니다. */
@@ -176,6 +180,8 @@ export type 계획상세 = 계획요약 & {
   created_at: string | null;
   /** 판정 전에 답한 내용. 옛 판정에는 없습니다. */
   사용자답변?: unknown;
+  /** 판정이 어떤 기준 문서로 점검했는가. 값 형식은 `기준문서정리()` 가 확인합니다. */
+  기준문서?: unknown;
   /** 지금 계정이 최신 판정에 남긴 평가. 재점검하면 새 판정이라 비어 있습니다. */
   내피드백?: 판정피드백 | null;
   첨부?: 서버첨부[];

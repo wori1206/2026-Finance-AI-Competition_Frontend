@@ -261,6 +261,12 @@ export async function 규정처리기다리기(
 }
 
 /** 서버가 아직 읽고 있는 상태인가. 서버 계약상 '파싱중' 도 올 수 있습니다(`server/models.py::L3업로드응답`). */
+/** 확인을 기다리는 문서를 세부기준으로 씁니다. 이 문서가 판정 기준이 되고 이전 문서는 내려갑니다. */
+export const 규정적용 = (docId: string) => POST(`/api/l3/${docId}/confirm`, {}) as Promise<L3처리결과>;
+
+/** 확인을 기다리는 문서를 쓰지 않습니다. 판정 기준은 그대로입니다. */
+export const 규정거절 = (docId: string) => POST(`/api/l3/${docId}/reject`, {}) as Promise<L3처리결과>;
+
 export const L3처리중 = (상태: string) => 상태 === "파싱대기" || 상태 === "파싱중";
 
 /* ── 서버 살았나 ─────────────────────────────── */

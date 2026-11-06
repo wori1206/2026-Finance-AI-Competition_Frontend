@@ -10,9 +10,9 @@
 
 import { 계획상세 } from "./api";
 import { 판정SSE } from "./sse";
-import { 상세를계획으로, 판정을상태로, 판정설명, 시각표기, 인용정리, 사용자답변정리 } from "./adapt";
+import { 상세를계획으로, 판정을상태로, 판정설명, 시각표기, 인용정리, 기준문서정리, 사용자답변정리 } from "./adapt";
 import { 초안보관 } from "./inquiry-store";
-import type { ChecklistItem, RuleItem } from "./types";
+import type { 기준문서정보, ChecklistItem, RuleItem } from "./types";
 import type { ExpensePlan } from "./types";
 import type { 판정값, 답변항목, 사용자답변항목 } from "./server-types";
 
@@ -122,6 +122,7 @@ export async function 판정실행(
   let 인용: RuleItem[] = [];
   let 문의초안: string | null = null;
   let 사용자답변: 사용자답변항목[] = [];
+  let 기준문서: 기준문서정보 | null = null;
   let 저장됨 = false;
   let 저장된판정: number | null = null;
   let 서버오류: string | null = null;
@@ -207,6 +208,7 @@ export async function 판정실행(
           break;
         case "결과":
           사용자답변 = 사용자답변정리(v["사용자답변"]);
+          기준문서 = 기준문서정리(v["기준문서"]);
           break;
         case "저장":
           저장됨 = v["저장"] === true;
@@ -286,6 +288,8 @@ export async function 판정실행(
     문의초안: 최종초안,
     // 주의: 답 없이 다시 점검한 판정이면 비어 있어야 합니다. 저장되지 않은 판정에 옛 답을 붙이지 않습니다.
     사용자답변: 스트림값만 || 사용자답변.length ? 사용자답변 : 바탕.사용자답변,
+    // 스트림이 이번 판정의 값입니다. 바탕에 남은 값은 이전 판정이라 이번 값이 없을 때만 씁니다.
+    기준문서: 기준문서 ?? (스트림값만 ? null : (바탕.기준문서 ?? null)),
     nextAction: 스트림값만
       ? (해야할일[0]?.label ?? "")
       : 바탕.nextAction || (해야할일[0]?.label ?? ""),
