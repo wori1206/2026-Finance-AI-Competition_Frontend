@@ -249,8 +249,12 @@ export async function 일정등록(
           await 일정수정(item.taskId, { due_date: item.date || null });
           바뀐id.set(item.id, item.taskId);
         } catch (e) {
-          if (!없음인가(e)) 실패 += 1;
-          else 건너뜀 += 1;
+          if (없음인가(e)) {
+            건너뜀 += 1;
+          } else {
+            실패 += 1;
+            저장못함.add(item.id);
+          }
         }
         return;
       }

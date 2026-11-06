@@ -111,10 +111,12 @@ function 실패문구(e: unknown): string {
 async function 줄_올리기(planId: string, 임시id: string, file: File, taskId: string | null): Promise<boolean> {
   try {
     const 서버행 = await 첨부업로드(planId, file, taskId && /^\d+$/.test(taskId) ? taskId : undefined);
+    const 저장된줄 = 서버행을첨부로(서버행);
     바꾸기(planId, (c) => ({
       ...c,
       세대: c.세대 + 1,
-      목록: c.목록.map((f) => (f.id === 임시id ? 서버행을첨부로(서버행) : f)),
+      // 주의: 응답보다 먼저 끝난 목록 읽기가 이 파일을 이미 넣었을 수 있습니다.
+      목록: c.목록.filter((f) => f.id !== 저장된줄.id).map((f) => (f.id === 임시id ? 저장된줄 : f)),
     }));
     return true;
   } catch (e) {
