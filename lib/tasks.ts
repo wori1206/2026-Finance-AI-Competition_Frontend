@@ -96,7 +96,7 @@ export async function 일정저장(이전: ScheduleItem, 다음: ScheduleItem): 
 
 /** 규정 점검이 만든 일정인가. 재점검이 제목·메모를 다시 쓰고 항목을 다시 만들어, 날짜와 상태만 바꿀 수 있습니다. */
 export function 점검일정인가(item: ScheduleItem): boolean {
-  return item.출처 === "ai" || (item.출처 !== "user" && !!item.taskId);
+  return !item.지출일연동 && (item.출처 === "ai" || (item.출처 !== "user" && !!item.taskId));
 }
 
 /** 일정을 서버에서 지웁니다. 서버에 이미 없으면 지워진 것으로 봅니다. */

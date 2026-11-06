@@ -13,7 +13,7 @@ import { API켜짐 } from "../lib/config";
 import { 판정실행 } from "../lib/judge";
 import { 정규화하기 } from "../lib/normalize";
 import { 인증오류 } from "../lib/http";
-import { 계획목록, 비목목록, 계획추가, 규정업로드, 규정처리기다리기, L3현재문서목록, 계획삭제, 일정수정 } from "../lib/api";
+import { 계획목록, 비목목록, 계획추가, 계획수정, 규정업로드, 규정처리기다리기, L3현재문서목록, 계획삭제, 일정수정 } from "../lib/api";
 import type { L3처리결과 } from "../lib/server-types";
 import { 체크저장, 일정변경저장, 일정등록, 일정지우기, 점검일정인가 } from "../lib/tasks";
 import { 기본규정, 서버규정읽기, type 적용규정항목 } from "../lib/norms";
@@ -1316,6 +1316,35 @@ export default function CheckumaitApp() {
       });
   };
 
+  /**
+   * 예상 지출일을 바꿉니다. 옮길 일정이 있으면 먼저 묻고, 없으면 바로 저장합니다.
+   * 주의: 판정 경로가 집행예정일을 읽지 않아 「재점검 필요」를 띄우지 않습니다.
+   */
+  const [지출일창, set지출일창] = useState<{ plan: ExpensePlan; 새날짜: string; 줄들: ScheduleItem[] } | null>(null);
+  const 지출일저장 = (plan: ExpensePlan, 새날짜: string, 일정이동: boolean) => {
+    계획수정(plan.id, { 집행예정일: 새날짜 || null, 일정이동 })
+      .then((d) => {
+        계획반영({ ...plan, plannedDate: d.집행예정일 ?? "" });
+        notify(
+          일정이동 && plan.plannedDate && 새날짜
+            ? "예상 지출일과 연결된 일정을 옮겼습니다."
+            : "예상 지출일을 저장했습니다.",
+        );
+        return planService.listSchedules().then(setSchedules);
+      })
+      .catch((e: unknown) => notify(`예상 지출일을 저장하지 못했습니다. ${오류사유(e)}`));
+  };
+  const 지출일변경 = (plan: ExpensePlan, 새날짜: string) => {
+    const 줄들 = schedules.filter(
+      (s) => s.planId === plan.id && !!s.date && s.state !== "완료" && !s.지출일연동,
+    );
+    if (plan.plannedDate && 새날짜 && 줄들.length) {
+      set지출일창({ plan, 새날짜, 줄들 });
+      return;
+    }
+    지출일저장(plan, 새날짜, true);
+  };
+
   const persistSchedules = (next: ScheduleItem[]) => {
     const 이전 = schedules;
     setSchedules(next);
@@ -1619,6 +1648,7 @@ export default function CheckumaitApp() {
           <PlansPage
             plans={화면계획}
             판정시작={판정시작}
+            지출일변경={지출일변경}
             schedules={schedules}
             go={go}
             자료받음={자료받음}
@@ -1633,6 +1663,8 @@ export default function CheckumaitApp() {
             판정시작={판정시작}
             save={(plan, temporary, 점검오류) => {
               계획반영(plan);
+              // 지출일이 있는 계획은 서버가 집행 줄을 만들므로 일정도 다시 읽습니다.
+              if (API켜짐()) void planService.listSchedules().then(setSchedules).catch(() => undefined);
               if (temporary) {
                 go({ page: "plans" });
                 notify("지출 계획을 임시저장했습니다.");
@@ -1659,6 +1691,7 @@ export default function CheckumaitApp() {
             allPlans={화면계획}
             판정시작={판정시작}
             update={계획반영}
+            지출일변경={지출일변경}
             addSchedules={(items) => 일정추가하기(items)}
             할일동기화={할일동기화}
             remove={() => {
@@ -1775,6 +1808,16 @@ export default function CheckumaitApp() {
           답={(확인함) => {
             확인대기.끝(확인함);
             set확인대기(null);
+          }}
+        />
+      )}
+      {지출일창 && (
+        <지출일변경창
+          {...지출일창}
+          닫기={() => set지출일창(null)}
+          저장={(일정이동) => {
+            지출일저장(지출일창.plan, 지출일창.새날짜, 일정이동);
+            set지출일창(null);
           }}
         />
       )}
@@ -3634,6 +3677,58 @@ function PlanRecheckQuestionsModal({
   );
 }
 
+/** 예상 지출일을 바꿀 때 연결된 일정도 옮길지 묻습니다. 고르기 전에는 아무것도 저장하지 않습니다. */
+function 지출일변경창({
+  plan,
+  새날짜,
+  줄들,
+  닫기,
+  저장,
+}: {
+  plan: ExpensePlan;
+  새날짜: string;
+  줄들: ScheduleItem[];
+  닫기: () => void;
+  저장: (일정이동: boolean) => void;
+}) {
+  const 일수 = Math.round(
+    (new Date(`${새날짜}T00:00:00`).getTime() - new Date(`${plan.plannedDate}T00:00:00`).getTime()) / 86400000,
+  );
+  const 월일 = (값: string) => {
+    const d = new Date(`${값}T00:00:00`);
+    return `${d.getMonth() + 1}/${d.getDate()}`;
+  };
+  const 옮긴날 = (값: string) => {
+    const d = new Date(`${값}T00:00:00`);
+    d.setDate(d.getDate() + 일수);
+    return `${d.getMonth() + 1}/${d.getDate()}`;
+  };
+  return (
+    <div className="ai-checking-backdrop" role="presentation">
+      <section className="recheck-required-modal" role="dialog" aria-modal="true" aria-labelledby="move-schedule-title">
+        <h2 id="move-schedule-title">연결된 일정 {줄들.length}건도 옮길까요?</h2>
+        <p>
+          예상 지출일: {월일(plan.plannedDate)} → {월일(새날짜)}. 완료한 일정은 그대로 둡니다.
+        </p>
+        <ul className="move-schedule-list">
+          {줄들.slice(0, 5).map((s) => (
+            <li key={s.id}>
+              <span>{s.title}</span>
+              <b>{월일(s.date)} → {옮긴날(s.date)}</b>
+            </li>
+          ))}
+          {줄들.length > 5 && <li className="more">외 {줄들.length - 5}건</li>}
+        </ul>
+        <footer>
+          <button className="outline" onClick={닫기}>취소</button>
+          <button className="outline" onClick={() => 저장(false)}>지출일만 바꾸기</button>
+          <button className="primary" onClick={() => 저장(true)}>같이 옮기기</button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
 /** 서버에 보내지 않는 변경의 안내. 저장된 것처럼 말하면 새로고침 뒤 사라졌을 때 알 길이 없습니다. */
 const 화면에만반영 = "이 화면에만 반영했습니다. 새로고침하면 사라집니다.";
 
@@ -3641,9 +3736,13 @@ const 화면에만반영 = "이 화면에만 반영했습니다. 새로고침하
  * 서버 모드의 계획 수정. 계획 수정 API 가 없어, 비어 있던 비목을 고른 것 말고는 화면에만 남습니다.
  * 주의: 판정은 서버의 저장 값으로 하므로 바뀐 금액 옆에 이전 판정이 그대로 보입니다. 표시를 남겨 알립니다.
  */
-function 서버모드수정(이전: ExpensePlan, 수정: ExpensePlan): { 계획: ExpensePlan; 안내: string } {
+function 서버모드수정(이전: ExpensePlan, 입력: ExpensePlan): { 계획: ExpensePlan; 안내: string } {
+  // 주의: 예상 지출일은 `지출일변경` 이 따로 저장합니다. 여기서는 옛 값으로 두고 나머지만 봅니다.
+  const 수정 = { ...입력, plannedDate: 이전.plannedDate };
   // 주의: 첨부파일은 수정 창이 따로 저장하므로 계획 값이 같아도 저장한 것이 있을 수 있습니다.
-  if (JSON.stringify(수정) === JSON.stringify(이전)) return { 계획: 이전, 안내: "저장했습니다." };
+  if (JSON.stringify(수정) === JSON.stringify(이전)) {
+    return { 계획: 이전, 안내: 입력.plannedDate === 이전.plannedDate ? "저장했습니다." : "" };
+  }
   // 서버에 비목이 없는 계획은 여기서 고른 비목으로 점검합니다. 그 외 값은 서버에 저장할 길이 없습니다.
   const 비목반영 = !이전.category || !!이전.비목직접선택;
   const 비목골랐다 = 비목반영 && 수정.category !== 이전.category;
@@ -3670,8 +3769,10 @@ function PlansPage({
   확인,
   update,
   판정시작,
+  지출일변경,
 }: {
   판정시작: (작업: 판정시작입력) => boolean;
+  지출일변경: (plan: ExpensePlan, 새날짜: string) => void;
   plans: ExpensePlan[];
   schedules: ScheduleItem[];
   go: (route: AppRoute) => void;
@@ -4247,7 +4348,8 @@ function PlansPage({
             if (API켜짐() && 이전) {
               const { 계획, 안내 } = 서버모드수정(이전, draft);
               update(계획);
-              notify(안내);
+              if (안내) notify(안내);
+              if (draft.plannedDate !== 이전.plannedDate) 지출일변경(계획, draft.plannedDate || "");
             } else {
               update(draft);
             }
@@ -5075,6 +5177,7 @@ function PlanDetail({
   allPlans,
   판정시작,
   update,
+  지출일변경,
   addSchedules,
   할일동기화,
   remove,
@@ -5085,6 +5188,7 @@ function PlanDetail({
   allPlans: ExpensePlan[];
   판정시작: (작업: 판정시작입력) => boolean;
   update: (plan: ExpensePlan) => void;
+  지출일변경: (plan: ExpensePlan, 새날짜: string) => void;
   addSchedules: (items: ScheduleItem[]) => void;
   /** 주의: 체크박스는 이걸로 바꿉니다 — 집행 일정까지 같이 움직이고 서버 저장도 여기서. */
   할일동기화: (planId: string, taskId: string, 완료: boolean) => void;
@@ -5769,7 +5873,8 @@ function PlanDetail({
               const { 계획, 안내 } = 서버모드수정(plan, draft);
               update(계획);
               setEditing(false);
-              notify(안내);
+              if (안내) notify(안내);
+              if (draft.plannedDate !== plan.plannedDate) 지출일변경(계획, draft.plannedDate || "");
               return;
             }
             update({
@@ -7070,7 +7175,7 @@ function SchedulePage({
                         수정
                       </button>
                       {/* 주의: 규정 점검이 만든 일정은 지워도 다음 점검이 다시 만들어 버튼을 내지 않습니다. */}
-                      {!점검일정인가(item) && (
+                      {!점검일정인가(item) && !item.지출일연동 && (
                         <button
                           className="danger"
                           onClick={() => {
@@ -7281,7 +7386,7 @@ function SchedulePage({
           plan={plans.find((plan) => plan.id === viewing.planId)}
           close={() => setViewing(null)}
           remove={
-            점검일정인가(viewing)
+            점검일정인가(viewing) || viewing.지출일연동
               ? undefined
               : () => {
                   const 대상 = viewing;
@@ -7352,7 +7457,8 @@ function ScheduleFormModal({
     },
   );
   // 주의: 규정 점검이 다시 쓰는 값은 고쳐도 사라지므로 잠급니다. 계획을 옮기는 API 는 없어 수정 때 잠급니다.
-  const 잠김 = !!item && 점검일정인가(item);
+  const 지출일줄 = !!item?.지출일연동;
+  const 잠김 = 지출일줄 || (!!item && 점검일정인가(item));
   return (
     <div className="modal-backdrop schedule-modal-backdrop">
       <section className="schedule-create-modal">
@@ -7360,7 +7466,9 @@ function ScheduleFormModal({
           <div>
             <h2>{item ? "일정 수정" : "일정 추가"}</h2>
             <p>
-              {잠김
+              {지출일줄
+                ? "예상 지출일 일정입니다. 날짜는 지출 계획에서 바꿀 수 있습니다."
+                : 잠김
                 ? "규정 점검이 만든 일정이라 날짜와 상태만 바꿀 수 있습니다."
                 : "일정 정보와 메모를 관리할 수 있습니다."}
             </p>
@@ -7438,11 +7546,12 @@ function ScheduleFormModal({
                   <input
                     type="date"
                     value={draft.date}
+                    disabled={지출일줄}
                     onChange={(e) =>
                       setDraft({ ...draft, date: e.target.value })
                     }
                   />
-                  <small>비워 두면 「날짜 미정」으로 모입니다.</small>
+                  {!지출일줄 && <small>비워 두면 「날짜 미정」으로 모입니다.</small>}
                 </label>
                 <label>
                   상태

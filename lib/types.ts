@@ -88,6 +88,8 @@ export type ScheduleItem = {
   taskId?: string;
   /** 서버 행의 출처. "ai" 는 규정 점검이 만든 일정이라 날짜와 상태만 바꿀 수 있습니다. */
   출처?: "ai" | "user";
+  /** 계획의 예상 지출일과 같은 줄입니다. 날짜는 지출 계획에서만 바뀌고 지울 수 없습니다. */
+  지출일연동?: boolean;
   title: string;
   date: string;
   type: "사전승인" | "사전 확인" | "비교견적" | "계약" | "집행" | "증빙" | "기타";
