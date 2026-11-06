@@ -53,6 +53,8 @@ export type ExpensePlan = {
   latestDecisionId?: number | null;
   /** 지금 계정이 최신 판정에 남긴 「맞았어요 / 틀렸어요」. */
   내피드백?: 판정피드백 | null;
+  /** 같은 판정에 다른 구성원이 남긴 평가. */
+  팀평가?: (판정피드백 & { 작성자: string })[];
   /**
    * 주의: 방금 받은 판정을 서버가 '저장하지 않았을 때' true. 새로고침하면 이전 판정이
    *    다시 보이므로 화면에서 그 사실을 알립니다. 서버에서 다시 읽은 계획에는 없습니다.
@@ -91,6 +93,8 @@ export type ExpensePlan = {
 
 export type ScheduleItem = {
   id: string;
+  /** 다른 구성원이 만든 일정이면 그 사람 이메일 앞부분. */
+  작성자?: string | null;
   planId: string;
   /**
    * 주의: 이 일정이 '어느 할일에서 나왔는가' (서버 task_id).

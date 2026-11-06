@@ -283,6 +283,7 @@ export async function 판정실행(
     // 주의: 새 판정이면 이전 판정의 평가를 잇지 않습니다. 다시 읽기에 실패하면 바탕이 옛 판정이라 비워 둡니다.
     latestDecisionId: 저장안됨 ? null : (저장된판정 ?? 바탕.latestDecisionId ?? null),
     내피드백: !저장안됨 && 저장된판정 === 바탕.latestDecisionId ? (바탕.내피드백 ?? null) : null,
+    팀평가: !저장안됨 && 저장된판정 === 바탕.latestDecisionId ? (바탕.팀평가 ?? []) : [],
     // 주의: 스트림으로 온 초안이 '먼저' 입니다. mock 서버는 판정을 저장하지 않아
     //    상세를 다시 읽어도 판정상세가 비어 있습니다.
     문의초안: 최종초안,
