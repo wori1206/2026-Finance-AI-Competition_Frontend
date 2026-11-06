@@ -238,6 +238,7 @@ export function 항추출(본문: string, 항호: string): string {
  *    「제38조 외주용역비」가 항호만 다른 두 건으로 와서, 조 전체(10개 항) 원문이 그대로
  *    두 번 표시됐습니다 — 실제로 해당하는 건 ③·④항뿐이었습니다. 항호를 합쳐 제목에 붙이고,
  *    본문은 `항추출()`로 해당 항만 남깁니다(원문에 없는 문장은 만들지 않습니다).
+ *    쪽으로 표시하는 문서는 같은 「14쪽」에 소제목이 둘일 수 있어 조제목까지 같아야 합칩니다.
  */
 export function 인용정리(인용들: Record<string, unknown>[]): RuleItem[] {
   const 문자 = (c: Record<string, unknown>, k: string) =>
@@ -253,7 +254,7 @@ export function 인용정리(인용들: Record<string, unknown>[]): RuleItem[] {
     const doc_id = 문자(c, "doc_id");
     const 조번호 = 문자(c, "조번호");
     const 항호 = 문자(c, "항호");
-    const key = `${doc_id}::${조번호}`;
+    const key = `${doc_id}::${조번호}::${문자(c, "조제목")}`;
     if (!그룹.has(key)) {
       그룹.set(key, {
         조번호,
