@@ -175,24 +175,33 @@ body .app-shell .expense-v5 .ai-before-checks>header button.outline:focus-visibl
   grid-column:3!important;
   grid-row:1!important;
 }
-.expense-v5 .expense-v5-evidence-item>.expense-v5-uploaded-file{
+.expense-v5 .expense-v5-evidence-item>.expense-v5-uploaded-files{
   grid-column:2!important;
   grid-row:1!important;
+  display:grid;
+  gap:6px;
+  min-width:0;
+  margin:0;
+  padding:0;
+  list-style:none;
+}
+.expense-v5 .expense-v5-uploaded-files>.expense-v5-uploaded-file{
   width:100%!important;
-  height:40px!important;
+  min-height:40px!important;
+  height:auto!important;
   margin:0!important;
   padding:8px 10px!important;
   background:#fafbfa!important;
   border-color:#e0e5e2!important;
 }
-.expense-v5 .expense-v5-evidence-item>.expense-v5-uploaded-file>span{
+.expense-v5 .expense-v5-uploaded-files>.expense-v5-uploaded-file>span{
   min-width:0!important;
   display:flex!important;
   align-items:center!important;
   gap:8px!important;
   white-space:nowrap!important;
 }
-.expense-v5 .expense-v5-evidence-item>.expense-v5-uploaded-file>span>b{
+.expense-v5 .expense-v5-uploaded-files>.expense-v5-uploaded-file>span>b{
   min-width:0!important;
   flex:1 1 auto!important;
   display:block!important;
@@ -201,7 +210,7 @@ body .app-shell .expense-v5 .ai-before-checks>header button.outline:focus-visibl
   text-overflow:ellipsis!important;
   white-space:nowrap!important;
 }
-.expense-v5 .expense-v5-evidence-item>.expense-v5-uploaded-file>span>small{
+.expense-v5 .expense-v5-uploaded-files>.expense-v5-uploaded-file>span>small{
   flex:0 0 auto!important;
   display:block!important;
   margin:0!important;
@@ -211,12 +220,12 @@ body .app-shell .expense-v5 .ai-before-checks>header button.outline:focus-visibl
 @media(max-width:1180px){
   .expense-v5 .expense-v5-evidence-item{height:auto!important;grid-template-columns:minmax(0,1fr) 112px!important}
   .expense-v5 .expense-v5-evidence-item>.expense-v5-upload{grid-column:2!important}
-  .expense-v5 .expense-v5-evidence-item>.expense-v5-uploaded-file{grid-column:1 / -1!important;grid-row:2!important}
+  .expense-v5 .expense-v5-evidence-item>.expense-v5-uploaded-files{grid-column:1 / -1!important;grid-row:2!important}
 }
 @media(max-width:680px){
   .expense-v5 .expense-v5-evidence-item{height:auto!important;grid-template-columns:1fr!important;padding:12px 16px!important}
   .expense-v5 .expense-v5-evidence-item>label:first-child{grid-column:1!important;grid-row:1!important}
-  .expense-v5 .expense-v5-evidence-item>.expense-v5-uploaded-file{grid-column:1!important;grid-row:2!important}
+  .expense-v5 .expense-v5-evidence-item>.expense-v5-uploaded-files{grid-column:1!important;grid-row:2!important}
   .expense-v5 .expense-v5-evidence-item>.expense-v5-upload{width:100%!important;justify-self:stretch!important;grid-column:1!important;grid-row:3!important}
 }
 
@@ -1389,3 +1398,17 @@ input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-ou
 .result-feedback-form footer{display:flex;justify-content:flex-end;gap:8px}
 .result-feedback-saved{margin:0;color:#4e5652;font-size:13px;line-height:1.5;overflow-wrap:anywhere}
 .result-feedback>small{color:#727975;font-size:11px}
+
+.attachment-name{min-width:0;display:flex;align-items:center;gap:8px}
+.attachment-name>b{min-width:0;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.attachment-name>small{flex:0 0 auto}
+.attachment-failed .attachment-name{flex-wrap:wrap}
+.attachment-failed .attachment-name>small{flex:1 1 100%;color:#b3412b;white-space:normal!important}
+.attachment-retry{width:auto!important;min-width:max-content;padding:0 8px;color:#08725b;font-size:12px;font-weight:650}
+.expense-v5-file-row li{display:flex;align-items:center;gap:9px}
+.expense-v5-file-row li>.attachment-name{flex:1 1 auto}
+.edit-file-box li{display:flex;align-items:center;gap:9px}
+.edit-file-box li>.attachment-name{flex:1 1 auto}
+.expense-v5-uploaded-file{display:flex;align-items:center;gap:8px}
+.expense-v5-uploaded-file>.attachment-name{flex:1 1 auto}
+.expense-v5 .expense-v5-evidence-item{height:auto!important;min-height:64px}

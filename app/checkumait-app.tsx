@@ -18,7 +18,18 @@ import type { L3처리결과 } from "../lib/server-types";
 import { 체크저장, 일정변경저장, 일정등록, 일정지우기, 점검일정인가 } from "../lib/tasks";
 import { 기본규정, 서버규정읽기, type 적용규정항목 } from "../lib/norms";
 import { 기관검색, 사업요약, 기관저장, 선택기관, 기본기관명, 계정등록, type 기관 } from "../lib/orgs";
-import { 첨부보관, 첨부읽기, 첨부쓰기, 파일을첨부로, 크기표기, type 첨부 } from "../lib/attachments";
+import {
+  use첨부,
+  첨부accept,
+  첨부검사,
+  첨부내려받기,
+  첨부다시올리기,
+  첨부새로읽기,
+  첨부올리기,
+  첨부지우기,
+  크기표기,
+  type 첨부,
+} from "../lib/attachments";
 import { 지금출처, 출처구독, 출처문구 } from "../lib/data-source";
 import { 인증켜짐, 로그인 as supabase로그인, 가입 as supabase가입, 로그아웃 as supabase로그아웃, 이메일 as supabase이메일, 팀이름 as supabase팀이름, 팀이름쓰기 as supabase팀이름쓰기, 온보딩기록읽기, 온보딩마침, 재설정링크읽기, 재설정끝내기, 재설정메일보내기, 새비밀번호저장 } from "../lib/supabase";
 import { 상세를계획으로, 판정제목, 행동문구, 시각표기, L3등록사실, L3현재문서요약짓기, 문서명보기, 답표기, type L3현재문서요약 } from "../lib/adapt";
@@ -1726,6 +1737,7 @@ export default function CheckumaitApp() {
             update={계획반영}
             지출일변경={지출일변경}
             실제지출저장={실제지출저장}
+            확인={확인}
             addSchedules={(items) => 일정추가하기(items)}
             할일동기화={할일동기화}
             remove={() => {
@@ -3773,7 +3785,7 @@ const 화면에만반영 = "이 화면에만 반영했습니다. 새로고침하
 function 서버모드수정(이전: ExpensePlan, 입력: ExpensePlan): { 계획: ExpensePlan; 안내: string } {
   // 주의: 예상 지출일은 `지출일변경` 이 따로 저장합니다. 여기서는 옛 값으로 두고 나머지만 봅니다.
   const 수정 = { ...입력, plannedDate: 이전.plannedDate };
-  // 주의: 첨부파일은 수정 창이 따로 저장하므로 계획 값이 같아도 저장한 것이 있을 수 있습니다.
+  // 주의: 첨부파일은 올리는 즉시 저장되므로 여기서 다루지 않습니다.
   if (JSON.stringify(수정) === JSON.stringify(이전)) {
     return { 계획: 이전, 안내: 입력.plannedDate === 이전.plannedDate ? "저장했습니다." : "" };
   }
@@ -4376,6 +4388,8 @@ function PlansPage({
         <EditPlan
           plan={draft}
           setPlan={setDraft}
+          확인={확인}
+          notify={notify}
           close={() => {
             setEditing(null);
             setDraft(null);
@@ -4607,18 +4621,25 @@ function NewPlanPage({
     });
 
   /**
-   * 주의: 계획을 목록으로 넘기기 '직전' 에 첨부파일을 그 계획 id 로 옮깁니다.
-   *    예전에는 `attachments` 를 화면에서 보여주기만 하고 저장할 때 그냥 버렸습니다
-   *    — 붙인 파일이 상세에서 사라지던 이유입니다.
+   * 계획을 만든 직후 고른 파일을 올립니다. 결과는 상세 화면의 첨부 목록에 나타나고, 실패한 파일은
+   * 거기서 다시 올릴 수 있습니다.
+   * 주의: 점검 시작과 점검 끝에 모두 불리므로 한 번만 올립니다.
    */
+  const 첨부넘긴 = useRef(false);
+  const 첨부넘기기 = (planId: string) => {
+    if (첨부넘긴.current) return;
+    첨부넘긴.current = true;
+    attachments.forEach((file) => void 첨부올리기(planId, file));
+  };
+
   const 저장 = (계획: ExpensePlan, 임시?: boolean, 점검오류?: string) => {
-    첨부보관(계획.id, attachments);
+    첨부넘기기(계획.id);
     save(계획, 임시, 점검오류);
   };
 
   const 점검시작 = (계획: ExpensePlan, planId?: string) => {
-    // 창을 닫으면 이 화면을 떠나므로 첨부파일을 먼저 계획에 붙입니다.
-    첨부보관(계획.id, attachments);
+    // 창을 닫으면 이 화면을 떠나므로 첨부파일을 먼저 올립니다.
+    첨부넘기기(계획.id);
     판정시작({
       계획,
       count: 1,
@@ -4799,22 +4820,17 @@ function NewPlanPage({
                 <div className="new-plan-file-head">
                   <span>
                     <b className="field-label">첨부파일</b>
-                    <small>견적서·과업자료 등이 있다면 첨부해주세요.</small>
+                    <small>견적서·과업자료 등이 있다면 첨부해주세요. 보관용이며 AI 점검에는 쓰이지 않습니다.</small>
                   </span>
                   <label className="new-plan-file-button">
                     <input
                       type="file"
                       multiple
+                      accept={첨부accept}
                       onChange={(event) => {
-                        // 주의: 상세 화면과 같은 한도(개별 3MB · 최대 10개)를 여기서도 겁니다.
-                        //    여기서 안 막으면 상세에서 못 다루는 파일이 들어옵니다.
-                        const selectedFiles = Array.from(event.target.files || []);
-                        const 넘김 = selectedFiles.filter((f) => f.size > 3 * 1024 * 1024);
-                        const 통과 = selectedFiles.filter((f) => f.size <= 3 * 1024 * 1024);
-                        if (넘김.length) set연동오류("첨부파일은 개별 3MB 이하만 올릴 수 있습니다.");
-                        if (통과.length) {
-                          setAttachments((current) => [...current, ...통과].slice(0, 10));
-                        }
+                        const { 통과, 안내 } = 첨부검사(attachments.length, Array.from(event.target.files || []));
+                        if (안내) set연동오류(안내);
+                        if (통과.length) setAttachments((current) => [...current, ...통과]);
                         event.target.value = "";
                       }}
                     />
@@ -5209,6 +5225,70 @@ function 문의초안카드({
   );
 }
 
+/** 첨부파일 한 줄. 올리는 중·실패·완료를 보여 주고 내려받기·다시 올리기·삭제를 합니다. */
+function 첨부줄({
+  planId,
+  file,
+  확인,
+  notify,
+  className,
+}: {
+  planId: string;
+  file: 첨부;
+  확인: (요청: 확인요청) => Promise<boolean>;
+  notify: (message: string) => void;
+  className?: string;
+}) {
+  const 지우기 = () => {
+    const 저장됨 = file.상태 === "완료";
+    void (저장됨
+      ? 확인({
+          제목: "첨부파일을 삭제할까요?",
+          설명: `'${file.name}'을(를) 삭제합니다. 되돌릴 수 없습니다.`,
+          실행문구: "삭제",
+        })
+      : Promise.resolve(true)
+    ).then((확인함) => {
+      if (!확인함) return;
+      첨부지우기(planId, file).catch((e: unknown) => notify(`파일을 삭제하지 못했습니다. ${오류사유(e)}`));
+    });
+  };
+  return (
+    <li className={`${className ?? ""} ${file.상태 === "실패" ? "attachment-failed" : ""}`}>
+      <Icon name="fileText" size={15} />
+      <span className="attachment-name">
+        <b>{file.name}</b>
+        <small>
+          {file.상태 === "올리는중" ? "올리는 중…" : file.상태 === "실패" ? file.오류 : file.size}
+        </small>
+      </span>
+      {file.상태 === "완료" && (
+        <button
+          type="button"
+          aria-label={`${file.name} 다운로드`}
+          onClick={() =>
+            void 첨부내려받기(planId, file).catch((e: unknown) =>
+              notify(`파일을 내려받지 못했습니다. ${오류사유(e)}`),
+            )
+          }
+        >
+          ↓
+        </button>
+      )}
+      {file.상태 === "실패" && file.file && (
+        <button type="button" className="attachment-retry" onClick={() => void 첨부다시올리기(planId, file)}>
+          다시 올리기
+        </button>
+      )}
+      {file.상태 !== "올리는중" && (
+        <button type="button" aria-label={`${file.name} 삭제`} onClick={지우기}>
+          ×
+        </button>
+      )}
+    </li>
+  );
+}
+
 const 틀림이유: { 값: NonNullable<판정피드백["이유"]>; 글: string }[] = [
   { 값: "판정이 다름", 글: "판정이 달라요" },
   { 값: "근거가 다름", 글: "근거가 달라요" },
@@ -5333,6 +5413,7 @@ function PlanDetail({
   update,
   지출일변경,
   실제지출저장,
+  확인,
   addSchedules,
   할일동기화,
   remove,
@@ -5341,6 +5422,7 @@ function PlanDetail({
 }: {
   plan?: ExpensePlan;
   allPlans: ExpensePlan[];
+  확인: (요청: 확인요청) => Promise<boolean>;
   판정시작: (작업: 판정시작입력) => boolean;
   update: (plan: ExpensePlan) => void;
   지출일변경: (plan: ExpensePlan, 새날짜: string) => void;
@@ -5364,18 +5446,14 @@ function PlanDetail({
   // 주의: 2026-09-04 — 여기에 「○○ 견적서.pdf」·「○○ 참고자료.pdf」 두 건을 '지어내고'
   //    있었습니다. 이제 '사용자가 실제로 붙인' 파일만 보여줍니다
   //    (새 지출 계획에서 붙인 것 + 이 화면에서 추가한 것).
-  const [planFiles, setPlanFiles] = useState<첨부[]>(() =>
-    plan ? 첨부읽기(plan.id) : [],
-  );
-  // 다른 계획을 열면 그 계획의 첨부로 갈아 끼웁니다.
+  const 첨부칸 = use첨부(plan?.id ?? "");
+  // 증빙 항목에 올린 파일은 그 항목 옆에 보여 줍니다. 항목이 사라진 파일은 일반 첨부로 돌아옵니다.
+  const 증빙id = new Set((plan?.evidence ?? []).map((item) => item.id));
+  const planFiles = 첨부칸.목록.filter((file) => !file.taskId || !증빙id.has(file.taskId));
+  // 다른 기기에서 올린 파일까지 보이도록 계획을 열 때마다 읽습니다.
   useEffect(() => {
-    setPlanFiles(plan ? 첨부읽기(plan.id) : []);
+    if (plan?.id) void 첨부새로읽기(plan.id);
   }, [plan?.id]);
-  // 이 화면에서 추가·삭제한 결과를 보관함에 되돌려 놓습니다 — 나갔다 와도 남게.
-  useEffect(() => {
-    if (plan?.id) 첨부쓰기(plan.id, planFiles);
-  }, [plan?.id, planFiles]);
-  const [evidenceFiles, setEvidenceFiles] = useState<Record<string, File>>({});
   const [actualDate, setActualDate] = useState(plan?.actualDate || plan?.plannedDate || "");
   const [actualAmount, setActualAmount] = useState(
     plan?.actualAmount ? String(plan.actualAmount) : "",
@@ -5483,19 +5561,6 @@ function PlanDetail({
     setActualAmount(plan.actualAmount ? String(plan.actualAmount) : "");
     set집행수정중(false);
   };
-  const formatSize = (size: number) =>
-    size >= 1024 * 1024
-      ? `${(size / 1024 / 1024).toFixed(1)}MB`
-      : `${Math.max(1, Math.round(size / 1024))}KB`;
-  const downloadFile = (name: string, file?: File) => {
-    const blob = file || new Blob([`${name} 파일 미리보기`], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = name;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
   return (
     <div className="page expense-detail-page expense-detail-redesign expense-v5">
       <header className="expense-v5-header">
@@ -5566,32 +5631,16 @@ function PlanDetail({
               <div>
                 {planFiles.length === 0 && (
                   <p className="expense-v5-file-empty">
-                    첨부한 파일이 없습니다. 견적서·과업자료가 있으면 올려 두세요.
+                    {첨부칸.읽기 === "대기"
+                      ? "첨부 목록을 불러오는 중입니다."
+                      : 첨부칸.읽기 === "실패"
+                        ? "첨부 목록을 불러오지 못했습니다. 새로고침해 주세요."
+                        : "첨부한 파일이 없습니다. 견적서·과업자료가 있으면 올려 두세요."}
                   </p>
                 )}
                 <ul>
                   {planFiles.map((file) => (
-                    <li key={file.id}>
-                      <Icon name="fileText" size={15} />
-                      <b>{file.name}</b>
-                      <small>{file.size}</small>
-                      <button
-                        aria-label={`${file.name} 다운로드`}
-                        onClick={() => downloadFile(file.name, file.file)}
-                      >
-                        ↓
-                      </button>
-                      <button
-                        aria-label={`${file.name} 삭제`}
-                        onClick={() =>
-                          setPlanFiles((items) =>
-                            items.filter((item) => item.id !== file.id),
-                          )
-                        }
-                      >
-                        ×
-                      </button>
-                    </li>
+                    <첨부줄 key={file.id} planId={plan.id} file={file} 확인={확인} notify={notify} />
                   ))}
                 </ul>
                 <footer>
@@ -5599,28 +5648,17 @@ function PlanDetail({
                     <input
                       type="file"
                       multiple
+                      accept={첨부accept}
                       onChange={(event) => {
-                        const selectedFiles = Array.from(event.target.files || []);
-                        if (selectedFiles.some((file) => file.size > 3 * 1024 * 1024)) {
-                          notify("첨부파일은 개별 3MB 이하만 등록할 수 있습니다.");
-                        }
-                        const added = selectedFiles
-                          .filter((file) => file.size <= 3 * 1024 * 1024)
-                          .map(
-                          (file) => ({
-                            id: `${file.name}-${file.lastModified}-${Math.random()}`,
-                            name: file.name,
-                            size: formatSize(file.size),
-                            file,
-                          }),
-                        );
-                        setPlanFiles((items) => [...items, ...added].slice(0, 10));
+                        const { 통과, 안내 } = 첨부검사(첨부칸.목록.length, Array.from(event.target.files || []));
+                        if (안내) notify(안내);
+                        통과.forEach((file) => void 첨부올리기(plan.id, file));
                         event.target.value = "";
                       }}
                     />
                     파일 추가
                   </label>
-                  <small>최대 10개 / 개별 3MB 이하</small>
+                  <small>최대 10개 / 개별 3MB 이하 · 보관용이며 AI 점검에는 쓰이지 않습니다</small>
                 </footer>
               </div>
             </div>
@@ -5944,52 +5982,49 @@ function PlanDetail({
                     <label className="outline small expense-v5-upload">
                       <input
                         type="file"
+                        accept={첨부accept}
                         onChange={(event) => {
-                          const file = event.target.files?.[0];
-                          if (!file) return;
-                          if (file.size > 3 * 1024 * 1024) {
-                            notify("첨부파일은 개별 3MB 이하만 등록할 수 있습니다.");
-                            event.target.value = "";
-                            return;
-                          }
-                          setEvidenceFiles((files) => ({ ...files, [item.id]: file }));
+                          const { 통과, 안내 } = 첨부검사(
+                            첨부칸.목록.length,
+                            Array.from(event.target.files || []).slice(0, 1),
+                          );
                           event.target.value = "";
+                          if (안내) notify(안내);
+                          const file = 통과[0];
+                          if (!file) return;
+                          // 주의: 파일이 저장된 뒤에만 완료로 표시합니다. 체크를 풀어도 파일은 남습니다.
+                          void 첨부올리기(plan.id, file, item.id).then((저장됨) => {
+                            if (!저장됨) {
+                              notify(`「${item.label}」 파일을 올리지 못했습니다. 이유를 확인해 다시 올려 주세요.`);
+                              return;
+                            }
+                            if (item.done) {
+                              notify("파일을 저장했습니다.");
+                              return;
+                            }
+                            할일동기화(plan.id, item.id, true);
+                            notify(`파일을 저장하고 「${item.label}」을(를) 완료로 표시했습니다.`);
+                          });
                         }}
                       />
                       <Icon name="upload" size={14} />
                       파일 업로드
                     </label>
-                    {evidenceFiles[item.id] && (
-                      <div className="expense-v5-uploaded-file">
-                        <Icon name="fileText" size={14} />
-                        <span>
-                          <b>{evidenceFiles[item.id].name}</b>
-                          <small>{formatSize(evidenceFiles[item.id].size)}</small>
-                        </span>
-                        <button
-                          aria-label={`${evidenceFiles[item.id].name} 다운로드`}
-                          onClick={() =>
-                            downloadFile(
-                              evidenceFiles[item.id].name,
-                              evidenceFiles[item.id],
-                            )
-                          }
-                        >
-                          ↓
-                        </button>
-                        <button
-                          aria-label={`${evidenceFiles[item.id].name} 삭제`}
-                          onClick={() =>
-                            setEvidenceFiles((files) => {
-                              const next = { ...files };
-                              delete next[item.id];
-                              return next;
-                            })
-                          }
-                        >
-                          ×
-                        </button>
-                      </div>
+                    {첨부칸.목록.some((file) => file.taskId === item.id) && (
+                      <ul className="expense-v5-uploaded-files">
+                        {첨부칸.목록
+                          .filter((file) => file.taskId === item.id)
+                          .map((file) => (
+                            <첨부줄
+                              key={file.id}
+                              planId={plan.id}
+                              file={file}
+                              확인={확인}
+                              notify={notify}
+                              className="expense-v5-uploaded-file"
+                            />
+                          ))}
+                      </ul>
                     )}
                   </div>
                 ))}
@@ -6059,7 +6094,8 @@ function PlanDetail({
         <EditPlan
           plan={draft}
           setPlan={setDraft}
-          onFilesSaved={setPlanFiles}
+          확인={확인}
+          notify={notify}
           close={() => setEditing(false)}
           save={() => {
             // 주의: 계획 수정 API 가 아직 없습니다. 서버 모드에서 재점검을 권하면 판정은 서버의 옛 값으로
@@ -6520,6 +6556,8 @@ function LegacyPlanDetail({
         <EditPlan
           plan={draft}
           setPlan={setDraft}
+          확인={() => Promise.resolve(true)}
+          notify={() => {}}
           close={() => setEditing(false)}
           save={() => {
             update(draft);
@@ -6606,37 +6644,29 @@ function EditPlan({
   setPlan,
   close,
   save,
-  onFilesSaved,
+  확인,
+  notify,
 }: {
   plan: ExpensePlan;
   setPlan: (plan: ExpensePlan) => void;
   close: () => void;
   save: () => void;
-  /** 저장이 끝난 뒤 '부모 화면' 의 첨부 목록도 같은 값으로 맞춥니다. */
-  onFilesSaved?: (files: 첨부[]) => void;
+  확인: (요청: 확인요청) => Promise<boolean>;
+  notify: (message: string) => void;
 }) {
   /**
-   * 주의: 「첨부 파일 [+ 파일 교체·추가]」는 '누르는 데가 없는 장식' 이었습니다.
-   *    input 도 onClick 도 없었고, 상세 화면의 첨부 목록과도 이어져 있지 않아서
-   *    수정 창에서는 붙인 파일이 보이지도 않고 새로 붙일 수도 없었습니다.
-   *    → 상세와 '같은 보관함'(lib/attachments)을 봅니다. 여기서 지운 파일은
-   *      상세에서도 사라지고, 여기서 붙인 파일은 상세에 그대로 나타납니다.
-   *
-   * 주의: 초안입니다. 「취소」로 닫으면 보관함을 건드리지 않습니다 — 다른 입력칸과
-   *    같은 규칙이어야 합니다. 실제 반영은 「수정 저장」에서 한 번에 합니다.
+   * 상세 화면과 같은 첨부 목록(lib/attachments)을 봅니다.
+   * 주의: 파일은 다른 입력칸과 달리 올리는 즉시 저장되므로 「취소」로 되돌아가지 않습니다. 화면에 그렇게 씁니다.
    */
-  const [편집첨부, set편집첨부] = useState<첨부[]>(() => 첨부읽기(plan.id));
+  const 편집칸 = use첨부(plan.id);
+  const 편집첨부 = 편집칸.목록;
   const [첨부오류, set첨부오류] = useState("");
   const 비목선택지 = use비목선택지();
   useEffect(() => {
-    set편집첨부(첨부읽기(plan.id));
     set첨부오류("");
+    // 목록에서 바로 연 수정 창은 첨부를 아직 읽지 않았습니다.
+    void 첨부새로읽기(plan.id);
   }, [plan.id]);
-
-  const 첨부저장 = () => {
-    첨부쓰기(plan.id, 편집첨부);
-    onFilesSaved?.(편집첨부);
-  };
 
   return (
     <div className="modal-backdrop">
@@ -6710,27 +6740,16 @@ function EditPlan({
             <b>첨부 파일</b>
             {편집첨부.length === 0 ? (
               <p className="edit-file-empty">
-                첨부한 파일이 없습니다. 견적서·과업자료가 있으면 올려 두세요.
+                {편집칸.읽기 === "대기"
+                  ? "첨부 목록을 불러오는 중입니다."
+                  : 편집칸.읽기 === "실패"
+                    ? "첨부 목록을 불러오지 못했습니다. 새로고침해 주세요."
+                    : "첨부한 파일이 없습니다. 견적서·과업자료가 있으면 올려 두세요."}
               </p>
             ) : (
               <ul>
                 {편집첨부.map((file) => (
-                  <li key={file.id}>
-                    <Icon name="fileText" size={15} />
-                    <b>{file.name}</b>
-                    <small>{file.size}</small>
-                    <button
-                      type="button"
-                      aria-label={`${file.name} 삭제`}
-                      onClick={() =>
-                        set편집첨부((items) =>
-                          items.filter((item) => item.id !== file.id),
-                        )
-                      }
-                    >
-                      ×
-                    </button>
-                  </li>
+                  <첨부줄 key={file.id} planId={plan.id} file={file} 확인={확인} notify={notify} />
                 ))}
               </ul>
             )}
@@ -6739,31 +6758,17 @@ function EditPlan({
                 <input
                   type="file"
                   multiple
+                  accept={첨부accept}
                   onChange={(event) => {
-                    const 고른것 = Array.from(event.target.files || []);
-                    // 주의: 상세 화면과 '같은' 한도여야 합니다. 여기서만 큰 파일이
-                    //    들어오면 상세에서 다룰 수 없는 첨부가 생깁니다.
-                    const 넘김 = 고른것.filter((f) => f.size > 3 * 1024 * 1024);
-                    set첨부오류(
-                      넘김.length
-                        ? "첨부파일은 개별 3MB 이하만 올릴 수 있습니다."
-                        : "",
-                    );
-                    const 쓸것 = 고른것.filter((f) => f.size <= 3 * 1024 * 1024);
-                    // 주의: 순번을 '기존 개수부터' 셉니다. 0 부터 다시 세면 같은 파일을
-                    //    두 번에 나눠 붙였을 때 id 가 겹쳐 지우기가 엉킵니다.
-                    set편집첨부((items) =>
-                      [
-                        ...items,
-                        ...쓸것.map((f, i) => 파일을첨부로(f, items.length + i)),
-                      ].slice(0, 10),
-                    );
+                    const { 통과, 안내 } = 첨부검사(편집첨부.length, Array.from(event.target.files || []));
+                    set첨부오류(안내 ?? "");
+                    통과.forEach((file) => void 첨부올리기(plan.id, file));
                     event.target.value = "";
                   }}
                 />
                 파일 추가
               </label>
-              <small>최대 10개 / 개별 3MB 이하</small>
+              <small>파일은 올리거나 지우는 즉시 저장됩니다 · 최대 10개 / 개별 3MB 이하 · 보관용이며 AI 점검에는 쓰이지 않습니다</small>
             </footer>
             {첨부오류 && <p className="edit-file-error">{첨부오류}</p>}
           </div>
@@ -6774,10 +6779,7 @@ function EditPlan({
           </button>
           <button
             className="primary"
-            onClick={() => {
-              첨부저장();
-              save();
-            }}
+            onClick={save}
           >
             수정 저장
           </button>
