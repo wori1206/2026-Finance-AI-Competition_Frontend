@@ -1272,6 +1272,10 @@ export default function CheckumaitApp() {
   useEffect(() => {
     계획Ref.current = plans;
   }, [plans]);
+  const 일정Ref = useRef<ScheduleItem[]>(schedules);
+  useEffect(() => {
+    일정Ref.current = schedules;
+  }, [schedules]);
   const 작업바꾸기 = (바꾸기: (이전: 판정작업[]) => 판정작업[]) => {
     작업Ref.current = 바꾸기(작업Ref.current);
     set작업들(작업Ref.current);
@@ -1475,6 +1479,13 @@ export default function CheckumaitApp() {
       )
       .catch((e: unknown) => console.warn("[CHECKUMAIT] 진행 단계를 다시 읽지 못했습니다.", e));
   };
+  /** 저장이 끝난 뒤 일정을 다시 읽습니다. 저장은 이미 됐으므로 읽기 실패는 저장 실패가 아닙니다. */
+  const 일정다시읽기 = () => {
+    void planService
+      .listSchedules()
+      .then(setSchedules)
+      .catch((e: unknown) => console.warn("[CHECKUMAIT] 일정을 다시 읽지 못했습니다.", e));
+  };
   /** 실제 지출을 서버에 저장합니다. 집행 단계가 완료로 바뀌므로 일정도 다시 읽습니다. */
   const 실제지출저장 = (plan: ExpensePlan, 날짜: string, 금액: number): Promise<void> =>
     계획수정(plan.id, { 실제지출일: 날짜, 실제지출액: 금액 }).then((d) => {
@@ -1486,18 +1497,18 @@ export default function CheckumaitApp() {
         단계요약: d.단계요약,
         현재단계: d.현재단계 ?? null,
       });
-      return planService.listSchedules().then(setSchedules);
+      일정다시읽기();
     });
-  const 지출일저장 = (plan: ExpensePlan, 새날짜: string, 일정이동: boolean) => {
+  const 지출일저장 = (plan: ExpensePlan, 새날짜: string, 일정이동: boolean, 옮길일정있음: boolean) => {
     계획수정(plan.id, { 집행예정일: 새날짜 || null, 일정이동 })
       .then((d) => {
         계획반영({ ...plan, plannedDate: d.집행예정일 ?? "", 단계요약: d.단계요약, 현재단계: d.현재단계 ?? null });
         notify(
-          일정이동 && plan.plannedDate && 새날짜
+          일정이동 && 옮길일정있음
             ? "예상 지출일과 연결된 일정을 옮겼습니다."
             : "예상 지출일을 저장했습니다.",
         );
-        return planService.listSchedules().then(setSchedules);
+        일정다시읽기();
       })
       .catch((e: unknown) => notify(`예상 지출일을 저장하지 못했습니다. ${오류사유(e)}`));
   };
@@ -1509,7 +1520,7 @@ export default function CheckumaitApp() {
       set지출일창({ plan, 새날짜, 줄들 });
       return;
     }
-    지출일저장(plan, 새날짜, true);
+    지출일저장(plan, 새날짜, true, false);
   };
 
   const persistSchedules = (next: ScheduleItem[]) => {
@@ -1545,10 +1556,11 @@ export default function CheckumaitApp() {
    *    없으므로 그런 건 예전처럼 화면 안에서만 움직입니다.
    */
   const 할일동기화 = (planId: string, taskId: string, 완료: boolean) => {
-    const 이전계획 = plans;
-    const 이전일정 = schedules;
+    // 주의: 증빙 파일 업로드가 끝난 뒤에도 불립니다. 그때의 값을 읽어야 그동안 바뀐 체크·판정을 덮지 않습니다.
+    const 이전계획 = 계획Ref.current;
+    const 이전일정 = 일정Ref.current;
 
-    const 다음계획 = plans.map((p) => {
+    const 다음계획 = 이전계획.map((p) => {
       if (p.id !== planId) return p;
       const aiChecks = p.aiChecks.map((c) =>
         c.id === taskId ? { ...c, done: 완료 } : c,
@@ -1568,7 +1580,7 @@ export default function CheckumaitApp() {
       };
     });
 
-    const 다음일정 = schedules.map((s) =>
+    const 다음일정 = 이전일정.map((s) =>
       (s.taskId ?? s.id) === taskId && s.planId === planId
         ? {
             ...s,
@@ -1581,6 +1593,8 @@ export default function CheckumaitApp() {
         : s,
     );
 
+    계획Ref.current = 다음계획;
+    일정Ref.current = 다음일정;
     setPlans(다음계획);
     setSchedules(다음일정);
     void planService.savePlans(다음계획);
@@ -1833,6 +1847,7 @@ export default function CheckumaitApp() {
         {route.page === "plan-new" && (
           <NewPlanPage
             판정시작={판정시작}
+            notify={notify}
             save={(plan, temporary, 점검오류) => {
               계획반영(plan);
               // 지출일이 있는 계획은 서버가 집행 줄을 만들므로 일정도 다시 읽습니다.
@@ -1994,7 +2009,7 @@ export default function CheckumaitApp() {
           {...지출일창}
           닫기={() => set지출일창(null)}
           저장={(일정이동) => {
-            지출일저장(지출일창.plan, 지출일창.새날짜, 일정이동);
+            지출일저장(지출일창.plan, 지출일창.새날짜, 일정이동, true);
             set지출일창(null);
           }}
         />
@@ -4640,8 +4655,10 @@ function NewPlanPage({
   save,
   cancel,
   판정시작,
+  notify,
 }: {
   판정시작: (작업: 판정시작입력) => boolean;
+  notify: (message: string) => void;
   /** `점검오류` 는 계획은 저장됐지만 판정이 실패했을 때의 사유입니다. */
   save: (plan: ExpensePlan, temporary?: boolean, 점검오류?: string) => void;
   cancel: () => void;
@@ -4852,7 +4869,11 @@ function NewPlanPage({
   const 첨부넘기기 = (planId: string) => {
     if (첨부넘긴.current) return;
     첨부넘긴.current = true;
-    attachments.forEach((file) => void 첨부올리기(planId, file));
+    attachments.forEach((file) => {
+      void 첨부올리기(planId, file).then((저장됨) => {
+        if (!저장됨) notify(`「${file.name}」 파일을 저장하지 못했습니다. 계획 상세에서 다시 올려 주세요.`);
+      });
+    });
   };
 
   const 저장 = (계획: ExpensePlan, 임시?: boolean, 점검오류?: string) => {
