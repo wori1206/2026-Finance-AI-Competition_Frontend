@@ -1381,6 +1381,10 @@ input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-ou
 .title-cell .plan-current-stage{display:block;margin-top:2px;font-size:11px;font-weight:500;color:#6f7773}
 @media (max-width:620px){.expense-stage-bar{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
+.institution-review-button{display:block;margin-top:8px}
+.criteria-basis{display:flex;align-items:center;justify-content:space-between;gap:8px 12px;flex-wrap:wrap;margin-bottom:12px;padding:9px 12px;border-radius:6px;background:#f4f6f5;color:#4a5550;font-size:13px;line-height:1.5}
+.criteria-basis>span{min-width:0;overflow-wrap:anywhere}
+.criteria-basis.is-notice{background:#fff6e5;color:#7a5200}
 .result-feedback{display:grid;gap:10px;padding:16px 20px;border:1px solid #dfe4e1;border-radius:8px;background:#fff}
 .result-feedback-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .result-feedback-head>b{font-size:14px}
