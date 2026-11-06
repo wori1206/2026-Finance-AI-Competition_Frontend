@@ -643,7 +643,6 @@ body .app-shell .schedule-v2 .schedule-v2-calendar .schedule-v2-grid>div>button.
 .onboarding-landing .demo-result-card h3{margin-top:11px;font-size:17px}
 .onboarding-landing .demo-result-card ul{gap:7px;margin-top:12px;padding-top:12px}
 .onboarding-login-form>button{margin-top:8px}
-.vat-included{margin-left:5px;color:#707975;font-size:10.5px;font-weight:650}
 
 /* One-plan AI recheck questions. */
 .plan-recheck-modal{width:min(620px,calc(100vw - 36px));max-height:min(760px,calc(100vh - 40px));overflow:auto;border:1px solid #dfe5e2;border-radius:10px;background:#fff;box-shadow:0 22px 60px rgba(22,35,30,.18)}
@@ -1222,6 +1221,24 @@ pre.ai-inquiry-text{
 .ai-confirmed li{display:flex;align-items:baseline;justify-content:space-between;gap:16px;font-size:13px;line-height:1.55;color:var(--sub)}
 .ai-confirmed li>span{min-width:0}
 .ai-confirmed li>strong{flex:none;font-weight:600;color:var(--text)}
+
+/* 분류 확인 문구. 판정 기준을 알리는 문장이라 `.auto-check-note` 안에서 글자를 조금 키웁니다. */
+.classification-note{margin:0 0 14px}
+.classification-note b{font-size:14px}
+
+/* 3단계 숫자·선택 칸. `.question` 테두리를 쓰고 세로로만 쌓습니다. */
+.question.extra-inputs{flex-direction:column;align-items:stretch;gap:12px}
+.question.extra-inputs>.field-grid{display:grid;gap:12px}
+.confirm-question-text .confirm-question-term strong{font-weight:600;color:var(--text)}
+
+/* 결과 화면 코드 판정. 카드는 `.ai-confirmed`, 원문 칸은 `.confirm-question-source` 와 같은 모양입니다. */
+.ai-code-verdict{display:grid;gap:9px}
+.ai-code-verdict>p{margin:0;font-size:14px;font-weight:600;line-height:1.6;color:var(--text);overflow-wrap:anywhere}
+.ai-code-excerpt{padding:10px 12px;border-radius:5px;background:var(--soft)}
+.ai-code-excerpt small{display:block;font-size:12px;font-weight:600;color:var(--text)}
+.ai-code-excerpt p{margin:5px 0 0;font-size:12px;line-height:1.7;color:var(--sub);white-space:pre-wrap;overflow-wrap:anywhere}
+.ai-code-verdict>button{justify-self:start}
+.ai-term-list li{justify-content:flex-start}
 
 /* 폰 너비: workspace.css 의 max-width:800 규칙은 globals.css 맨 위 @import 로 먼저 읽혀서 globals.css 의 일반 규칙에 진다.
    그래서 폰에서도 사이드바 여백 236px 이 남아 본문이 154px 로 줄었다. 진 선언을 여기서 다시 적고, 같은 이유로 깨진 폰 화면을 함께 고친다.

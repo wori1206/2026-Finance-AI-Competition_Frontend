@@ -4,7 +4,7 @@
 // 주의: 화면 코드(checkumait-app.tsx)를 안 고치려고 여기서 흡수합니다.
 
 import type { ExpensePlan, PlanStatus, ScheduleItem, ChecklistItem, RuleItem } from "./types";
-import type { 계획요약, 계획상세, 할일, 판정값, L3현재문서, 사용자답변항목 } from "./server-types";
+import type { 계획요약, 계획상세, 할일, 판정값, L3현재문서, 사용자답변항목, 부가세구분, 분류값, 용어풀이항목, 코드판정값 } from "./server-types";
 import { 초안읽기 } from "./inquiry-store";
 
 /**
@@ -301,6 +301,98 @@ export function 답표기(답: string): string {
   return 답 === "모름" ? "모르겠어요" : 답;
 }
 
+/** 말 끝 받침에 맞는 조사 「로」·「으로」. ㄹ 받침과 받침 없는 말은 「로」입니다. 세목은 받침으로 끝나기도 합니다(시험·인증). */
+export function 로조사(말: string): string {
+  const 끝 = 말.trim().charCodeAt(말.trim().length - 1);
+  if (!(끝 >= 0xac00 && 끝 <= 0xd7a3)) return "로";
+  const 받침 = (끝 - 0xac00) % 28;
+  return 받침 === 0 || 받침 === 8 ? "로" : "으로";
+}
+
+/** 서버 `분류` · `분류후보[]` 한 건. 비목·표시문이 없으면 버립니다. */
+export function 분류정리(값: unknown): 분류값 | null {
+  if (typeof 값 !== "object" || 값 === null) return null;
+  const o = 값 as Record<string, unknown>;
+  const 비목 = typeof o["비목"] === "string" ? o["비목"].trim() : "";
+  const 표시문 = typeof o["표시문"] === "string" ? o["표시문"].trim() : "";
+  if (!비목 || !표시문) return null;
+  const 세목 = typeof o["세목"] === "string" && o["세목"].trim() ? o["세목"].trim() : null;
+  return { 비목, 세목, 표시문 };
+}
+
+/** 서버 `조건` · `근거경로`. 글자가 있는 항목만 남깁니다. */
+export function 문장목록정리(값: unknown): string[] {
+  if (!Array.isArray(값)) return [];
+  return 값.flatMap((v) => (typeof v === "string" && v.trim() ? [v.trim()] : []));
+}
+
+/** 서버 `용어풀이`. 용어와 풀이가 다 있는 것만 남깁니다. */
+export function 용어풀이정리(값: unknown): 용어풀이항목[] {
+  if (!Array.isArray(값)) return [];
+  return 값.flatMap((항목): 용어풀이항목[] => {
+    if (typeof 항목 !== "object" || 항목 === null) return [];
+    const o = 항목 as Record<string, unknown>;
+    const 용어 = typeof o["용어"] === "string" ? o["용어"].trim() : "";
+    const 풀이 = typeof o["풀이"] === "string" ? o["풀이"].trim() : "";
+    return 용어 && 풀이 ? [{ 용어, 풀이 }] : [];
+  });
+}
+
+/** 서버 `코드판정`. 모르는 `종류` 는 그릴 문구가 없으므로 없는 것으로 봅니다. */
+export function 코드판정정리(값: unknown): 코드판정값 | null {
+  if (typeof 값 !== "object" || 값 === null) return null;
+  const o = 값 as Record<string, unknown>;
+  const 글 = (k: string) => (typeof o[k] === "string" && (o[k] as string).trim() ? (o[k] as string).trim() : null);
+  const 종류 = o["종류"];
+  if (종류 !== "금지" && 종류 !== "한도초과" && 종류 !== "부가세기준미정") return null;
+  return { 종류, 비교값: 글("비교값"), 한도: 글("한도"), 발췌: 글("발췌") };
+}
+
+const 부가세값인가 = (v: unknown): v is 부가세구분 => v === "포함" || v === "공급가액" || v === "모름";
+
+/** 코드가 만든 부가세 확인 질문의 id. `question_generate.py::_새경로_준비` 가 정합니다. */
+export const 부가세질문id = "VAT";
+
+/**
+ * 입력의 부가세 구분에 부가세 확인 질문의 답을 더한 값.
+ * 주의: 서버 `question_generate.py::_부가세_값` 과 같은 표입니다. 서버가 판정에 쓰는 값과 화면에 적는 값이 어긋나지 않게 합니다.
+ */
+export function 부가세확정(입력: 부가세구분 | undefined, 답: unknown): 부가세구분 | undefined {
+  if (입력 === "포함" || 입력 === "공급가액") return 입력;
+  return 답 === "예" ? "포함" : 답 === "아니오" ? "공급가액" : 입력;
+}
+
+/** 금액 옆에 붙이는 말. 모르는 계획에는 아무 말도 붙이지 않습니다. */
+export function 부가세표기(값: 부가세구분 | undefined): string {
+  return 값 === "포함"
+    ? " (부가세 포함)"
+    : 값 === "공급가액"
+      ? " (공급가액, 부가세 별도)"
+      : 값 === "모름"
+        ? " (부가세 포함 여부 모름)"
+        : "";
+}
+
+/**
+ * 계획의 `정규화` 에 저장해 둔 온톨로지 경로 값. 계획 생성 API 에 따로 받는 칸이 없어 여기에 둡니다.
+ * 주의: 옛 경로 계획에는 이 키들이 없어 전부 undefined 입니다.
+ */
+export function 정규화저장값(정규화: Record<string, unknown> | null | undefined): {
+  부가세구분?: 부가세구분;
+  확정세목?: string;
+  수치?: Record<string, unknown>;
+} {
+  const 수치 = 정규화?.["수치"];
+  const 수치표 = typeof 수치 === "object" && 수치 !== null ? (수치 as Record<string, unknown>) : undefined;
+  const 부가세 = 수치표?.["부가세구분"];
+  const 세목 = 정규화?.["확정세목"];
+  return {
+    부가세구분: 부가세값인가(부가세) ? 부가세 : undefined,
+    확정세목: typeof 세목 === "string" && 세목 ? 세목 : undefined,
+    수치: 수치표,
+  };
+}
+
 /** 목록 한 줄 → ExpensePlan (상세 필드는 비어 있습니다) */
 export function 요약을계획으로(s: 계획요약): ExpensePlan {
   return {
@@ -355,6 +447,7 @@ export function 상세를계획으로(d: 계획상세): ExpensePlan {
       (typeof 상세?.문의초안 === "string" ? 상세.문의초안 : null) ??
       (d.판정 === "판단불가" ? 초안읽기(d.plan_id) : null),
     사용자답변: 사용자답변정리(d.사용자답변),
+    ...정규화저장값(d.정규화),
   };
 }
 

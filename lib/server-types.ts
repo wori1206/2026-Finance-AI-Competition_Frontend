@@ -212,6 +212,35 @@ export type 확인질문 = {
 /** 판정 결과의 `사용자답변[]` 한 칸. `답` 은 예·아니오·모름 중 하나입니다. */
 export type 사용자답변항목 = { 질문문: string; 답: string };
 
+/** 입력한 금액의 부가세 기준. `server/models.py::부가세구분타입` 과 같습니다. */
+export type 부가세구분 = "포함" | "공급가액" | "모름";
+
+/**
+ * 정규화가 돌려주는 분류 후보, 판정 결과의 `분류` 와 같은 모양입니다. 온톨로지 경로 서버만 보냅니다.
+ * `표시문` 은 화면에 그대로 쓰는 말이고(「지급수수료 > 멘토링비」), 내부 ID 는 응답에 없습니다.
+ */
+export type 분류값 = { 비목: string; 세목: string | null; 표시문: string };
+
+/** `POST /api/questions` 의 숫자·선택 칸. 코드가 한도 규범의 분모에서 만듭니다(`ontology_gate.py::추가입력_칸`). */
+export type 추가입력칸 = {
+  키: string;
+  라벨: string;
+  단위: string | null;
+  형식: "숫자" | "선택";
+  선택지?: string[];
+};
+
+/** 어려운 말 풀이 한 건. 질문 응답과 판정 결과가 같은 모양으로 줍니다. */
+export type 용어풀이항목 = { 용어: string; 풀이: string };
+
+/** LLM 없이 코드가 규범과 입력값을 비교한 결과. `비교값` · `한도` 는 화면 문구, `발췌` 는 규정 원문입니다. */
+export type 코드판정값 = {
+  종류: "금지" | "한도초과" | "부가세기준미정";
+  비교값: string | null;
+  한도: string | null;
+  발췌: string | null;
+};
+
 export type 정규화결과 = {
   품목: string | null;
   금액: number | null;

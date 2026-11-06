@@ -9,7 +9,8 @@
 //    → 그래서 '후보가 비어도 정상' 으로 다뤄야 합니다.
 
 import { 정규화SSE } from "./sse";
-import type { 비목후보, 심층질문항목 } from "./server-types";
+import { 분류정리 } from "./adapt";
+import type { 비목후보, 심층질문항목, 부가세구분, 분류값 } from "./server-types";
 
 export type 정규화입력값 = {
   품목: string;
@@ -19,14 +20,26 @@ export type 정규화입력값 = {
   거래처?: string;
   추가설명?: string;
   사업명?: string;
+  부가세구분?: 부가세구분;
 };
 
 export type 정규화출력 = {
   비목후보: 비목후보[];
+  /** 온톨로지 경로 서버만 줍니다. 비어 있으면 화면은 비목만 고르는 예전 모양입니다. */
+  분류후보: 분류값[];
   정규화: Record<string, unknown>;
   질문원문: string;
   심층질문: 심층질문항목[];
 };
+
+/** 서버 계약은 최대 3개이고 맨 앞이 가장 가능성 높은 후보입니다. 순서를 바꾸지 않습니다. */
+function 분류후보정리(값: unknown): 분류값[] {
+  if (!Array.isArray(값)) return [];
+  return 값.flatMap((항목) => {
+    const 분류 = 분류정리(항목);
+    return 분류 ? [분류] : [];
+  }).slice(0, 3);
+}
 
 /**
  * 서버가 준 심층질문 배열을 화면이 믿고 쓸 수 있는 모양으로 다듬습니다.
@@ -114,6 +127,7 @@ export async function 정규화하기(
 
   return {
     비목후보: 후보정리(결과["비목후보"]),
+    분류후보: 분류후보정리(결과["분류후보"]),
     정규화: 결과,
     질문원문: typeof 결과["질문원문"] === "string" ? (결과["질문원문"] as string) : "",
     심층질문: 심층질문정리(결과["심층질문"]),

@@ -2,7 +2,7 @@
 
 import { 주소, 인증오류 } from "./http";
 import { 현재토큰 as 토큰 } from "./session";   // 주의: Supabase 토큰 + 데모 토큰을 한 곳에서 고릅니다
-import type { 답변항목 } from "./server-types";
+import type { 답변항목, 부가세구분 } from "./server-types";
 
 /**
  * SSE over POST.
@@ -116,6 +116,7 @@ export type 정규화입력 = {
   품목: string; 금액: number; 용도: string;              // 폼 경로 필수 3종
   집행예정일?: string; 거래처?: string; 추가설명?: string;
   사업명?: string;
+  부가세구분?: 부가세구분;
   특수관계?: 특수관계;
 };
 
@@ -135,6 +136,11 @@ export type 판정입력 = {
   답변?: 답변항목[];
   /** 답변이 어느 질문 묶음의 것인지 알려 주는 키. `POST /api/questions` 응답 값 그대로입니다. */
   질문세트?: string | null;
+  /** 분류 확인에서 확정한 세목. 서버가 그 비목 아래에서 찾지 못하면 판단불가입니다. */
+  확정세목?: string | null;
+  /** 추가 입력 칸에 채운 값. 코드의 한도 비교는 이 값과 금액 · 부가세구분만 읽습니다. */
+  추가입력값?: Record<string, string | number>;
+  부가세구분?: 부가세구분;
 };
 
 /**

@@ -6,11 +6,14 @@
 //    모두 빈 결과로 돌려주고, 화면은 질문 없이 바로 판정으로 넘어갑니다. 사용자에게 오류를 보이지 않습니다.
 
 import { POST } from "./http";
-import type { 확인질문, 확인질문선택지, 확인질문근거 } from "./server-types";
+import { 용어풀이정리 } from "./adapt";
+import type { 확인질문, 확인질문선택지, 확인질문근거, 추가입력칸, 용어풀이항목, 부가세구분 } from "./server-types";
 
 export type 질문입력 = {
   사업명?: string | null;
   확정비목: string;
+  확정세목?: string | null;
+  부가세구분?: 부가세구분;
   세부유형?: string | null;
   품목: string;
   금액: number;
@@ -18,13 +21,15 @@ export type 질문입력 = {
   질문원문?: string;
 };
 
-/** `질문` 이 비어 있으면 질문 화면 없이 바로 판정합니다. */
+/** `질문` 과 `추가입력` 이 둘 다 비어 있으면 확인 화면 없이 바로 판정합니다. */
 export type 질문결과 = {
   질문세트: string | null;
   질문: 확인질문[];
+  추가입력: 추가입력칸[];
+  용어풀이: 용어풀이항목[];
 };
 
-const 빈질문결과: 질문결과 = { 질문세트: null, 질문: [] };
+const 빈질문결과: 질문결과 = { 질문세트: null, 질문: [], 추가입력: [], 용어풀이: [] };
 
 // 서버의 질문 LLM 제한(20초)보다 조금 길게 잡았습니다.
 const 제한시간ms = 25000;
@@ -79,6 +84,49 @@ function 질문정리(값: unknown): 확인질문[] {
   });
 }
 
+function 추가입력정리(값: unknown): 추가입력칸[] {
+  if (!Array.isArray(값)) return [];
+  return 값.flatMap((항목): 추가입력칸[] => {
+    if (typeof 항목 !== "object" || 항목 === null) return [];
+    const o = 항목 as Record<string, unknown>;
+    const 키 = 문자(o, "키");
+    const 라벨 = 문자(o, "라벨");
+    if (!키 || !라벨) return [];
+    const 단위 = 문자(o, "단위") || null;
+    if (o["형식"] === "숫자") return [{ 키, 라벨, 단위, 형식: "숫자" }];
+    if (o["형식"] !== "선택" || !Array.isArray(o["선택지"])) return [];
+    const 선택지 = (o["선택지"] as unknown[]).filter((v): v is string => typeof v === "string" && !!v);
+    return 선택지.length ? [{ 키, 라벨, 단위, 형식: "선택", 선택지 }] : [];
+  });
+}
+
+/** 칸마다 미리 채울 글자. `수치` 에 키가 있을 때만 채우고, 사용자가 지우거나 고칠 수 있습니다. */
+export function 추가입력초기값(칸들: 추가입력칸[], 수치: Record<string, unknown> | undefined): Record<string, string> {
+  const 값들: Record<string, string> = {};
+  for (const 칸 of 칸들) {
+    const v = 수치?.[칸.키];
+    if (typeof v !== "string" && typeof v !== "number") continue;
+    const 글 = String(v).trim();
+    if (글 && (칸.형식 === "숫자" ? Number.isFinite(Number(글)) : 칸.선택지?.includes(글))) 값들[칸.키] = 글;
+  }
+  return 값들;
+}
+
+/** 판정으로 보낼 `추가입력값`. 비운 칸은 보내지 않습니다. 서버가 그 한도를 비교하지 않고 결과의 조건으로 안내합니다. */
+export function 추가입력값만들기(칸들: 추가입력칸[], 값들: Record<string, string>): Record<string, string | number> {
+  const 보낼값: Record<string, string | number> = {};
+  for (const 칸 of 칸들) {
+    const 글 = (값들[칸.키] ?? "").trim();
+    if (!글) continue;
+    if (칸.형식 === "선택") {
+      if (칸.선택지?.includes(글)) 보낼값[칸.키] = 글;
+    } else if (Number.isFinite(Number(글))) {
+      보낼값[칸.키] = Number(글);
+    }
+  }
+  return 보낼값;
+}
+
 async function 질문요청(입력: 질문입력): Promise<질문결과> {
   try {
     const 응답 = (await POST("/api/questions", {
@@ -86,12 +134,15 @@ async function 질문요청(입력: 질문입력): Promise<질문결과> {
       질문원문: 입력.질문원문?.slice(0, 질문원문상한),
     })) as Record<string, unknown> | null;
     if (!응답) return 빈질문결과;
-    const 질문 = 질문정리(응답["질문"]);
+    if (응답["상태"] !== "있음") return 빈질문결과;
     const 질문세트 = 문자(응답, "질문세트");
     // 주의: 질문세트가 없으면 서버가 답을 어느 질문에 맞출지 몰라 답이 판정에 들어가지 못합니다.
-    //    답해도 쓰이지 않을 질문은 묻지 않습니다.
-    if (응답["상태"] !== "있음" || !질문.length || !질문세트) return 빈질문결과;
-    return { 질문세트, 질문 };
+    //    답해도 쓰이지 않을 질문은 묻지 않습니다. 추가 입력 칸은 질문세트 없이도 판정에 들어갑니다.
+    const 질문 = 질문세트 ? 질문정리(응답["질문"]) : [];
+    const 추가입력 = 추가입력정리(응답["추가입력"]);
+    // 주의: 온톨로지 경로는 질문이 비고 칸만 있을 수 있습니다. 질문만 보고 버리면 칸이 화면에 나오지 않습니다.
+    if (!질문.length && !추가입력.length) return 빈질문결과;
+    return { 질문세트: 질문세트 || null, 질문, 추가입력, 용어풀이: 용어풀이정리(응답["용어풀이"]) };
   } catch (e) {
     console.warn("[질문] 확인 질문을 받지 못해 바로 판정합니다", e);
     return 빈질문결과;

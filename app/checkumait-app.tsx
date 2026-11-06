@@ -8,7 +8,7 @@ import type {
   PlanStatus,
   ScheduleItem,
 } from "../lib/types";
-import type { 비목후보, 답변항목, 확인질문, 사용자답변항목 } from "../lib/server-types";
+import type { 비목후보, 답변항목, 확인질문, 사용자답변항목, 부가세구분, 분류값, 추가입력칸, 용어풀이항목, 코드판정값 } from "../lib/server-types";
 import { API켜짐 } from "../lib/config";
 import { 판정실행 } from "../lib/judge";
 import { 정규화하기 } from "../lib/normalize";
@@ -21,8 +21,8 @@ import { 기관검색, 사업요약, 기관저장, 선택기관, 기본기관명
 import { 첨부보관, 첨부읽기, 첨부쓰기, 파일을첨부로, 크기표기, type 첨부 } from "../lib/attachments";
 import { 지금출처, 출처구독, 출처문구 } from "../lib/data-source";
 import { 인증켜짐, 로그인 as supabase로그인, 가입 as supabase가입, 로그아웃 as supabase로그아웃, 이메일 as supabase이메일, 팀이름 as supabase팀이름, 팀이름쓰기 as supabase팀이름쓰기, 온보딩기록읽기, 온보딩마침, 재설정링크읽기, 재설정끝내기, 재설정메일보내기, 새비밀번호저장 } from "../lib/supabase";
-import { 상세를계획으로, 판정제목, 행동문구, 시각표기, L3등록사실, L3현재문서요약짓기, 문서명보기, 답표기, type L3현재문서요약 } from "../lib/adapt";
-import { 질문가져오기, type 질문결과 } from "../lib/questions";
+import { 상세를계획으로, 판정제목, 행동문구, 시각표기, L3등록사실, L3현재문서요약짓기, 문서명보기, 답표기, 로조사, 부가세확정, 부가세표기, 부가세질문id, type L3현재문서요약 } from "../lib/adapt";
+import { 질문가져오기, 추가입력초기값, 추가입력값만들기, type 질문결과 } from "../lib/questions";
 // 주의: `데모종료` 는 남깁니다 — 「계정 없이 둘러보기」를 없앴어도 예전에 받아 둔
 //    데모 토큰이 브라우저에 2시간 남아 있을 수 있고, 그게 로그인 조회를 가로챕니다.
 import { 데모종료, 데모중, 이메일기억, 기억된이메일, 이메일잊기, 팀이름기억, 기억된팀이름 } from "../lib/session";
@@ -1701,6 +1701,9 @@ export default function CheckumaitApp() {
             대체입력={작업.대체입력}
             답변={작업.답변}
             질문세트={작업.질문세트}
+            추가입력값={작업.추가입력값}
+            확정세목={작업.확정세목}
+            부가세구분={작업.부가세구분}
             이름={작업.계획.name}
             순번={순번}
             최소화={작업.최소화}
@@ -3230,6 +3233,9 @@ type 판정시작입력 = {
   대체입력?: ComponentProps<typeof AiCheckingOverlay>["대체입력"];
   답변?: 답변항목[];
   질문세트?: string | null;
+  추가입력값?: Record<string, string | number>;
+  확정세목?: string | null;
+  부가세구분?: 부가세구분;
   /** 창을 열어 둔 채 끝났을 때만 부릅니다. 접어 두었으면 사용자를 끌고 가지 않고 최상단이 알립니다. */
   끝남: (판정된계획?: ExpensePlan, 오류?: string) => void;
 };
@@ -3248,6 +3254,9 @@ function AiCheckingOverlay({
   대체입력,
   답변,
   질문세트,
+  추가입력값,
+  확정세목,
+  부가세구분,
   제목,
   onComplete,
   onFail,
@@ -3285,6 +3294,11 @@ function AiCheckingOverlay({
   답변?: 답변항목[];
   /** 답변이 속한 질문 묶음의 키. */
   질문세트?: string | null;
+  /** 추가 입력 칸에 채운 값. */
+  추가입력값?: Record<string, string | number>;
+  /** 새 지출 계획 화면에서 확정한 값. 재점검은 안 주고 계획에 저장된 값을 씁니다(`lib/judge.ts`). */
+  확정세목?: string | null;
+  부가세구분?: 부가세구분;
   onComplete: (판정된계획?: ExpensePlan) => void;
   onFail?: (메시지: string) => void;
 }) {
@@ -3342,7 +3356,7 @@ function AiCheckingOverlay({
             진행시각.current = Date.now();
           },
         },
-        { 대체입력, 답변, 질문세트 },
+        { 대체입력, 답변, 질문세트, 추가입력값, 확정세목, 부가세구분 },
       );
     }
 
@@ -3429,7 +3443,7 @@ function AiCheckingOverlay({
 }
 
 /** 재점검 창에서 받은 답. `AiCheckingOverlay` 로 그대로 넘깁니다. */
-type 재점검답 = { 답변: 답변항목[]; 질문세트: string | null };
+type 재점검답 = { 답변: 답변항목[]; 질문세트: string | null; 추가입력값: Record<string, string | number> };
 
 /**
  * 재점검 전 확인 창. 서버 모드는 새 지출 계획과 같은 확인 질문을 묻고, 물을 것이 없으면 바로 점검합니다.
@@ -3469,9 +3483,11 @@ function PlanRecheckQuestionsModal({
   const 질문키 = `${category}|${세부유형}`;
   const [받은, set받은] = useState<{ 키: string; 결과: 질문결과 } | null>(null);
   const [답, set답] = useState<Record<string, string>>({});
+  const [칸값, set칸값] = useState<Record<string, string>>({});
   const 받는중 = 서버모드 && !!category && 받은?.키 !== 질문키;
   const 지금결과 = 서버모드 && 받은?.키 === 질문키 ? 받은.결과 : null;
   const 서버질문 = 지금결과?.질문 ?? [];
+  const 서버칸 = 지금결과?.추가입력 ?? [];
   // id(Q1…)는 묶음마다 다시 매겨지므로 옛 답이 새 질문의 답이 되지 않게 묶음 키를 붙입니다.
   const 답키 = (q: 확인질문) => `${지금결과?.질문세트}:${q.id}`;
 
@@ -3481,6 +3497,9 @@ function PlanRecheckQuestionsModal({
     void 질문가져오기({
       사업명: 현재사업(),
       확정비목: category,
+      // 주의: 계획에 저장된 세목과 부가세 구분을 그대로 보냅니다. 이 창에서 고른 비목이면 저장된 세목은 없습니다.
+      확정세목: plan.category ? plan.확정세목 : undefined,
+      부가세구분: plan.부가세구분,
       세부유형,
       품목: plan.name,
       금액: plan.amount,
@@ -3488,10 +3507,11 @@ function PlanRecheckQuestionsModal({
     }).then((결과) => {
       if (!살아있음) return;
       // 물을 것이 없으면 바로 점검합니다. 이 창에서 비목을 고른 경우는 사용자가 시작을 눌러야 합니다.
-      if (!결과.질문.length && plan.category) {
+      if (!결과.질문.length && !결과.추가입력.length && plan.category) {
         start();
         return;
       }
+      set칸값(추가입력초기값(결과.추가입력, plan.수치));
       set받은({ 키: 질문키, 결과 });
     });
     return () => {
@@ -3528,12 +3548,16 @@ function PlanRecheckQuestionsModal({
               onChange={set선택비목}
             />
           )}
+          {서버모드 && (
+            <추가입력칸목록 칸들={서버칸} 값들={칸값} onChange={(키, v) => set칸값((prev) => ({ ...prev, [키]: v }))} />
+          )}
           {서버모드
             ? 서버질문.map((q) => (
                 <확인질문카드
                   key={답키(q)}
                   질문={q}
                   값={답[답키(q)]}
+                  풀이={지금결과?.용어풀이}
                   onChange={(v) => set답((prev) => ({ ...prev, [답키(q)]: v }))}
                 />
               ))
@@ -3549,10 +3573,11 @@ function PlanRecheckQuestionsModal({
             onClick={() =>
               start(
                 plan.category ? undefined : 선택비목,
-                서버질문.length
+                서버질문.length || 서버칸.length
                   ? {
                       답변: 서버질문.map((q) => ({ code: q.id, 값: 답[답키(q)] })),
-                      질문세트: 지금결과?.질문세트 ?? null,
+                      질문세트: 서버질문.length ? (지금결과?.질문세트 ?? null) : null,
+                      추가입력값: 추가입력값만들기(서버칸, 칸값),
                     }
                   : undefined,
               )
@@ -4120,6 +4145,7 @@ function PlansPage({
               },
               답변: 답?.답변,
               질문세트: 답?.질문세트,
+              추가입력값: 답?.추가입력값,
               끝남: (_판정된계획, 오류) => {
                 if (오류) {
                   setBulkComplete(false);
@@ -4206,6 +4232,9 @@ function NewPlanPage({
   const [name, setName] = useState("");
   const [purpose, setPurpose] = useState("");
   const [amount, setAmount] = useState("");
+  // 주의: 기본은 「모르겠어요」입니다. 고르지 않은 값을 포함으로 두면 한도 비교가 틀린 기준으로 돕니다.
+  //    모름이고 비교에 필요하면 서버가 3단계에 부가세 확인 질문을 더합니다.
+  const [부가세, set부가세] = useState<부가세구분>("모름");
   // 주의: 비워 둡니다. 예전 기본값(2026-09-30)은 이미 지난 날이었고, 사용자가 안 고치면 그대로
   //    집행예정일로 저장되어 할일 기한까지 지난 날짜로 계산됐습니다.
   const [date, setDate] = useState("");
@@ -4221,13 +4250,21 @@ function NewPlanPage({
   //    '여러 개' 줄 수 있고 그때는 배지도 여러 개 붙어야 하므로 배열로 들고 갑니다.
   const [서버후보, set서버후보] = useState<비목후보[]>([]);
   const [서버정규화, set서버정규화] = useState<Record<string, unknown> | null>(null);
+  // 온톨로지 경로 서버가 준 분류 후보와 지금 고른 후보입니다. 옛 경로 서버면 후보가 비어 있고 비목만 고릅니다.
+  // 주의: `선택분류` 가 null 이면 세목 없이 `category` 비목으로만 판정합니다.
+  const [서버분류후보, set서버분류후보] = useState<분류값[]>([]);
+  const [선택분류, set선택분류] = useState<분류값 | null>(null);
   // 「AI 점검하기」 때 서버에서 받은 확인 질문입니다. 예시 모드에서는 쓰지 않습니다.
   const [서버질문, set서버질문] = useState<확인질문[]>([]);
   const [질문세트, set질문세트] = useState<string | null>(null);
   // 질문 id → 값(예·아니오·모름).
   const [질문답변, set질문답변] = useState<Record<string, string>>({});
+  const [서버칸, set서버칸] = useState<추가입력칸[]>([]);
+  // 칸 키 → 입력한 글자. 비운 칸은 판정으로 보내지 않습니다.
+  const [칸값, set칸값] = useState<Record<string, string>>({});
+  const [서버풀이, set서버풀이] = useState<용어풀이항목[]>([]);
   // 지금 들고 있는 질문이 어떤 비목으로 받은 것인지 둡니다. 품목·목적·금액을 고치면 질문 자체가 비워집니다.
-  const 질문키 = `${category}|${feeSubtype}`;
+  const 질문키 = `${category}|${feeSubtype}|${선택분류?.표시문 ?? ""}`;
   const [받은질문키, set받은질문키] = useState<string | null>(null);
   const [저장중, set저장중] = useState(false);
   const [연동오류, set연동오류] = useState<string | null>(null);
@@ -4268,12 +4305,47 @@ function NewPlanPage({
   useEffect(() => {
     set서버정규화(null);
     set서버후보([]);
+    set서버분류후보([]);
+    set선택분류(null);
     set서버질문([]);
     set질문세트(null);
     set질문답변({});
+    set서버칸([]);
+    set칸값({});
+    set서버풀이([]);
     setCategory((v) => (v && v === 자동선택비목.current ? "" : v));
     자동선택비목.current = null;
-  }, [name, purpose, amount]);
+  }, [name, purpose, amount, 부가세]);
+
+  // 주의: 이 사업의 비목 목록에 없는 후보는 화면에 칸이 없어 무엇이 골렸는지 보이지 않으므로 뺍니다.
+  const 표시후보 = 서버분류후보.filter((c) => 비목선택지.includes(c.비목));
+  const 분류경로 = 표시후보.length > 0;
+  const 고른비목후보 = 표시후보.filter((c) => c.비목 === category);
+  /** 비목 칸을 눌렀을 때. 그 비목의 후보가 있으면 맨 앞 후보를, 없으면 세목 없이 비목만 고릅니다. */
+  const 비목고르기 = (비목: string) => {
+    setCategory(비목);
+    set선택분류((지금) => (지금?.비목 === 비목 ? 지금 : 표시후보.find((c) => c.비목 === 비목) ?? null));
+  };
+  /**
+   * 계획에 저장할 `정규화`. 계획 생성 API 에 세목 · 부가세 칸이 없어 이 값 안에 둡니다. 재점검이 여기서 읽습니다.
+   * 주의: `수치` 가 없으면 옛 경로 서버입니다. 판정 캐시 키와 프롬프트에 들어가는 값이라 예전과 똑같이 그대로 보냅니다.
+   * 주의: 비운 칸은 `수치` 에서도 지웁니다. 남겨 두면 재점검 때 지운 값이 다시 채워집니다.
+   *    코드의 한도 비교는 `추가입력값` 만 읽으므로(`orchestrate.py::게이트_입력`) 이 값이 비교에 쓰이지는 않습니다.
+   */
+  const 저장할정규화 = () => {
+    if (!서버정규화 || typeof 서버정규화["수치"] !== "object" || 서버정규화["수치"] === null) return 서버정규화;
+    const 수치: Record<string, unknown> = { ...(서버정규화["수치"] as Record<string, unknown>) };
+    for (const 칸 of 서버칸) delete 수치[칸.키];
+    return {
+      ...서버정규화,
+      수치: {
+        ...수치,
+        ...추가입력값만들기(서버칸, 칸값),
+        부가세구분: 부가세확정(부가세, 질문답변[부가세질문id]) ?? 부가세,
+      },
+      ...(선택분류?.세목 && step >= 2 ? { 확정세목: 선택분류.세목 } : {}),
+    };
+  };
 
   /**
    * 배지를 달 비목들. 서버가 후보를 주면 '준 만큼 전부'입니다. 서버 후보가 하나여도 배지는
@@ -4316,17 +4388,22 @@ function NewPlanPage({
       집행예정일: date || undefined,
       거래처: vendor || undefined,
       사업명: 현재사업(),
+      부가세구분: 부가세,
     })
       .then((r) => {
         if (!살아있음) return;
         set서버정규화(r.정규화);
         // 주의: 후보가 '비어 있는 것도 정상' 입니다 (운영 서버 폼 경로). 그때는 사용자가 고릅니다.
         set서버후보(r.비목후보);
+        set서버분류후보(r.분류후보);
+        const 첫분류 = r.분류후보.find((c) => 비목선택지.includes(c.비목)) ?? null;
+        set선택분류(첫분류);
         // 자동 선택은 가장 확신하는 '하나' 만. 배지는 후보 전부에 붙지만 커서는 하나다.
         // 주의: 후보가 없으면 지금 값을 그대로 둡니다. 처음이면 빈 값이고, 이전 단계로 돌아갔다
         //    다시 온 경우에는 사용자가 직접 고른 비목이 남습니다.
         // 주의: 이 사업의 비목 목록에 없는 후보는 화면에 칸이 없어 무엇이 골렸는지 보이지 않습니다.
-        const 첫후보 = r.비목후보.map((c) => c.비목).find((b) => 비목선택지.includes(b));
+        // 주의: 분류 후보가 있으면 그 맨 앞이 먼저입니다. 신뢰도로 다시 세운 비목 후보를 따르면 문구와 칸이 어긋납니다.
+        const 첫후보 = 첫분류?.비목 ?? r.비목후보.map((c) => c.비목).find((b) => 비목선택지.includes(b));
         if (첫후보) {
           setCategory(첫후보);
           자동선택비목.current = 첫후보;
@@ -4357,6 +4434,7 @@ function NewPlanPage({
       name: name || "새 지출 계획",
       purpose: purpose || "사업 수행을 위한 지출",
       amount: Number(amount.replace(/,/g, "")) || 0,
+      부가세구분: 부가세,
       plannedDate: date,
       vendor: vendor || "거래처 미정",
       // 서버가 없는 예시 모드 전용입니다. 1단계 임시저장은 비목이 비어 있어 키워드 추정을 씁니다.
@@ -4396,7 +4474,7 @@ function NewPlanPage({
       //    1단계에서 임시저장하면 아직 비목을 고르지 않았으므로 보내지 않습니다 — 보내면 초기값이
       //    확정비목으로 저장되고, 나중 판정이 그 비목으로 강제됩니다.
       확정비목: step >= 2 && category ? category.split(" · ")[0] : undefined,
-      정규화: 서버정규화 ?? undefined,
+      정규화: 저장할정규화() ?? undefined,
     });
 
   /**
@@ -4420,7 +4498,7 @@ function NewPlanPage({
       대체입력: {
         사업명: 현재사업(),
         확정비목: category.split(" · ")[0],
-        정규화: 서버정규화,
+        정규화: 저장할정규화(),
         제목: name,
         용도: purpose,
         금액: Number(amount.replace(/,/g, "")) || 0,
@@ -4429,6 +4507,9 @@ function NewPlanPage({
         .filter((q) => 질문답변[q.id])
         .map((q) => ({ code: q.id, 값: 질문답변[q.id] })),
       질문세트: 서버질문.length ? 질문세트 : null,
+      추가입력값: 추가입력값만들기(서버칸, 칸값),
+      확정세목: 선택분류?.세목 ?? null,
+      부가세구분: 부가세,
       끝남: (판정된계획, 오류) => {
         if (오류) {
           set연동오류(오류);
@@ -4475,7 +4556,10 @@ function NewPlanPage({
     void 질문가져오기({
       사업명: 현재사업(),
       확정비목: category.split(" · ")[0],
-      세부유형: category === "지급수수료" ? feeSubtype : null,
+      확정세목: 선택분류?.세목 ?? null,
+      부가세구분: 부가세,
+      // 주의: 세부 유형 칸은 분류 후보가 없을 때만 보입니다. 안 보이는 기본값(멘토링)을 서버로 보내면 안 됩니다.
+      세부유형: category === "지급수수료" && !분류경로 ? feeSubtype : null,
       품목: name,
       금액: Number(amount.replace(/,/g, "")) || 0,
       용도: purpose,
@@ -4486,7 +4570,15 @@ function NewPlanPage({
       set서버질문(r.질문);
       set질문세트(r.질문세트);
       set질문답변({});
-      if (r.질문.length) {
+      set서버칸(r.추가입력);
+      set서버풀이(r.용어풀이);
+      // 다른 세목으로 다시 받아도 키가 같은 칸에 적은 값은 둡니다. 입력을 고치면 위에서 전부 비웁니다.
+      const 수치 = 서버정규화?.["수치"];
+      set칸값((지금) => ({
+        ...추가입력초기값(r.추가입력, typeof 수치 === "object" && 수치 !== null ? (수치 as Record<string, unknown>) : undefined),
+        ...지금,
+      }));
+      if (r.질문.length || r.추가입력.length) {
         set받은질문키(질문키);
         set연동오류(null);
         setStep(3);
@@ -4562,7 +4654,7 @@ function NewPlanPage({
               </label>
               <label>
                 <span className="field-label">
-                  예상 금액 <small className="vat-included">부가세 포함</small> <em className="required-mark">*</em>
+                  예상 금액 <em className="required-mark">*</em>
                 </span>
                 <input
                   value={amount}
@@ -4573,6 +4665,14 @@ function NewPlanPage({
                 />
               </label>
               <label>
+                부가세 구분
+                <select value={부가세} onChange={(e) => set부가세(e.target.value as 부가세구분)}>
+                  <option value="포함">부가세 포함 금액이에요</option>
+                  <option value="공급가액">공급가액이에요 (부가세 별도)</option>
+                  <option value="모름">모르겠어요</option>
+                </select>
+              </label>
+              <label>
                 예상 지출일
                 <input
                   type="date"
@@ -4580,7 +4680,7 @@ function NewPlanPage({
                   onChange={(e) => setDate(e.target.value)}
                 />
               </label>
-              <label className="full">
+              <label>
                 거래처
                 <input
                   value={vendor}
@@ -4652,6 +4752,19 @@ function NewPlanPage({
                 ? "입력한 지출 내용과 목적을 바탕으로 가장 가까운 비목을 자동 선택했습니다. 직접 변경할 수 있습니다."
                 : "추천할 비목을 찾지 못했습니다. 지출 내용에 맞는 비목을 직접 골라 주세요."}
             </p>
+            {/* 주의: 분류 확인은 필수입니다. 첫 후보를 골라 두지만 아래 「AI 점검하기」를 눌러야 그 분류로 판정합니다. */}
+            {분류경로 && category && (
+              <div className="auto-check-note classification-note">
+                <Icon name="check" />
+                <span>
+                  <b>
+                    {선택분류?.표시문 ?? category}
+                    {로조사(선택분류?.표시문 ?? category)} 보고 판정해요
+                  </b>
+                  맞으면 「AI 점검하기」를 눌러 주세요. 다르면 아래에서 고칠 수 있어요.
+                </span>
+              </div>
+            )}
             <div className="category-grid">
               {비목선택지.map((item) => {
                 const 추천됨 = 추천비목.has(item);
@@ -4660,7 +4773,7 @@ function NewPlanPage({
                   <button
                     key={item}
                     className={`${category === item ? "selected" : ""} ${추천됨 ? "recommended" : ""}`}
-                    onClick={() => setCategory(item)}
+                    onClick={() => 비목고르기(item)}
                   >
                     <span className="category-name">
                       {item}
@@ -4678,7 +4791,32 @@ function NewPlanPage({
                 );
               })}
             </div>
-            {category === "지급수수료" && (
+            {/* 주의: 세목은 서버가 준 후보 안에서만 고릅니다. 다른 글자를 확정세목으로 보내면 서버가 판단불가로 끝냅니다. */}
+            {고른비목후보.some((c) => c.세목) && (
+              <section className="fee-subtype-panel">
+                <header>
+                  <b>어떤 {category}인가요?</b>
+                  <span>세목에 따라 한도와 확인 기준이 달라져요. 잘 모르면 세목 없이 점검할 수 있어요.</span>
+                </header>
+                <div>
+                  {고른비목후보.map((c) => (
+                    <button
+                      key={c.표시문}
+                      className={선택분류?.표시문 === c.표시문 ? "selected" : ""}
+                      onClick={() => set선택분류(c)}
+                    >
+                      {c.세목 ?? c.비목}
+                    </button>
+                  ))}
+                  {!고른비목후보.some((c) => !c.세목) && (
+                    <button className={!선택분류 ? "selected" : ""} onClick={() => set선택분류(null)}>
+                      잘 모르겠어요
+                    </button>
+                  )}
+                </div>
+              </section>
+            )}
+            {category === "지급수수료" && !분류경로 && (
               <section className="fee-subtype-panel">
                 <header>
                   <b>어떤 지급수수료인가요?</b>
@@ -4719,12 +4857,16 @@ function NewPlanPage({
               </span>
             </div>
             <div className="question-list">
+              {API켜짐() && (
+                <추가입력칸목록 칸들={서버칸} 값들={칸값} onChange={(키, v) => set칸값((prev) => ({ ...prev, [키]: v }))} />
+              )}
               {API켜짐()
                 ? 서버질문.map((q) => (
                     <확인질문카드
                       key={`${질문세트}-${q.id}`}
                       질문={q}
                       값={질문답변[q.id]}
+                      풀이={서버풀이}
                       onChange={(v) => set질문답변((prev) => ({ ...prev, [q.id]: v }))}
                     />
                   ))
@@ -4740,7 +4882,9 @@ function NewPlanPage({
               <Icon name="spark" />
               {/* 주의: 예시 모드는 판정을 부르지 않아 답이 어디에도 쓰이지 않으므로 그 사실을 그대로 둡니다. */}
               {API켜짐()
-                ? "답변을 반영해 판정합니다. 모르면 모르겠어요를 눌러 주세요."
+                ? 서버질문.length
+                  ? "답변을 반영해 판정합니다. 모르면 모르겠어요를 눌러 주세요."
+                  : "채운 값을 반영해 판정합니다. 모르면 비워 두세요."
                 : "답변은 아직 AI 점검에 반영되지 않습니다. 품목·금액·사용 목적으로 공통 기준과 비목별 기준을 점검합니다."}
             </div>
           </>
@@ -4779,7 +4923,7 @@ function NewPlanPage({
               setCategoryLoading(true);
             } else if (step === 2) {
               // 주의: 「이전」으로 왔다가 그대로 돌아가면 다시 받지 않습니다. 다시 받다 실패하면 답이 사라집니다.
-              if (API켜짐() && 서버질문.length && 받은질문키 === 질문키) setStep(3);
+              if (API켜짐() && (서버질문.length || 서버칸.length) && 받은질문키 === 질문키) setStep(3);
               else setQuestionsLoading(true);
             } else submit();
           }}
@@ -4822,18 +4966,27 @@ function NewPlanPage({
 function 확인질문카드({
   질문,
   값,
+  풀이,
   onChange,
 }: {
   질문: 확인질문;
   값?: string;
+  /** 서버가 준 어려운 말 풀이 전체. 이 질문 문장에 나오는 말만 그립니다. */
+  풀이?: 용어풀이항목[];
   onChange: (값: string) => void;
 }) {
   const 근거 = 질문.근거;
+  const 이질문풀이 = (풀이 ?? []).filter((t) => 질문.질문문.includes(t.용어));
   return (
     <div className="question confirm-question">
       <div className="confirm-question-text">
         <b>{질문.질문문}</b>
         {질문.이유 && <p>{질문.이유}</p>}
+        {이질문풀이.map((t) => (
+          <p className="confirm-question-term" key={t.용어}>
+            <strong>{t.용어}</strong> {t.풀이}
+          </p>
+        ))}
       </div>
       <div className="confirm-question-options" role="group" aria-label={질문.질문문}>
         {질문.선택지.map((s) => (
@@ -4866,6 +5019,53 @@ function 확인질문카드({
   );
 }
 
+/**
+ * 3단계 숫자·선택 칸. 코드가 확정 세목의 한도에서 만든 칸이고, 질문과 달리 비워 둬도 넘어갑니다.
+ * 칸이 없으면(옛 경로 서버 포함) 아무것도 그리지 않습니다.
+ */
+function 추가입력칸목록({
+  칸들,
+  값들,
+  onChange,
+}: {
+  칸들: 추가입력칸[];
+  값들: Record<string, string>;
+  onChange: (키: string, 값: string) => void;
+}) {
+  if (!칸들.length) return null;
+  return (
+    <section className="question extra-inputs">
+      <header className="confirm-question-text">
+        <b>아는 값만 채워 주세요</b>
+        <p>비워 두면 그 한도는 비교하지 않고, 결과에 무엇을 더 알려 주시면 되는지 안내해요.</p>
+      </header>
+      <div className="field-grid">
+        {칸들.map((칸) => (
+          <label key={칸.키}>
+            {칸.단위 ? `${칸.라벨} (${칸.단위})` : 칸.라벨}
+            {칸.형식 === "선택" ? (
+              <select value={값들[칸.키] ?? ""} onChange={(e) => onChange(칸.키, e.target.value)}>
+                <option value="">모르겠어요</option>
+                {칸.선택지?.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                inputMode="decimal"
+                value={값들[칸.키] ?? ""}
+                onChange={(e) => onChange(칸.키, e.target.value.replace(/[^0-9.]/g, ""))}
+              />
+            )}
+          </label>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 /** 결과 화면의 「확인한 내용」. 답한 내용이 없는 판정(옛 계획·재점검)에는 그리지 않습니다. */
 function 확인한내용({ 항목 }: { 항목?: 사용자답변항목[] }) {
   if (!항목?.length) return null;
@@ -4877,6 +5077,91 @@ function 확인한내용({ 항목 }: { 항목?: 사용자답변항목[] }) {
           <li key={index}>
             <span>{a.질문문}</span>
             <strong>{답표기(a.답)}</strong>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/**
+ * 코드가 규범과 입력값을 비교한 결과. 「확인한 내용」과 같은 카드 모양입니다.
+ * 주의: 부가세 기준 미정은 두 경우입니다. 입력이 모름이면 사용자가 고르면 풀립니다. 입력을 이미 골랐는데 나왔으면
+ *    규범에 부가세 기준이 없는 경우라(`ontology_gate.py::_후보금액`) 다시 골라도 같으므로 다시 점검하라고 하지 않습니다.
+ */
+function 코드판정카드({
+  판정,
+  부가세,
+  다시점검,
+}: {
+  판정: 코드판정값;
+  부가세?: 부가세구분;
+  다시점검: () => void;
+}) {
+  const 고를수있음 = 판정.종류 === "부가세기준미정" && 부가세 !== "포함" && 부가세 !== "공급가액";
+  const 제목 =
+    판정.종류 === "한도초과"
+      ? "규정의 한도를 넘어요"
+      : 판정.종류 === "금지"
+        ? "규정에서 집행을 막은 항목이에요"
+        : "부가세 기준을 정해야 판정할 수 있어요";
+  const 설명 =
+    판정.종류 === "한도초과"
+      ? 판정.비교값 && 판정.한도
+        ? `${판정.비교값} > 한도 ${판정.한도}`
+        : null
+      : 판정.종류 === "금지"
+        ? null
+        : 고를수있음
+          ? "입력한 금액에 부가세가 포함됐는지에 따라 결과가 달라져요. 부가세 포함 여부를 골라 다시 점검해 주세요."
+          : "규정에 금액의 부가세 기준이 적혀 있지 않아 결과를 정하지 못했어요. 주관기관에 확인해 주세요.";
+  return (
+    <section className="ai-confirmed ai-code-verdict">
+      <b>{제목}</b>
+      {설명 && <p>{설명}</p>}
+      {판정.발췌 && (
+        <div className="ai-code-excerpt">
+          <small>규정 원문</small>
+          <p>{판정.발췌}</p>
+        </div>
+      )}
+      {고를수있음 && (
+        <button type="button" className="outline small" onClick={다시점검}>
+          부가세 고르고 다시 점검하기
+        </button>
+      )}
+    </section>
+  );
+}
+
+/** 결과 화면의 조건·근거 경로 목록. 비어 있으면 그리지 않습니다. */
+function 결과문장목록({ 제목, 항목 }: { 제목: string; 항목?: string[] }) {
+  if (!항목?.length) return null;
+  return (
+    <section className="ai-confirmed">
+      <b>{제목}</b>
+      <ul>
+        {항목.map((문장, index) => (
+          <li key={index}>
+            <span>{문장}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** 결과 화면의 어려운 말 풀이. 비어 있으면 그리지 않습니다. */
+function 결과용어풀이({ 항목 }: { 항목?: 용어풀이항목[] }) {
+  if (!항목?.length) return null;
+  return (
+    <section className="ai-confirmed ai-term-list">
+      <b>어려운 말 풀이</b>
+      <ul>
+        {항목.map((t) => (
+          <li key={t.용어}>
+            <strong>{t.용어}</strong>
+            <span>{t.풀이}</span>
           </li>
         ))}
       </ul>
@@ -5158,6 +5443,11 @@ function PlanDetail({
     link.click();
     URL.revokeObjectURL(url);
   };
+  // 이번 판정의 분류를 먼저 쓰고, 새로고침 뒤에는 계획에 저장해 둔 세목으로 같은 모양을 만듭니다.
+  // 주의: 수정 창에서 화면에만 고친 비목이면 그 값을 그대로 보여 줍니다. 옛 세목을 붙이면 고친 비목과 어긋납니다.
+  const 표시분류 = plan.화면만수정
+    ? plan.category
+    : plan.분류?.표시문 ?? (plan.확정세목 ? `${plan.category} > ${plan.확정세목}` : plan.category);
   return (
     <div className="page expense-detail-page expense-detail-redesign expense-v5">
       <header className="expense-v5-header">
@@ -5211,10 +5501,10 @@ function PlanDetail({
           </header>
           <dl className="expense-v5-plan-grid">
             <Info label="지출 항목" value={plan.name} />
-            <Info label="관련 비목" value={plan.category || "미정"} />
+            <Info label="관련 비목" value={표시분류 || "미정"} />
             <Info
               label="예상 금액"
-              value={`${won(plan.amount)} (부가세 포함)`}
+              value={`${won(plan.amount)}${부가세표기(plan.부가세구분)}`}
             />
             <Info
               label="예상 지출일"
@@ -5330,7 +5620,7 @@ function PlanDetail({
                 <h3>
                   {plan.status === "점검 전" && !plan.판정
                     ? "아직 AI 점검을 하지 않았습니다."
-                    : 판정제목(plan.판정, plan.category) ??
+                    : 판정제목(plan.판정, 표시분류) ??
                       `${plan.category} 기준으로 ${
                         plan.status === "특이사항 없음"
                           ? "특이사항이 없습니다."
@@ -5349,6 +5639,10 @@ function PlanDetail({
                 </p>
               </div>
             </div>
+            {plan.코드판정 && (
+              <코드판정카드 판정={plan.코드판정} 부가세={plan.부가세구분} 다시점검={() => setRecheckQuestions(true)} />
+            )}
+            <결과문장목록 제목="확인할 조건" 항목={plan.조건} />
             <확인한내용 항목={plan.사용자답변} />
             <div className="ai-explanation">
               <Icon name="spark" size={20} />
@@ -5422,6 +5716,8 @@ function PlanDetail({
                 ))}
               </div>
             </section>
+            <결과문장목록 제목="근거 경로" 항목={plan.근거경로} />
+            <결과용어풀이 항목={plan.용어풀이} />
             {/* 주의: 「판단불가」의 결말입니다. 배지와 해설은 '못 정했다' 까지만 말하고,
                 「그래서 뭐라고 물어보나」는 여기 있습니다. 서버가 준 값이 있을 때만
                 나옵니다 — 없으면 카드 전체를 렌더링하지 않습니다(빈 카드를 남기지 않습니다). */}
@@ -5755,6 +6051,7 @@ function PlanDetail({
               },
               답변: 답?.답변,
               질문세트: 답?.질문세트,
+              추가입력값: 답?.추가입력값,
               끝남: (판정된계획, 오류) => {
                 if (오류) {
                   notify(오류);
