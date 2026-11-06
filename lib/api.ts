@@ -75,6 +75,15 @@ export const 계획추가 = (입력: {
   확정비목?: string; 질문원문?: string; 정규화?: unknown;
 }) => POST("/api/plans", 입력) as Promise<계획상세형>;
 
+/**
+ * 예상 지출일을 바꿉니다. `일정이동` 이 true 면 완료 안 된 연결 일정도 같은 일수만큼 옮깁니다.
+ * 주의: 판정은 바뀌지 않습니다. 판정 경로가 집행예정일을 읽지 않습니다.
+ */
+export const 계획수정 = (planId: number | string, 입력: {
+  집행예정일: string | null;
+  일정이동: boolean;
+}) => PATCH(`/api/plans/${planId}`, 입력) as Promise<계획상세형>;
+
 /* ── 할 일 ──────────────────────────────────── */
 
 export const 할일추가 = (planId: number | string, 입력: {

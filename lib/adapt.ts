@@ -340,7 +340,8 @@ export function 상세를계획으로(d: 계획상세): ExpensePlan {
     aiSummary:
       (typeof 상세?.요약 === "string" ? 상세.요약 : "") || 판정설명(d.판정),
     // 주의: 결제전이 없으면 「집행」까지 포함해 보여줍니다 — 빈 화면보다 낫습니다
-    aiChecks: (결제전.length ? 결제전 : 할일들).map(할일을체크로),
+    // 주의: 집행 줄은 일정 탭의 줄이고 확인 항목이 아닙니다.
+    aiChecks: (결제전.length ? 결제전 : 할일들.filter((t) => t.구분 !== "집행")).map(할일을체크로),
     evidence: 결제후.map(할일을체크로),
     rules: 인용정리(인용들),
     /**
@@ -387,6 +388,7 @@ export function 할일을일정으로(t: 할일): ScheduleItem {
     // 주의: 계획 없는 일정은 일정 입력 창의 「기타」 값("other")과 같게 맞춥니다.
     planId: t.plan_id === null ? "other" : String(t.plan_id),
     출처: t.출처,
+    지출일연동: !!t.집행예정일_연동,
     title: t.항목,
     date: t.due_date || "",
     type: t.구분 === "집행" ? "집행" : (유형표[t.유형] ?? "기타"),
