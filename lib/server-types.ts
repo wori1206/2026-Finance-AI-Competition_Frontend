@@ -150,6 +150,14 @@ export type 판정상세 = {
   [k: string]: unknown;
 } | null;
 
+export type 서버첨부 = {
+  attachment_id: string;
+  원본파일명: string;
+  크기: number;
+  task_id: number | null;
+  created_at: string | null;
+};
+
 export type 판정피드백 = {
   평가: "맞음" | "틀림";
   이유: "판정이 다름" | "근거가 다름" | "기타" | null;
@@ -170,6 +178,7 @@ export type 계획상세 = 계획요약 & {
   사용자답변?: unknown;
   /** 지금 계정이 최신 판정에 남긴 평가. 재점검하면 새 판정이라 비어 있습니다. */
   내피드백?: 판정피드백 | null;
+  첨부?: 서버첨부[];
 };
 
 export type 할일목록응답 = { 건수: number; 항목: 할일[] };

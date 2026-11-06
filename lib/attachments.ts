@@ -1,28 +1,62 @@
 "use client";
 
 /**
- * 지출 계획에 붙인 첨부파일 — **브라우저 안에서만** 들고 있습니다.
+ * 지출 계획의 첨부파일 — 서버에 저장하고, 이 탭이 쓰는 목록을 여기에 둡니다.
  *
- * 주의: 서버에 계획 첨부파일 API 가 '없습니다'. `POST /api/l3/upload` 는 기관 규정
- *    문서용이고 계획과 묶이지 않습니다. 그래서 파일 자체는 이 탭이 살아 있는 동안만
- *    유지되고, 새로고침하면 사라집니다. 서버에 붙는 날 이 파일만 교체하면 됩니다.
- *
- * 주의: 예전에는 계획을 열 때마다 「○○ 견적서.pdf」·「○○ 참고자료.pdf」 두 건을
- *    '지어내서' 보여줬습니다. 올린 적 없는 파일이 첨부돼 있는 것처럼 보였고,
- *    반대로 새 계획에서 '실제로 붙인' 파일은 저장하는 순간 버려졌습니다.
- *    이 저장소가 그 둘을 한 번에 고칩니다.
+ * 올리는 즉시 서버로 보냅니다. 화면을 떠나도 올리기가 계속되고 결과가 같은 목록에 나타나도록
+ * 목록을 컴포넌트 밖에 둡니다. 상세 화면과 수정 창이 `use첨부` 로 같은 목록을 봅니다.
+ * 백엔드가 없는 예시 모드에서는 이 탭 안에서만 보관합니다.
  */
+import { useSyncExternalStore } from "react";
+import { API켜짐 } from "./config";
+import { 계획상세, 첨부삭제, 첨부업로드, 첨부파일받기 } from "./api";
+import type { 서버첨부 } from "./server-types";
 
 export type 첨부 = {
   id: string;
   name: string;
   size: string;
-  /** 실제 파일. 있어야 내려받기가 됩니다. */
+  /** 증빙 항목에 올린 파일이면 그 항목 id. */
+  taskId: string | null;
+  상태: "완료" | "올리는중" | "실패";
+  /** 실패 이유. 화면에 그대로 보여 줍니다. */
+  오류?: string;
+  /** 이 탭에서 고른 파일. 다시 올리기와 예시 모드의 내려받기에 씁니다. */
   file?: File;
 };
 
-/** 계획 id → 첨부 목록. 탭이 살아 있는 동안만. */
-const 보관함 = new Map<string, 첨부[]>();
+export type 첨부칸 = {
+  목록: 첨부[];
+  읽기: "대기" | "완료" | "실패";
+  /** 올리기·지우기가 일어날 때마다 늘어납니다. 그 사이에 읽은 서버 목록은 버리고 다시 읽습니다. */
+  세대: number;
+};
+
+export const 첨부한도 = { 개수: 10, 바이트: 3 * 1024 * 1024 };
+export const 첨부확장자 = ["pdf", "hwp", "hwpx", "jpg", "jpeg", "png", "xlsx", "docx"];
+export const 첨부accept = 첨부확장자.map((x) => `.${x}`).join(",");
+
+const 빈칸: 첨부칸 = { 목록: [], 읽기: "대기", 세대: 0 };
+const 보관함 = new Map<string, 첨부칸>();
+const 듣는곳 = new Set<() => void>();
+
+const 칸 = (planId: string) => 보관함.get(planId) ?? 빈칸;
+
+function 바꾸기(planId: string, 변경: (c: 첨부칸) => 첨부칸) {
+  보관함.set(planId, 변경(칸(planId)));
+  듣는곳.forEach((f) => f());
+}
+
+function 듣기(f: () => void) {
+  듣는곳.add(f);
+  return () => {
+    듣는곳.delete(f);
+  };
+}
+
+export function use첨부(planId: string): 첨부칸 {
+  return useSyncExternalStore(듣기, () => 칸(planId), () => 빈칸);
+}
 
 export function 크기표기(바이트: number): string {
   return 바이트 >= 1024 * 1024
@@ -30,41 +64,151 @@ export function 크기표기(바이트: number): string {
     : `${Math.max(1, Math.round(바이트 / 1024))}KB`;
 }
 
-export function 파일을첨부로(file: File, 순번: number): 첨부 {
-  return {
-    id: `up-${file.lastModified}-${순번}-${file.name}`,
-    name: file.name,
-    size: 크기표기(file.size),
-    file,
-  };
+const 서버계획인가 = (planId: string) => API켜짐() && /^\d+$/.test(planId);
+
+const 서버행을첨부로 = (a: 서버첨부): 첨부 => ({
+  id: a.attachment_id,
+  name: a.원본파일명,
+  size: 크기표기(a.크기),
+  taskId: a.task_id == null ? null : String(a.task_id),
+  상태: "완료",
+});
+
+/** 서버의 최신 목록을 읽습니다. 올리는 중이거나 실패한 줄은 이 탭에만 있으므로 남깁니다. */
+export async function 첨부새로읽기(planId: string): Promise<void> {
+  if (!서버계획인가(planId)) {
+    바꾸기(planId, (c) => ({ ...c, 읽기: "완료" }));
+    return;
+  }
+  try {
+    let 세대: number;
+    let 서버행: 첨부[];
+    do {
+      세대 = 칸(planId).세대;
+      서버행 = ((await 계획상세(planId)).첨부 ?? []).map(서버행을첨부로);
+    } while (세대 !== 칸(planId).세대);
+    바꾸기(planId, (c) => ({
+      ...c,
+      읽기: "완료",
+      목록: [...서버행, ...c.목록.filter((f) => f.상태 !== "완료")],
+    }));
+  } catch (e) {
+    console.warn("[CHECKUMAIT] 첨부 목록을 읽지 못했습니다.", e);
+    바꾸기(planId, (c) => ({ ...c, 읽기: "실패" }));
+  }
 }
 
-/** 새 계획에서 붙인 파일들을 그 계획 id 로 옮겨 담습니다. */
-export function 첨부보관(planId: string, files: File[]): void {
-  if (!planId) return;
-  if (!files.length) return;              // 빈 배열로 기존 것을 지우지 않습니다
-  보관함.set(planId, files.map(파일을첨부로));
+function 실패문구(e: unknown): string {
+  if ((e as { status?: number })?.status === 401) return "로그인하면 저장됩니다.";
+  const 글 = e instanceof Error ? e.message : "";
+  // 주의: 네트워크 오류의 영어 문구(Failed to fetch)를 화면에 내지 않습니다.
+  return /[가-힣]/.test(글) ? 글 : "서버에 연결하지 못했습니다. 다시 올려 주세요.";
 }
 
-/** 상세 화면에서 추가·삭제한 결과를 그대로 덮어씁니다. */
-export function 첨부쓰기(planId: string, 목록: 첨부[]): void {
-  if (!planId) return;
-  if (목록.length) 보관함.set(planId, 목록);
-  else 보관함.delete(planId);
+async function 줄_올리기(planId: string, 임시id: string, file: File, taskId: string | null): Promise<boolean> {
+  try {
+    const 서버행 = await 첨부업로드(planId, file, taskId && /^\d+$/.test(taskId) ? taskId : undefined);
+    바꾸기(planId, (c) => ({
+      ...c,
+      세대: c.세대 + 1,
+      목록: c.목록.map((f) => (f.id === 임시id ? 서버행을첨부로(서버행) : f)),
+    }));
+    return true;
+  } catch (e) {
+    바꾸기(planId, (c) => ({
+      ...c,
+      세대: c.세대 + 1,
+      목록: c.목록.map((f) => (f.id === 임시id ? { ...f, 상태: "실패", 오류: 실패문구(e) } : f)),
+    }));
+    return false;
+  }
 }
 
-export function 첨부읽기(planId: string): 첨부[] {
-  return planId ? (보관함.get(planId) ?? []) : [];
+let 다음번호 = 1;
+
+/** 파일 하나를 올립니다. 저장에 성공하면 true. */
+export function 첨부올리기(planId: string, file: File, taskId: string | null = null): Promise<boolean> {
+  const id = `local-${다음번호++}`;
+  const 줄: 첨부 = { id, name: file.name, size: 크기표기(file.size), taskId, 상태: "올리는중", file };
+  if (!API켜짐()) {
+    바꾸기(planId, (c) => ({ ...c, 세대: c.세대 + 1, 목록: [...c.목록, { ...줄, 상태: "완료" }] }));
+    return Promise.resolve(true);
+  }
+  바꾸기(planId, (c) => ({ ...c, 세대: c.세대 + 1, 목록: [...c.목록, 줄] }));
+  if (!서버계획인가(planId)) {
+    바꾸기(planId, (c) => ({
+      ...c,
+      목록: c.목록.map((f) => (f.id === id ? { ...f, 상태: "실패", 오류: "로그인하면 저장됩니다." } : f)),
+    }));
+    return Promise.resolve(false);
+  }
+  return 줄_올리기(planId, id, file, taskId);
 }
 
-/**
- * 주의: 계획을 서버에 만들면 id 가 바뀝니다 (`plan-1757…` → `6`).
- *    새 계획 화면에서 붙인 파일이 상세에서 안 보이는 걸 막습니다.
- */
-export function 첨부옮기기(이전id: string, 새id: string): void {
-  if (!이전id || !새id || 이전id === 새id) return;
-  const 것 = 보관함.get(이전id);
-  if (!것) return;
-  보관함.set(새id, 것);
-  보관함.delete(이전id);
+export function 첨부다시올리기(planId: string, 줄: 첨부): Promise<boolean> {
+  if (!줄.file) return Promise.resolve(false);
+  바꾸기(planId, (c) => ({
+    ...c,
+    세대: c.세대 + 1,
+    목록: c.목록.map((f) => (f.id === 줄.id ? { ...f, 상태: "올리는중", 오류: undefined } : f)),
+  }));
+  return 줄_올리기(planId, 줄.id, 줄.file, 줄.taskId);
+}
+
+/** 서버에 저장된 파일은 지우면 되돌릴 수 없습니다. 실패한 줄은 이 탭에서만 뺍니다. 못 지우면 예외를 던집니다. */
+export async function 첨부지우기(planId: string, 줄: 첨부): Promise<void> {
+  if (줄.상태 === "완료" && 서버계획인가(planId)) {
+    try {
+      await 첨부삭제(planId, 줄.id);
+    } catch (e) {
+      // 이미 없는 파일은 지운 것과 같습니다.
+      if ((e as { status?: number })?.status !== 404) throw e;
+    }
+  }
+  바꾸기(planId, (c) => ({ ...c, 세대: c.세대 + 1, 목록: c.목록.filter((f) => f.id !== 줄.id) }));
+}
+
+export async function 첨부내려받기(planId: string, 줄: 첨부): Promise<void> {
+  const blob = 줄.file ?? (await 첨부파일받기(planId, 줄.id));
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = 줄.name;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+/** 올릴 수 없는 파일을 가려내고, 조용히 버리지 않도록 이유를 돌려줍니다. */
+export function 첨부검사(현재개수: number, 파일들: File[]): { 통과: File[]; 안내: string | null } {
+  const 형식오류: string[] = [];
+  const 크기오류: string[] = [];
+  const 후보 = 파일들.filter((f) => {
+    const 확장자 = f.name.includes(".") ? f.name.split(".").pop()!.toLowerCase() : "";
+    if (!첨부확장자.includes(확장자)) {
+      형식오류.push(f.name);
+      return false;
+    }
+    if (f.size > 첨부한도.바이트) {
+      크기오류.push(f.name);
+      return false;
+    }
+    if (f.size === 0) {
+      크기오류.push(f.name);
+      return false;
+    }
+    return true;
+  });
+  const 남은자리 = Math.max(0, 첨부한도.개수 - 현재개수);
+  const 통과 = 후보.slice(0, 남은자리);
+  const 안내: string[] = [];
+  if (형식오류.length) {
+    안내.push(`${형식오류.join(", ")}: 올릴 수 없는 형식입니다. PDF·HWP·HWPX·JPG·PNG·XLSX·DOCX 만 올릴 수 있습니다.`);
+  }
+  if (크기오류.length) {
+    안내.push(`${크기오류.join(", ")}: 비어 있지 않은 3MB 이하 파일만 올릴 수 있습니다.`);
+  }
+  if (후보.length > 통과.length) {
+    안내.push(`첨부파일은 지출 계획 하나에 ${첨부한도.개수}개까지 올릴 수 있어 ${후보.length - 통과.length}개는 올리지 않았습니다.`);
+  }
+  return { 통과, 안내: 안내.length ? 안내.join(" ") : null };
 }

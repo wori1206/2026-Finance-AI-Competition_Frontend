@@ -4,6 +4,7 @@
 
 import { GET, POST, PATCH, PUT, DELETE, 인증헤더, 응답처리 } from "./http";
 import type {
+  서버첨부,
   판정피드백,
   계획목록응답,
   계획상세 as 계획상세형,   // 아래 같은 이름의 '함수' 와 겹쳐서 별칭으로 받습니다
@@ -119,6 +120,33 @@ export const 일정수정 = (taskId: number | string, 입력: {
   유형?: 할일["유형"];
   상태?: 할일["상태"];
 }) => PATCH(`/api/tasks/${taskId}`, 입력) as Promise<할일>;
+
+/** 지출 계획에 파일 하나를 저장합니다. taskId 를 주면 그 증빙 항목에 묶입니다. */
+export async function 첨부업로드(planId: string, 파일: File, taskId?: string): Promise<서버첨부> {
+  const fd = new FormData();
+  fd.append("파일", 파일);
+  if (taskId) fd.append("task_id", taskId);
+  const { apiBase } = await import("./config");
+  const res = await fetch(`${apiBase()}/api/plans/${planId}/attachments`, {
+    method: "POST",
+    headers: await 인증헤더(),
+    body: fd,
+    signal: AbortSignal.timeout(60_000),
+  });
+  return 응답처리(res) as Promise<서버첨부>;
+}
+
+export async function 첨부파일받기(planId: string, attachmentId: string): Promise<Blob> {
+  const { apiBase } = await import("./config");
+  const res = await fetch(`${apiBase()}/api/plans/${planId}/attachments/${attachmentId}`, {
+    headers: await 인증헤더(),
+  });
+  if (!res.ok) await 응답처리(res);
+  return res.blob();
+}
+
+export const 첨부삭제 = (planId: string, attachmentId: string) =>
+  DELETE(`/api/plans/${planId}/attachments/${attachmentId}`) as Promise<{ 삭제: boolean }>;
 
 /** 판정 결과의 「맞았어요 / 틀렸어요」. 같은 판정에 다시 보내면 바뀝니다. */
 export const 피드백저장 = (decisionId: number, 입력: 판정피드백) =>
