@@ -8,16 +8,16 @@ import type { 기준문서정보,
   PlanStatus,
   ScheduleItem,
 } from "../lib/types";
-import type { 비목후보, 답변항목, 확인질문, 사용자답변항목, 판정피드백 } from "../lib/server-types";
+import type { 서버팀, 비목후보, 답변항목, 확인질문, 사용자답변항목, 판정피드백 } from "../lib/server-types";
 import { API켜짐 } from "../lib/config";
 import { 판정실행 } from "../lib/judge";
 import { 정규화하기 } from "../lib/normalize";
 import { 인증오류 } from "../lib/http";
-import { 계획목록, 계획상세, 비목목록, 계획추가, 계획수정, 규정업로드, 규정처리기다리기, 규정적용, 규정거절, L3현재문서목록, 계획삭제, 일정수정, 피드백저장 } from "../lib/api";
+import { 계획목록, 계획상세, 비목목록, 계획추가, 계획수정, 규정업로드, 규정처리기다리기, 규정적용, 규정거절, L3현재문서목록, 팀조회, 팀만들기, 초대코드재발급, 팀들어가기, 팀나가기, 팀원내보내기, 계획삭제, 일정수정, 피드백저장 } from "../lib/api";
 import type { L3처리결과 } from "../lib/server-types";
 import { 체크저장, 일정변경저장, 일정등록, 일정지우기, 점검일정인가 } from "../lib/tasks";
 import { 기본규정, 서버규정읽기, type 적용규정항목 } from "../lib/norms";
-import { 기관검색, 사업요약, 기관저장, 선택기관, 기본기관명, 계정등록, type 기관 } from "../lib/orgs";
+import { 기관검색, 사업요약, 기관저장, 선택기관, 기본기관명, 계정등록, 초대코드등록, type 기관 } from "../lib/orgs";
 import {
   use첨부,
   첨부accept,
@@ -1171,7 +1171,13 @@ async function 온보딩기록적용(): Promise<boolean> {
   const 기록 = await 온보딩기록읽기();
   if (기록?.사업) 사업저장(기록.사업);
   if (기록?.기관) 기관저장(기록.기관);
-  return (기록?.필요 ?? false) || (await 미등록계정());
+  const 필요 = (기록?.필요 ?? false) || (await 미등록계정());
+  // 팀이면 사업은 팀의 값을 씁니다. 구성원마다 다른 사업으로 판정받으면 안 됩니다.
+  if (!필요 && API켜짐()) {
+    const 팀 = await 팀조회().catch(() => null);
+    if (팀?.팀?.사업명) 사업저장(팀.팀.사업명);
+  }
+  return 필요;
 }
 
 /**
@@ -1893,7 +1899,7 @@ export default function CheckumaitApp() {
             notify={notify}
           />
         )}
-        {route.page === "rules" && <MyPage notify={notify} />}
+        {route.page === "rules" && <MyPage notify={notify} 확인={확인} 계획수={plans.length} />}
       </main>
       {챗봇_켬 && (
         <button
@@ -2179,6 +2185,32 @@ function Login({
   const [기준실패, set기준실패] = useState<L3실패 | null>(null);
   /** 세부기준이 맞는지 물어야 하는 문서. */
   const [기준확인, set기준확인] = useState<L3확인 | null>(null);
+  /** 「초대 코드가 있어요」 입력. null 이면 칸을 접어 둡니다. */
+  const [초대코드, set초대코드] = useState<string | null>(null);
+  const [초대오류, set초대오류] = useState("");
+  const [초대처리중, set초대처리중] = useState(false);
+  /** 초대 코드로 등록합니다. 기관과 사업은 팀의 것이므로 고르는 단계를 건너뜁니다. */
+  const 초대코드로시작 = async () => {
+    if (!초대코드?.trim() || 초대처리중) return;
+    set초대처리중(true);
+    set초대오류("");
+    try {
+      const r = await 초대코드등록(초대코드.trim());
+      사업저장(r.사업명);
+      setProgram(r.사업명);
+      기관저장(r.기관명, r.slug);
+      setInstitution(r.기관명);
+      setInstitutionSlug(r.slug);
+      // 기관 세부기준은 기관 단위라 팀의 기관에 이미 있을 수 있습니다. 다음 화면 문구가 사실과 맞게 읽어 둡니다.
+      const 현재 = await L3현재문서목록().catch(() => null);
+      set기관문서(현재?.문서.find((d) => d.파싱품질 === "pass" || d.파싱품질 === "warn")?.원본파일명 ?? "");
+      setStep("ready");
+    } catch (e) {
+      set초대오류(오류사유(e));
+    } finally {
+      set초대처리중(false);
+    }
+  };
   /** 기준 문서 칸 아래에 띄우는 안내(형식이 맞지 않음, 쓰지 않은 문서 등). */
   const [기준안내, set기준안내] = useState("");
   /** 서버가 다 읽어 판정 기준에 반영했는가 / 2분이 지나도 아직 읽는 중인가. */
@@ -2885,6 +2917,39 @@ function Login({
                 <span>중소벤처기업부 · 창업진흥원</span>
                 <small>최초에는 주로 사용하는 사업 1개만 설정합니다.</small>
               </div>
+              {API켜짐() && (
+                <div className="onboarding-invite">
+                  {초대코드 === null ? (
+                    <button type="button" className="text-button" onClick={() => set초대코드("")}>
+                      팀원에게 받은 초대 코드가 있어요
+                    </button>
+                  ) : (
+                    <>
+                      <label>
+                        초대 코드
+                        <input
+                          value={초대코드}
+                          autoFocus
+                          maxLength={20}
+                          placeholder="예: ABCD-2345"
+                          onChange={(e) => set초대코드(e.target.value)}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="outline"
+                        disabled={!초대코드.trim() || 초대처리중}
+                        onClick={() => void 초대코드로시작()}
+                      >
+                        {초대처리중 ? "확인 중…" : "이 팀으로 시작"}
+                      </button>
+                      <small role={초대오류 ? "alert" : undefined}>
+                        {초대오류 || "팀의 사업과 주관기관으로 바로 시작합니다."}
+                      </small>
+                    </>
+                  )}
+                </div>
+              )}
               <div className="onboarding-actions">
                 <button
                   className="outline large"
@@ -3497,7 +3562,7 @@ function HomePage({
                   <small>{item.type}</small>
                 </time>
                 <span>
-                  <b>{item.title}</b>
+                  <b>{item.title}{item.작성자 && <span className="item-author"> · {item.작성자}</span>}</b>
                   <small>{plans.find((p) => p.id === item.planId)?.name}</small>
                 </span>
                 <em
@@ -5415,7 +5480,7 @@ function 첨부줄({
     <li className={`${className ?? ""} ${file.상태 === "실패" ? "attachment-failed" : ""}`}>
       <Icon name="fileText" size={15} />
       <span className="attachment-name">
-        <b>{file.name}</b>
+        <b>{file.name}{file.작성자 && <span className="item-author"> · {file.작성자}</span>}</b>
         <small>
           {file.상태 === "올리는중" ? "올리는 중…" : file.상태 === "실패" ? file.오류 : file.size}
         </small>
@@ -5486,6 +5551,16 @@ function 결과평가칸({
   const 이유글 = 틀림이유.find((항목) => 항목.값 === 현재?.이유)?.글;
   return (
     <section className="result-feedback">
+      {!!plan.팀평가?.length && (
+        <ul className="result-feedback-team">
+          {plan.팀평가.map((평가) => (
+            <li key={평가.작성자}>
+              <b>{평가.작성자}</b> {평가.평가 === "맞음" ? "맞았어요" : `틀렸어요${평가.이유 ? ` · ${평가.이유}` : ""}`}
+              {평가.의견 && <small>{평가.의견}</small>}
+            </li>
+          ))}
+        </ul>
+      )}
       <div className="result-feedback-head">
         <b>이 점검 결과가 맞았나요?</b>
         <div>
@@ -7245,7 +7320,7 @@ function SchedulePage({
                 <button type="button" onClick={() => setViewing(item)}>
                   <time>{월일표기(item.date)}</time>
                   <span>
-                    <b>{item.title}</b>
+                    <b>{item.title}{item.작성자 && <span className="item-author"> · {item.작성자}</span>}</b>
                     <small>{plans.find((p) => p.id === item.planId)?.name || "기타"}</small>
                   </span>
                   <em>{-dday(item.date)}일 지남</em>
@@ -7413,7 +7488,7 @@ function SchedulePage({
                     {지났나(item) && <small className="past-date">지남</small>}
                   </time>
                   <span>
-                    <b>{item.title}</b>
+                    <b>{item.title}{item.작성자 && <span className="item-author"> · {item.작성자}</span>}</b>
                     <small>
                       {plans.find((p) => p.id === item.planId)?.name}
                     </small>
@@ -7501,7 +7576,7 @@ function SchedulePage({
                       ) : null}
                     </time>
                     <span>
-                      <b>{item.title}</b>
+                      <b>{item.title}{item.작성자 && <span className="item-author"> · {item.작성자}</span>}</b>
                       <small>
                         {plans.find((p) => p.id === item.planId)?.name || "기타"}
                       </small>
@@ -7616,7 +7691,7 @@ function SchedulePage({
                                   {지났나(item) && <small className="past-date">지남</small>}
                                 </time>
                                 <span>
-                                  <b>{item.title}</b>
+                                  <b>{item.title}{item.작성자 && <span className="item-author"> · {item.작성자}</span>}</b>
                                   <small>{item.type}</small>
                                 </span>
                                 <em
@@ -7670,7 +7745,7 @@ function SchedulePage({
                       onChange={() => toggleDone(item.id)}
                     />
                     <button type="button" className="schedule-undated-title" onClick={() => setViewing(item)}>
-                      <b>{item.title}</b>
+                      <b>{item.title}{item.작성자 && <span className="item-author"> · {item.작성자}</span>}</b>
                       <small>{item.type}</small>
                     </button>
                     {날짜입력?.id === item.id ? (
@@ -8134,7 +8209,245 @@ function RecommendModal({
   );
 }
 
-function MyPage({ notify }: { notify: (message: string) => void }) {
+/**
+ * 마이페이지 「팀」 카드. 팀이면 기업 프로필·지출 계획·점검 결과·일정·첨부를 함께 씁니다.
+ *
+ * 들어가거나 나가면 보이는 데이터가 통째로 바뀌므로 새로고침합니다. 로그인하지 않았으면(401·403) 그리지 않습니다.
+ */
+function 팀카드({
+  notify,
+  확인,
+  계획수,
+}: {
+  notify: (message: string) => void;
+  확인: (요청: 확인요청) => Promise<boolean>;
+  계획수: number;
+}) {
+  const [상태, set상태] = useState<"조회중" | "표시" | "숨김" | "실패">("조회중");
+  const [팀, set팀] = useState<서버팀 | null>(null);
+  const [입력, set입력] = useState<"만들기" | "코드" | null>(null);
+  const 계정팀이름 = use팀이름();
+  const [팀이름입력, set팀이름입력] = useState("");
+  const [코드입력, set코드입력] = useState("");
+  const [처리중, set처리중] = useState(false);
+  const [오류, set오류] = useState("");
+  const [보이는코드, set보이는코드] = useState<string | null>(null);
+
+  useEffect(() => {
+    let 살아있음 = true;
+    if (!API켜짐()) {
+      set상태("숨김");
+      return;
+    }
+    팀조회()
+      .then((r) => {
+        if (!살아있음) return;
+        set팀(r.팀);
+        set상태("표시");
+      })
+      .catch((e: unknown) => {
+        if (!살아있음) return;
+        const 코드 = (e as { status?: number } | null)?.status;
+        set상태(코드 === 401 || 코드 === 403 ? "숨김" : "실패");
+      });
+    return () => {
+      살아있음 = false;
+    };
+  }, []);
+
+  /** 서버 호출 하나를 감쌉니다. 실패 이유는 카드 안에 보여 줍니다. */
+  const 실행 = async (작업: () => Promise<void>) => {
+    set처리중(true);
+    set오류("");
+    try {
+      await 작업();
+    } catch (e) {
+      set오류(오류사유(e));
+    } finally {
+      set처리중(false);
+    }
+  };
+  const 만들기 = () =>
+    실행(async () => {
+      const r = await 팀만들기(팀이름입력.trim(), 선택사업());
+      set팀(r.팀);
+      set보이는코드(r.팀?.초대코드 ?? null);
+      set입력(null);
+    });
+  const 들어가기 = async () => {
+    const 예 = await 확인({
+      제목: "이 팀에 들어갈까요?",
+      설명: `팀에 들어가면 지금 내 계획 ${계획수}건은 팀을 나가기 전까지 보이지 않아요. 팀의 계획·일정·첨부를 함께 보게 됩니다.`,
+      실행문구: "들어가기",
+    });
+    if (!예) return;
+    await 실행(async () => {
+      const r = await 팀들어가기(코드입력.trim());
+      if (r.팀?.사업명) 사업저장(r.팀.사업명);
+      window.location.reload();
+    });
+  };
+  const 나가기 = async () => {
+    const 혼자인대표 = 팀?.내역할 === "대표";
+    const 예 = await 확인(
+      혼자인대표
+        ? { 제목: "팀을 닫을까요?", 설명: "지금까지의 계획과 일정은 이 계정에 그대로 남습니다.", 실행문구: "팀 닫기" }
+        : { 제목: "팀에서 나갈까요?", 설명: "팀의 계획은 더 이상 보이지 않고, 들어오기 전 내 계획이 다시 보입니다.", 실행문구: "나가기" },
+    );
+    if (!예) return;
+    await 실행(async () => {
+      await 팀나가기();
+      window.location.reload();
+    });
+  };
+  const 내보내기 = async (accountId: string, 이메일: string) => {
+    const 예 = await 확인({
+      제목: `${이메일}을(를) 내보낼까요?`,
+      설명: "이 사람은 더 이상 팀 데이터를 볼 수 없고, 들어오기 전 개인 데이터로 돌아갑니다. 지금 초대 코드도 함께 막히므로 다른 팀원을 초대하려면 새 코드를 만들어 주세요.",
+      실행문구: "내보내기",
+    });
+    if (!예) return;
+    await 실행(async () => {
+      const r = await 팀원내보내기(accountId);
+      set팀(r.팀);
+      set보이는코드(null);
+      notify("구성원을 내보냈습니다. 지금 초대 코드는 더 이상 쓸 수 없습니다.");
+    });
+  };
+  const 코드재발급 = async () => {
+    const 예 = await 확인({
+      제목: "새 초대 코드를 만들까요?",
+      설명: "지금 코드는 더 이상 쓸 수 없습니다.",
+      실행문구: "새 코드 만들기",
+    });
+    if (!예) return;
+    await 실행(async () => {
+      const r = await 초대코드재발급();
+      set팀(r.팀);
+      set보이는코드(r.팀?.초대코드 ?? null);
+    });
+  };
+  const 코드복사 = async () => {
+    try {
+      await navigator.clipboard.writeText(보이는코드 ?? "");
+      notify("초대 코드를 복사했습니다.");
+    } catch {
+      notify("복사하지 못했습니다. 코드를 직접 선택해 복사해 주세요.");
+    }
+  };
+
+  if (상태 === "숨김" || 상태 === "조회중") return null;
+  const 대표 = 팀?.내역할 === "대표";
+  const 다른구성원있음 = (팀?.구성원.length ?? 0) > 1;
+  const 만료일 = 팀?.초대코드_만료 ? new Date(팀.초대코드_만료) : null;
+  return (
+    <section className="card team-card">
+      <header className="card-head">
+        <div>
+          <h2>{팀 ? `팀 · ${팀.팀이름}` : "팀"}</h2>
+          <p>
+            {팀
+              ? `${팀.사업명} · 구성원이 지출 계획·점검 결과·일정·첨부를 함께 봅니다.`
+              : "팀원과 지출 계획·점검 결과·일정·첨부를 함께 보려면 팀을 만들거나 초대 코드를 입력하세요."}
+          </p>
+        </div>
+      </header>
+      {상태 === "실패" && <p className="section-copy">팀 정보를 불러오지 못했습니다. 새로고침해 주세요.</p>}
+      {상태 === "표시" && !팀 && (
+        <div className="team-actions">
+          {입력 === null && (
+            <>
+              <button
+                className="outline"
+                onClick={() => {
+                  set팀이름입력(계정팀이름);
+                  set입력("만들기");
+                }}
+              >
+                팀 만들기
+              </button>
+              <button className="outline" onClick={() => set입력("코드")}>초대 코드 입력</button>
+            </>
+          )}
+          {입력 === "만들기" && (
+            <div className="team-form">
+              <label>
+                팀 이름
+                <input value={팀이름입력} maxLength={40} autoFocus onChange={(e) => set팀이름입력(e.target.value)} />
+              </label>
+              <button className="primary" disabled={!팀이름입력.trim() || 처리중} onClick={() => void 만들기()}>만들기</button>
+              <button className="outline" disabled={처리중} onClick={() => set입력(null)}>취소</button>
+            </div>
+          )}
+          {입력 === "코드" && (
+            <div className="team-form">
+              <label>
+                초대 코드
+                <input value={코드입력} maxLength={20} autoFocus placeholder="예: ABCD-2345" onChange={(e) => set코드입력(e.target.value)} />
+              </label>
+              <button className="primary" disabled={!코드입력.trim() || 처리중} onClick={() => void 들어가기()}>들어가기</button>
+              <button className="outline" disabled={처리중} onClick={() => set입력(null)}>취소</button>
+            </div>
+          )}
+        </div>
+      )}
+      {팀 && (
+        <>
+          <ul className="team-members">
+            {팀.구성원.map((사람) => (
+              <li key={사람.account_id}>
+                <span>
+                  {사람.이메일}
+                  {사람.나 && <em>나</em>}
+                  {사람.대표 && <em>대표</em>}
+                </span>
+                {대표 && !사람.나 && (
+                  <button className="outline small" disabled={처리중} onClick={() => void 내보내기(사람.account_id, 사람.이메일)}>
+                    내보내기
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+          {대표 && (
+            <div className="team-code">
+              {보이는코드 ? (
+                <>
+                  <b>{보이는코드}</b>
+                  <button className="outline small" onClick={() => void 코드복사()}>복사</button>
+                  <small>이 화면을 벗어나면 다시 볼 수 없습니다. 팀원에게 지금 전달해 주세요.</small>
+                </>
+              ) : (
+                <small>
+                  초대 코드는 만들 때만 볼 수 있습니다.
+                  {만료일 && (만료일.getTime() > Date.now() ? ` 지금 코드는 ${만료일.toLocaleDateString("ko-KR")}까지 쓸 수 있습니다.` : " 지금 코드는 쓸 수 없습니다. 초대하려면 새 코드를 만들어 주세요.")}
+                </small>
+              )}
+              <button className="outline small" disabled={처리중} onClick={() => void 코드재발급()}>새 코드 만들기</button>
+            </div>
+          )}
+          <div className="team-actions">
+            <button className="outline small" disabled={처리중 || (대표 && 다른구성원있음)} onClick={() => void 나가기()}>
+              {대표 ? "팀 닫기" : "팀 나가기"}
+            </button>
+            {대표 && 다른구성원있음 && <small>다른 구성원을 먼저 내보내야 팀을 닫을 수 있습니다.</small>}
+          </div>
+        </>
+      )}
+      {오류 && <p className="file-replace-notice" role="alert"><span>ⓘ</span>{오류}</p>}
+    </section>
+  );
+}
+
+function MyPage({
+  notify,
+  확인,
+  계획수,
+}: {
+  notify: (message: string) => void;
+  확인: (요청: 확인요청) => Promise<boolean>;
+  계획수: number;
+}) {
   const [editingProfile, setEditingProfile] = useState(false);
   // 주의: 이메일은 '로그인한 사람' 의 것이어야 합니다 — 예전엔 여기 한 줄이 하드코딩되어 있어서
   //    어느 계정으로 들어와도 team@startup.kr 이 보였습니다.
@@ -8319,6 +8632,7 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
           />
         </dl>
       </section>
+      <팀카드 notify={notify} 확인={확인} 계획수={계획수} />
       <section className="my-business-heading">
         <div>
           <h2>사업 정보</h2>

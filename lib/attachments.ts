@@ -18,6 +18,8 @@ export type 첨부 = {
   size: string;
   /** 증빙 항목에 올린 파일이면 그 항목 id. */
   taskId: string | null;
+  /** 다른 구성원이 올렸으면 그 사람 이메일 앞부분. */
+  작성자?: string | null;
   상태: "완료" | "올리는중" | "실패";
   /** 실패 이유. 화면에 그대로 보여 줍니다. */
   오류?: string;
@@ -67,6 +69,7 @@ export function 크기표기(바이트: number): string {
 const 서버계획인가 = (planId: string) => API켜짐() && /^\d+$/.test(planId);
 
 const 서버행을첨부로 = (a: 서버첨부): 첨부 => ({
+  작성자: a.작성자 ?? null,
   id: a.attachment_id,
   name: a.원본파일명,
   size: 크기표기(a.크기),

@@ -126,6 +126,8 @@ export type 할일 = {
   계획제목?: string | null;
   /** true 면 이 일정의 날짜는 계획의 예상 지출일과 같습니다. 계획 수정으로만 바뀝니다. */
   집행예정일_연동?: boolean;
+  /** 다른 구성원이 만든 일정이면 그 사람 이메일 앞부분. */
+  작성자?: string | null;
 };
 
 export type 인용 = {
@@ -160,6 +162,19 @@ export type 서버첨부 = {
   크기: number;
   task_id: number | null;
   created_at: string | null;
+  /** 다른 구성원이 올렸으면 그 사람 이메일 앞부분. */
+  작성자?: string | null;
+};
+
+/** `GET /api/team` 의 팀. `server/models.py::팀정보` 와 1:1 대응. */
+export type 서버팀 = {
+  팀이름: string;
+  사업명: string;
+  내역할: "대표" | "구성원";
+  구성원: { account_id: string; 이메일: string; 나: boolean; 대표: boolean }[];
+  /** 만들거나 재발급한 응답에만 있습니다. 서버가 해시만 저장해 다시 볼 수 없습니다. */
+  초대코드?: string | null;
+  초대코드_만료?: string | null;
 };
 
 export type 판정피드백 = {
@@ -184,6 +199,8 @@ export type 계획상세 = 계획요약 & {
   기준문서?: unknown;
   /** 지금 계정이 최신 판정에 남긴 평가. 재점검하면 새 판정이라 비어 있습니다. */
   내피드백?: 판정피드백 | null;
+  /** 같은 판정에 다른 구성원이 남긴 평가. */
+  팀평가?: (판정피드백 & { 작성자: string })[];
   첨부?: 서버첨부[];
 };
 

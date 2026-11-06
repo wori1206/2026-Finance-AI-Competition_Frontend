@@ -1382,6 +1382,27 @@ input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-ou
 @media (max-width:620px){.expense-stage-bar{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 .institution-review-button{display:block;margin-top:8px}
+.item-author{font-weight:400;font-size:12px;color:#66716c}
+.team-card{display:grid;gap:14px}
+.team-card .section-copy{margin:0}
+.team-actions{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap}
+.team-actions small,.team-code small{color:#66716c;font-size:12px;line-height:1.5}
+.team-form{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;width:100%}
+.team-form label{display:grid;gap:6px;flex:1 1 220px;font-size:13px;font-weight:600}
+.team-form input,.onboarding-invite input{height:40px;width:100%;padding:0 12px;border:1px solid #d7dcd9;border-radius:6px;background:#fff;font:inherit;font-weight:400}
+.team-members{display:grid;gap:0;margin:0;padding:0;list-style:none;border-top:1px solid #e8ebe9}
+.team-members li{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:10px 2px;border-bottom:1px solid #e8ebe9;font-size:14px}
+.team-members li>span{min-width:0;overflow-wrap:anywhere}
+.team-members em{margin-left:6px;padding:1px 7px;border-radius:10px;background:#eef1ef;color:#4a5550;font-size:11px;font-style:normal}
+.team-code{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap}
+.team-code b{font-size:18px;letter-spacing:.06em}
+.team-code small{flex:1 1 220px}
+.onboarding-invite{display:grid;gap:8px;margin-top:14px}
+.onboarding-invite label{display:grid;gap:6px;font-size:13px;font-weight:600}
+.onboarding-invite small{color:#66716c;font-size:12px}
+.onboarding-invite .text-button{justify-self:start;padding:0;border:0;background:none;color:inherit;font-size:13px;text-decoration:underline;cursor:pointer}
+.result-feedback-team{display:grid;gap:6px;margin:0;padding:0 0 10px;list-style:none;border-bottom:1px solid #e8ebe9;font-size:13px}
+.result-feedback-team small{display:block;color:#66716c}
 .criteria-basis{display:flex;align-items:center;justify-content:space-between;gap:8px 12px;flex-wrap:wrap;margin-bottom:12px;padding:9px 12px;border-radius:6px;background:#f4f6f5;color:#4a5550;font-size:13px;line-height:1.5}
 .criteria-basis>span{min-width:0;overflow-wrap:anywhere}
 .criteria-basis.is-notice{background:#fff6e5;color:#7a5200}

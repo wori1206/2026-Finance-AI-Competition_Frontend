@@ -3,7 +3,7 @@
 // 화면이 부르는 함수는 전부 여기 있습니다. 주소를 아는 곳은 config.ts 하나입니다.
 
 import { GET, POST, PATCH, PUT, DELETE, 인증헤더, 응답처리 } from "./http";
-import type {
+import type { 서버팀,
   서버첨부,
   판정피드백,
   계획목록응답,
@@ -147,6 +147,17 @@ export async function 첨부파일받기(planId: string, attachmentId: string): 
 
 export const 첨부삭제 = (planId: string, attachmentId: string) =>
   DELETE(`/api/plans/${planId}/attachments/${attachmentId}`) as Promise<{ 삭제: boolean }>;
+
+/* ── 팀 ── 기업 데이터를 함께 쓰는 계정 묶음. 조회만 팀이 없을 때 `팀: null` 입니다. */
+type 팀응답 = { 팀: 서버팀 | null };
+export const 팀조회 = () => GET("/api/team") as Promise<팀응답>;
+export const 팀만들기 = (팀이름: string, 사업명: string) =>
+  POST("/api/team", { 팀이름, 사업명 }) as Promise<팀응답>;
+export const 초대코드재발급 = () => POST("/api/team/invite-code", {}) as Promise<팀응답>;
+export const 팀들어가기 = (초대코드: string) => POST("/api/team/join", { 초대코드 }) as Promise<팀응답>;
+export const 팀나가기 = () => POST("/api/team/leave", {}) as Promise<팀응답>;
+export const 팀원내보내기 = (accountId: string) =>
+  DELETE(`/api/team/members/${accountId}`) as Promise<팀응답>;
 
 /** 판정 결과의 「맞았어요 / 틀렸어요」. 같은 판정에 다시 보내면 바뀝니다. */
 export const 피드백저장 = (decisionId: number, 입력: 판정피드백) =>

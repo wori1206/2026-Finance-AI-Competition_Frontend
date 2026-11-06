@@ -382,6 +382,7 @@ export function 상세를계획으로(d: 계획상세): ExpensePlan {
     기준문서: 기준문서정리(상세?.기준문서),
     latestDecisionId: d.latest_decision_id ?? null,
     내피드백: d.내피드백 ?? null,
+    팀평가: d.팀평가 ?? [],
   };
 }
 
@@ -415,6 +416,7 @@ export function 할일을일정으로(t: 할일): ScheduleItem {
     planId: t.plan_id === null ? "other" : String(t.plan_id),
     출처: t.출처,
     지출일연동: !!t.집행예정일_연동,
+    작성자: t.작성자 ?? null,
     title: t.항목,
     date: t.due_date || "",
     type: t.구분 === "집행" ? "집행" : (유형표[t.유형] ?? "기타"),
