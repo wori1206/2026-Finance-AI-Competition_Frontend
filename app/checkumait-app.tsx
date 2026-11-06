@@ -13,7 +13,7 @@ import { API켜짐 } from "../lib/config";
 import { 판정실행 } from "../lib/judge";
 import { 정규화하기 } from "../lib/normalize";
 import { 인증오류 } from "../lib/http";
-import { 계획목록, 비목목록, 계획추가, 규정업로드, 규정처리기다리기, L3현재문서목록, 계획삭제 } from "../lib/api";
+import { 계획목록, 비목목록, 계획추가, 규정업로드, 규정처리기다리기, L3현재문서목록, 계획삭제, 할일수정 } from "../lib/api";
 import type { L3처리결과 } from "../lib/server-types";
 import { 체크저장, 일정변경저장, 일정등록 } from "../lib/tasks";
 import { 기본규정, 서버규정읽기, type 적용규정항목 } from "../lib/norms";
@@ -1163,6 +1163,12 @@ export default function CheckumaitApp() {
     if (!작업) return;
     // 점검 중에 지운 계획을 결과로 되살리지 않습니다.
     if (판정된계획 && 계획Ref.current.some((p) => p.id === 판정된계획.id)) 계획반영(판정된계획);
+    // 판정이 할일을 만들거나 지우므로 일정도 다시 읽습니다. 안 그러면 새로고침 전까지 옛 목록이 보입니다.
+    if (판정된계획 && API켜짐()) {
+      planService.listSchedules().then(setSchedules).catch((e: unknown) => {
+        console.warn("[CHECKUMAIT] 점검 뒤 일정을 다시 읽지 못했습니다.", e);
+      });
+    }
     if (!작업.접은적) {
       작업바꾸기((이전) => 이전.filter((j) => j.키 !== 키));
       작업.끝남(판정된계획, 오류);
@@ -1251,7 +1257,9 @@ export default function CheckumaitApp() {
    */
   const 일정추가하기 = (새항목: ScheduleItem[]) => {
     if (!새항목.length) return;
-    setSchedules((이전) => [...이전, ...새항목]);
+    // 주의: 날짜 미정으로 이미 받은 할일에 날짜를 넣는 경우 같은 줄이 둘이 되지 않게 바꿔 끼웁니다.
+    const 있는할일 = new Set(새항목.map((s) => s.taskId).filter(Boolean));
+    setSchedules((이전) => [...이전.filter((s) => !s.taskId || !있는할일.has(s.taskId)), ...새항목]);
     void 일정등록(새항목).then(({ 바뀐id, 실패 }) => {
       if (바뀐id.size) {
         setSchedules((이전) =>
@@ -1262,6 +1270,27 @@ export default function CheckumaitApp() {
       }
       if (실패) notify("일부 일정을 서버에 저장하지 못했습니다.");
     });
+  };
+
+  /**
+   * 「날짜 미정」 줄에 날짜를 넣습니다. 먼저 그리고, 저장에 실패하면 되돌립니다.
+   * 서버 할일이 아닌 일정(계획 없는 일정, 예시 모드)은 지금 화면 값만 바꿉니다.
+   */
+  const 일정날짜저장 = (item: ScheduleItem, 날짜: string) => {
+    const 이전 = schedules;
+    const 다음 = schedules.map((s) => (s.id === item.id ? { ...s, date: 날짜 } : s));
+    setSchedules(다음);
+    void planService.saveSchedules(다음);
+    if (!API켜짐() || !item.taskId || !/^\d+$/.test(item.planId)) {
+      notify(API켜짐() ? 화면에만반영 : "날짜를 정했습니다.");
+      return;
+    }
+    할일수정(item.planId, item.taskId, { due_date: 날짜 })
+      .then(() => notify("날짜를 정했습니다."))
+      .catch((e: unknown) => {
+        setSchedules(이전);
+        notify(`날짜를 저장하지 못했습니다. ${오류사유(e)}`);
+      });
   };
 
   const persistSchedules = (next: ScheduleItem[]) => {
@@ -1630,6 +1659,7 @@ export default function CheckumaitApp() {
             일정실패={일정실패}
             save={persistSchedules}
             추가={(item) => 일정추가하기([item])}
+            날짜저장={일정날짜저장}
             할일동기화={할일동기화}
             notify={notify}
           />
@@ -2977,6 +3007,9 @@ function HomePage({
     .filter((item) => item.state !== "완료" && !!item.date && (!API켜짐() || item.date >= 오늘))
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, 5);
+  const 기한지남수 = API켜짐()
+    ? schedules.filter((item) => item.state !== "완료" && !!item.date && item.date < 오늘).length
+    : 0;
 
   return (
     <div className="page home-v3">
@@ -3153,6 +3186,17 @@ function HomePage({
             </button>
           </header>
           <div className="home-v3-timeline">
+            {기한지남수 > 0 && (
+              <button
+                type="button"
+                className="home-overdue-line"
+                onClick={() => go({ page: "schedule" })}
+              >
+                <Icon name="bell" size={15} />
+                <b>기한 지난 일정 {기한지남수}건</b>
+                <span>확인하기</span>
+              </button>
+            )}
             {다가오는일정.length === 0 && (
               <p className="schedule-detail-empty">
                 {!자료받음
@@ -6520,6 +6564,7 @@ function SchedulePage({
   일정실패,
   save,
   추가,
+  날짜저장,
   할일동기화,
   notify,
   확인,
@@ -6532,6 +6577,7 @@ function SchedulePage({
   save: (items: ScheduleItem[]) => void;
   /** 주의: '새로 만든' 일정 전용. save 는 상태 변경만 서버에 보냅니다. */
   추가: (item: ScheduleItem) => void;
+  날짜저장: (item: ScheduleItem, 날짜: string) => void;
   /** 주의: 서버 할일에서 온 일정이면 이걸로 바꿉니다 — 상세 체크박스까지 같이 움직입니다. */
   할일동기화: (planId: string, taskId: string, 완료: boolean) => void;
   notify: (message: string) => void;
@@ -6565,14 +6611,35 @@ function SchedulePage({
   const 오늘문자 = 오늘
     ? `${오늘.y}-${String(오늘.m).padStart(2, "0")}-${String(오늘.d).padStart(2, "0")}`
     : "2026-08-29";
-  // 주의: 날짜가 없는 할일(규정에 기한 근거가 없음)은 맨 뒤로 보냅니다.
-  const upcoming = [...schedules].sort((a, b) =>
-    (a.date || "9999").localeCompare(b.date || "9999"),
+  // 주의: 달력·통계·다가오는 일정은 날짜 있는 줄만 봅니다. 날짜 없는 줄은 「날짜 미정」에 모읍니다.
+  const upcoming = schedules
+    .filter((item) => !!item.date)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const 지났나 = (item: ScheduleItem) =>
+    item.state !== "완료" && !!item.date && item.date < 오늘문자;
+  const 기한지남 = upcoming.filter(지났나);
+  const visibleUpcoming = upcoming.filter(
+    (item) => item.state !== "완료" && !지났나(item),
   );
-  const visibleUpcoming = upcoming.filter((item) => item.state !== "완료");
-  const activeUpcoming = visibleUpcoming
-    .filter((item) => item.date >= 오늘문자)
-    .slice(0, 3);
+  const activeUpcoming = visibleUpcoming.slice(0, 3);
+  const [미정펼침, set미정펼침] = useState(false);
+  const [날짜입력, set날짜입력] = useState<{ id: string; 값: string } | null>(null);
+  const 날짜미정 = schedules.filter((item) => !item.date && item.state !== "완료");
+  const 미정묶음 = [
+    ...plans
+      .map((plan) => ({
+        id: plan.id,
+        name: plan.name,
+        items: 날짜미정.filter((item) => item.planId === plan.id),
+      }))
+      .filter((group) => group.items.length > 0),
+    ...(() => {
+      const 나머지 = 날짜미정.filter(
+        (item) => !plans.some((plan) => plan.id === item.planId),
+      );
+      return 나머지.length ? [{ id: "unlinked", name: "기타 일정", items: 나머지 }] : [];
+    })(),
+  ];
   const dday = (date: string) =>
     Math.ceil(
       (new Date(`${date}T00:00:00`).getTime() -
@@ -6667,6 +6734,34 @@ function SchedulePage({
             ? "일정을 불러오지 못했습니다. 새로고침해 주세요. 아래 건수와 달력은 실제 일정이 아닙니다."
             : "일정을 불러오는 중입니다."}
         </p>
+      )}
+      {기한지남.length > 0 && (
+        <section className="schedule-overdue" aria-label="기한 지난 일정">
+          <header>
+            <h2>기한 지난 일정 {기한지남.length}건</h2>
+            <p>아직 완료하지 않은 일정입니다. 끝냈다면 체크하고, 미뤄졌다면 날짜를 고쳐 주세요.</p>
+          </header>
+          <ul>
+            {기한지남.map((item) => (
+              <li key={item.id}>
+                <input
+                  type="checkbox"
+                  checked={false}
+                  aria-label={`${item.title} 완료 처리`}
+                  onChange={() => toggleDone(item.id)}
+                />
+                <button type="button" onClick={() => setViewing(item)}>
+                  <time>{월일표기(item.date)}</time>
+                  <span>
+                    <b>{item.title}</b>
+                    <small>{plans.find((p) => p.id === item.planId)?.name || "기타"}</small>
+                  </span>
+                  <em>{-dday(item.date)}일 지남</em>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
       <section className="schedule-v2-metrics">
         <article>
@@ -6821,7 +6916,10 @@ function SchedulePage({
             <div className="schedule-v2-list-view">
               {upcoming.map((item) => (
                 <button key={item.id} onClick={() => setViewing(item)}>
-                  <time>{item.date || "날짜 미정"}</time>
+                  <time>
+                    {item.date}
+                    {지났나(item) && <small className="past-date">지남</small>}
+                  </time>
                   <span>
                     <b>{item.title}</b>
                     <small>
@@ -6877,11 +6975,10 @@ function SchedulePage({
                 ? "일정을 불러오는 중입니다."
                 : 일정실패
                   ? "일정을 불러오지 못했습니다. 새로고침해 주세요."
-                  : "남은 일정이 없습니다. 날짜가 없는 할일은 지출 계획 상세에서 확인할 수 있습니다."}
+                  : "앞으로 남은 일정이 없습니다."}
             </p>
           )}
           {upcomingView === "all" ? visibleUpcoming.map((item) => {
-            const past = !!item.date && item.date < 오늘문자;
             const activeIndex = activeUpcoming.findIndex(
               (active) => active.id === item.id,
             );
@@ -6907,9 +7004,7 @@ function SchedulePage({
                       <b>
                         {월일표기(item.date)}
                       </b>
-                      {past ? (
-                        <small className="past-date">지남</small>
-                      ) : activeIndex >= 0 ? (
+                      {activeIndex >= 0 ? (
                         <small className="dday">D-{dday(item.date)}</small>
                       ) : null}
                     </time>
@@ -6979,7 +7074,11 @@ function SchedulePage({
             <div className="upcoming-plan-groups">
               {upcomingGroups.map((group) => {
                 const open = expandedPlans.includes(group.id);
-                const nearest = group.items[0];
+                // 주의: 끝낸 일과 지난 일은 「가까운 일정」이 아닙니다. 지난 일은 옆에 따로 셉니다.
+                const nearest = group.items.find(
+                  (item) => item.state !== "완료" && !지났나(item),
+                );
+                const 지남수 = group.items.filter(지났나).length;
                 return (
                   <section className="upcoming-plan-group" key={group.id}>
                     <button
@@ -6998,7 +7097,8 @@ function SchedulePage({
                       </span>
                       <span className="upcoming-plan-meta nearest-date">
                         <small>가장 가까운 일정</small>
-                        <b>{nearest.date.replaceAll("-", ".")}</b>
+                        <b>{nearest ? nearest.date.replaceAll("-", ".") : "없음"}</b>
+                        {지남수 > 0 && <small className="past-date">{지남수}건 지남</small>}
                       </span>
                       <Icon name="chevronDown" size={16} />
                     </button>
@@ -7024,6 +7124,7 @@ function SchedulePage({
                               >
                                 <time>
                                   {월일표기(item.date)}
+                                  {지났나(item) && <small className="past-date">지남</small>}
                                 </time>
                                 <span>
                                   <b>{item.title}</b>
@@ -7053,6 +7154,75 @@ function SchedulePage({
           )}
         </aside>
       </div>
+      {날짜미정.length > 0 && (
+        <section className="schedule-undated">
+          <button
+            type="button"
+            className="schedule-undated-head"
+            aria-expanded={미정펼침}
+            onClick={() => set미정펼침((v) => !v)}
+          >
+            <span>
+              <b>날짜 미정 {날짜미정.length}건</b>
+              <small>규정에 기한이 없거나 아직 날짜를 정하지 않은 일정입니다.</small>
+            </span>
+            <Icon name="chevronDown" size={16} />
+          </button>
+          {미정펼침 && 미정묶음.map((group) => (
+            <div className="schedule-undated-group" key={group.id}>
+              <h3>{group.name} <small>{group.items.length}건</small></h3>
+              <ul>
+                {group.items.map((item) => (
+                  <li key={item.id}>
+                    <input
+                      type="checkbox"
+                      checked={false}
+                      aria-label={`${item.title} 완료 처리`}
+                      onChange={() => toggleDone(item.id)}
+                    />
+                    <button type="button" className="schedule-undated-title" onClick={() => setViewing(item)}>
+                      <b>{item.title}</b>
+                      <small>{item.type}</small>
+                    </button>
+                    {날짜입력?.id === item.id ? (
+                      <span className="schedule-undated-date">
+                        <input
+                          type="date"
+                          aria-label={`${item.title} 날짜`}
+                          value={날짜입력.값}
+                          onChange={(event) => set날짜입력({ id: item.id, 값: event.target.value })}
+                        />
+                        <button
+                          type="button"
+                          className="primary small"
+                          disabled={!날짜입력.값}
+                          onClick={() => {
+                            날짜저장(item, 날짜입력.값);
+                            set날짜입력(null);
+                          }}
+                        >
+                          저장
+                        </button>
+                        <button type="button" className="outline small" onClick={() => set날짜입력(null)}>
+                          취소
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="outline small"
+                        onClick={() => set날짜입력({ id: item.id, 값: "" })}
+                      >
+                        날짜 정하기
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </section>
+      )}
       {modal && (
         <ScheduleFormModal
           plans={plans}

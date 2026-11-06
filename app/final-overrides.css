@@ -1305,3 +1305,48 @@ input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-ou
 .recovery-message.success{background:var(--brand-soft);color:var(--color-brand)}
 .recovery-message.error{background:var(--color-danger-field-ring);color:var(--color-danger)}
 @media(max-width:560px){.recovery-page{padding-top:36px}.recovery-card{padding:20px}}
+
+/* 집행 일정: 기한 지난 일정 · 날짜 미정 묶음 */
+.schedule-overdue{margin-bottom:15px;border:1px solid var(--danger-border);border-radius:7px;background:var(--red-soft)}
+.schedule-overdue>header{padding:14px 18px 10px}
+.schedule-overdue h2{margin:0;color:var(--red);font-size:15px;font-weight:800}
+.schedule-overdue p{margin:4px 0 0;color:var(--sub);font-size:12px}
+.schedule-overdue ul{margin:0;padding:0;list-style:none}
+.schedule-overdue li{display:grid;grid-template-columns:18px minmax(0,1fr);align-items:center;gap:10px;padding:8px 18px;border-top:1px solid var(--danger-border)}
+.schedule-overdue li input{width:15px;height:15px;accent-color:var(--brand)}
+.schedule-overdue li>button{min-width:0;display:grid;grid-template-columns:54px minmax(0,1fr) auto;align-items:center;gap:12px;padding:0;border:0;background:none;text-align:left}
+.schedule-overdue time{color:var(--red);font-size:13px;font-weight:700}
+.schedule-overdue li span{min-width:0}
+.schedule-overdue li b,.schedule-overdue li small{display:block;overflow-wrap:anywhere}
+.schedule-overdue li b{font-size:13px}
+.schedule-overdue li small{margin-top:2px;color:var(--sub);font-size:11px}
+.schedule-overdue em{color:var(--red);font-size:12px;font-style:normal;font-weight:700;white-space:nowrap}
+.schedule-v2-list-view time .past-date,.upcoming-plan-item time .past-date{display:block;margin-top:2px}
+.upcoming-plan-meta .past-date{display:block;margin-top:2px}
+.schedule-undated{margin-top:18px;overflow:hidden;border:1px solid var(--line);border-radius:7px;background:#fff}
+.schedule-undated-head{width:100%;min-height:58px;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 18px;border:0;background:#fff;text-align:left}
+.schedule-undated-head b,.schedule-undated-head small{display:block}
+.schedule-undated-head b{font-size:14px}
+.schedule-undated-head small{margin-top:3px;color:var(--sub);font-size:12px}
+.schedule-undated-head[aria-expanded="true"] svg{transform:rotate(180deg)}
+.schedule-undated-group{padding:12px 18px;border-top:1px solid var(--line)}
+.schedule-undated-group h3{margin:0 0 6px;font-size:13px;font-weight:750}
+.schedule-undated-group h3 small{color:var(--sub);font-size:12px;font-weight:500}
+.schedule-undated-group ul{margin:0;padding:0;list-style:none}
+.schedule-undated-group li{min-height:48px;display:grid;grid-template-columns:18px minmax(0,1fr) auto;align-items:center;gap:10px;padding:6px 0;border-top:1px solid #f1f3f2}
+.schedule-undated-group li>input{width:15px;height:15px;accent-color:var(--brand)}
+.schedule-undated-title{min-width:0;padding:0;border:0;background:none;text-align:left}
+.schedule-undated-title b,.schedule-undated-title small{display:block;overflow-wrap:anywhere}
+.schedule-undated-title b{font-size:13px;font-weight:600}
+.schedule-undated-title small{margin-top:2px;color:var(--sub);font-size:11px}
+.schedule-undated-date{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:6px}
+.schedule-undated-date input{height:32px;padding:0 8px;border:1px solid var(--line);border-radius:5px;font-size:12px}
+.home-overdue-line{width:100%;display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:10px 12px;border:1px solid var(--danger-border);border-radius:6px;background:var(--red-soft);color:var(--red);font-size:13px;text-align:left}
+.home-overdue-line b{flex:1;font-weight:750}
+.home-overdue-line span{font-size:12px;font-weight:600}
+@media(max-width:620px){
+  .schedule-overdue li>button{grid-template-columns:46px minmax(0,1fr)}
+  .schedule-overdue em{grid-column:2}
+  .schedule-undated-group li{grid-template-columns:18px minmax(0,1fr)}
+  .schedule-undated-group li>button.outline,.schedule-undated-date{grid-column:2;justify-self:start;justify-content:flex-start}
+}
