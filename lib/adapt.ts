@@ -361,6 +361,9 @@ export function 상세를계획으로(d: 계획상세): ExpensePlan {
 const 유형표: Record<string, ScheduleItem["type"]> = {
   계약: "계약",
   비교견적: "비교견적",
+  사전승인: "사전승인",
+  사전확인: "사전 확인",
+  증빙: "증빙",
   기타: "기타",
 };
 
@@ -381,7 +384,9 @@ export function 할일을일정으로(t: 할일): ScheduleItem {
   return {
     id: String(t.task_id),
     taskId: String(t.task_id),      // 주의: 상세 체크박스와 이어지는 키
-    planId: t.plan_id === null ? "" : String(t.plan_id),
+    // 주의: 계획 없는 일정은 일정 입력 창의 「기타」 값("other")과 같게 맞춥니다.
+    planId: t.plan_id === null ? "other" : String(t.plan_id),
+    출처: t.출처,
     title: t.항목,
     date: t.due_date || "",
     type: t.구분 === "집행" ? "집행" : (유형표[t.유형] ?? "기타"),

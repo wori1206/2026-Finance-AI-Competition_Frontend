@@ -5,7 +5,9 @@
 // 주의: `tasks:sync` 는 '부르지 않습니다'. 판정 직후 서버가 자동으로 넣습니다.
 
 import { API켜짐 } from "./config";
-import { 할일수정, 할일추가 } from "./api";
+import { 일정수정, 일정추가, 일정삭제, 할일수정, 할일추가 } from "./api";
+import { 인증오류 } from "./http";
+import type { 할일 } from "./server-types";
 import type { ScheduleItem } from "./types";
 
 /** 숫자 id 만 서버의 진짜 task_id 입니다. 판정에서 갓 나온 항목은 `ai-0` 같은 임시 id 라 건너뜁니다. */
@@ -67,21 +69,24 @@ const 상태사전: Record<ScheduleItem["state"], "준비필요" | "집행예정
 };
 
 /**
- * 일정 하나의 상태를 서버에 저장합니다.
- *
- * 주의: 집행 일정은 그동안 '어디에도 저장되지 않았습니다' — `plan-service.saveSchedules`
- *    가 서버가 붙어 있으면 아무것도 안 하고 끝났습니다. 그래서 완료 체크가
- *    새로고침하면 사라졌습니다. 서버에서 온 일정(숫자 task_id + 숫자 plan_id)은
- *    이제 진짜로 저장됩니다.
- *
- * 사용자가 '직접 추가'한 일정(`schedule-…` id)은 서버에 대응하는 행이 없으므로
- * 건너뜁니다 — 그건 `POST /api/plans/{id}/tasks` 를 붙이는 별개의 일입니다.
+ * 일정 하나에서 바뀐 값만 서버에 저장합니다. 계획 없는 일정도 같은 경로를 씁니다.
+ * 서버 행이 아닌 일정(저장 전 임시 id)은 건너뜁니다.
  */
-export async function 일정상태저장(item: ScheduleItem): Promise<저장결과> {
+export async function 일정저장(이전: ScheduleItem, 다음: ScheduleItem): Promise<저장결과> {
   if (!API켜짐()) return "건너뜀";
-  if (!서버항목인가(item.id) || !서버항목인가(item.planId)) return "건너뜀";
+  if (!서버항목인가(다음.id)) return "건너뜀";
+  const 바뀐값: Parameters<typeof 일정수정>[1] = {};
+  if (이전.state !== 다음.state) 바뀐값.상태 = 상태사전[다음.state];
+  if (이전.date !== 다음.date) 바뀐값.due_date = 다음.date || null;
+  if (이전.title !== 다음.title) 바뀐값.항목 = 다음.title;
+  if ((이전.memo ?? "") !== (다음.memo ?? "")) 바뀐값.설명 = 다음.memo?.trim() || null;
+  if (이전.type !== 다음.type) {
+    바뀐값.유형 = 유형사전[다음.type];
+    바뀐값.구분 = 구분추정(다음.type);
+  }
+  if (!Object.keys(바뀐값).length) return "건너뜀";
   try {
-    await 할일수정(item.planId, item.id, { 상태: 상태사전[item.state] });
+    await 일정수정(다음.id, 바뀐값);
     return "저장됨";
   } catch (e) {
     if (없음인가(e)) return "없음";
@@ -89,8 +94,23 @@ export async function 일정상태저장(item: ScheduleItem): Promise<저장결�
   }
 }
 
+/** 규정 점검이 만든 일정인가. 재점검이 제목·메모를 다시 쓰고 항목을 다시 만들어, 날짜와 상태만 바꿀 수 있습니다. */
+export function 점검일정인가(item: ScheduleItem): boolean {
+  return item.출처 === "ai" || (item.출처 !== "user" && !!item.taskId);
+}
+
+/** 일정을 서버에서 지웁니다. 서버에 이미 없으면 지워진 것으로 봅니다. */
+export async function 일정지우기(item: ScheduleItem): Promise<void> {
+  if (!API켜짐() || !서버항목인가(item.id)) return;
+  try {
+    await 일정삭제(item.id);
+  } catch (e) {
+    if (!없음인가(e)) throw e;
+  }
+}
+
 /**
- * 이전/다음 일정 목록을 견줘서 '상태가 바뀐 것'만 서버에 보냅니다.
+ * 이전/다음 일정 목록을 견줘서 '바뀐 것'만 서버에 보냅니다.
  * 돌려주는 값은 저장에 실패한 일정들입니다 (호출부가 화면을 되돌립니다).
  */
 export async function 일정변경저장(
@@ -102,15 +122,13 @@ export async function 일정변경저장(
   if (!API켜짐()) return { 실패, 없음 };
 
   const 전 = new Map(이전.map((s) => [s.id, s]));
-  const 바뀐 = 다음.filter((s) => {
-    const p = 전.get(s.id);
-    return p != null && p.state !== s.state;
-  });
 
   await Promise.all(
-    바뀐.map(async (s) => {
+    다음.map(async (s) => {
+      const p = 전.get(s.id);
+      if (!p || p === s) return;
       try {
-        const r = await 일정상태저장(s);
+        const r = await 일정저장(p, s);
         if (r === "없음") 없음.push(s);
       } catch {
         실패.push(s);
@@ -128,14 +146,17 @@ export async function 일정변경저장(
  *    있었는데 부르는 곳이 0곳이었습니다 — 없는 기능이 아니라 '안 부른' 것입니다.
  */
 
-/** 화면의 일정 종류 → 서버 `plan_tasks.유형`. 주의: 세 값 밖은 DB CHECK 가 막습니다. */
-const 유형사전: Record<ScheduleItem["type"], "기타" | "계약" | "비교견적"> = {
+/**
+ * 화면의 일정 종류 → 서버 `plan_tasks.유형`. 주의: 이 값들 밖은 DB CHECK 가 막습니다.
+ * 「집행」은 유형이 아니라 `구분='집행'` 으로 저장합니다(`구분추정`).
+ */
+const 유형사전: Record<ScheduleItem["type"], 할일["유형"]> = {
   계약: "계약",
   비교견적: "비교견적",
-  사전승인: "기타",
-  "사전 확인": "기타",
+  사전승인: "사전승인",
+  "사전 확인": "사전확인",
   집행: "기타",
-  증빙: "기타",
+  증빙: "증빙",
   기타: "기타",
 };
 
@@ -145,11 +166,8 @@ const 유형사전: Record<ScheduleItem["type"], "기타" | "계약" | "비교�
  * 주의: 「증빙」은 결제 '뒤' 에 하는 일입니다. 나머지는 결제 전 준비입니다.
  *    잘못 넣으면 상세의 「집행 준비 / 결제 후 진행」 두 묶음이 서로 바뀝니다.
  *
- * 주의: 「집행」만 세 번째 값으로 나갑니다. 서버가 계획을 만들 때 집행예정일로 찍는
- *    줄이 `구분='집행'` 이고, `adapt.ts` 가 그걸 보고 캘린더 배지를 구분해 표시합니다
- *    (`t.구분 === "집행" ? "집행" : …`). 여기서 「결제후」로 바꿔 보내면 사용자가
- *    직접 만든 집행 일정만 새로고침 뒤에 배지가 바뀝니다 — 같은 종류가 만든 방식에
- *    따라 다르게 보이는 것이라 그 자체가 결함입니다.
+ * 주의: 「집행」만 세 번째 값으로 나갑니다. `adapt.ts` 가 `구분='집행'` 을 보고 캘린더
+ *    배지를 구분해 표시합니다(`t.구분 === "집행" ? "집행" : …`).
  */
 function 구분추정(type: ScheduleItem["type"]): "결제전" | "결제후" | "집행" {
   if (type === "집행") return "집행";
@@ -158,7 +176,7 @@ function 구분추정(type: ScheduleItem["type"]): "결제전" | "결제후" | "
 
 export type 일정생성결과 =
   | { 결과: "저장됨"; taskId: string }
-  | { 결과: "건너뜀" | "없음" | "실패" };
+  | { 결과: "건너뜀" | "없음" | "실패" | "로그인필요" };
 
 /**
  * 사용자가 직접 만든 일정을 서버에 만듭니다.
@@ -167,24 +185,26 @@ export type 일정생성결과 =
  *    교체해야 합니다 — 안 그러면 그 일정의 '상태 변경'이 계속 저장되지 않습니다
  *    (`일정상태저장()` 이 숫자 id 만 서버 항목으로 봅니다).
  *
- * 주의: 계획에 연결된 일정만 만듭니다. `plan_tasks.plan_id` 는 NULL 을 허용하지만
- *    (계획과 무관한 사용자 일정) 그걸 만드는 API 경로가 없습니다 — 추가 라우트가
- *    `/api/plans/{plan_id}/tasks` 라 plan_id 가 필수입니다. 화면도 계획 선택을
- *    필수로 두고 있어 지금은 어긋나지 않습니다.
+ * 「기타」(planId "other")는 계획 없는 일정으로 `POST /api/tasks` 에 만듭니다.
  */
 export async function 일정생성(item: ScheduleItem): Promise<일정생성결과> {
   if (!API켜짐()) return { 결과: "건너뜀" };
+  const 계획없음 = item.planId === "other";
   // 계획이 서버 것이 아니면 만들 수 없습니다 (mock 데이터 계획 등)
-  if (!서버항목인가(item.planId)) return { 결과: "건너뜀" };
+  if (!계획없음 && !서버항목인가(item.planId)) return { 결과: "건너뜀" };
 
+  const 입력 = {
+    항목: item.title.trim(),
+    설명: item.memo?.trim() || undefined,
+    구분: 구분추정(item.type),
+    due_date: item.date || undefined,
+    유형: 유형사전[item.type],
+    상태: 상태사전[item.state],
+  };
   try {
-    const r = (await 할일추가(item.planId, {
-      항목: item.title.trim(),
-      설명: item.memo?.trim() || undefined,
-      구분: 구분추정(item.type),
-      due_date: item.date || undefined,
-      유형: 유형사전[item.type],
-    })) as { task_id?: number | string };
+    const r = (await (계획없음 ? 일정추가(입력) : 할일추가(item.planId, 입력))) as {
+      task_id?: number | string;
+    };
 
     const id = r?.task_id;
     return id == null
@@ -192,6 +212,7 @@ export async function 일정생성(item: ScheduleItem): Promise<일정생성결�
       : { 결과: "저장됨", taskId: String(id) };
   } catch (e) {
     if (없음인가(e)) return { 결과: "없음" };
+    if (e instanceof 인증오류 && e.상태 === 401) return { 결과: "로그인필요" };
     return { 결과: "실패" };
   }
 }
@@ -207,28 +228,26 @@ export async function 일정생성(item: ScheduleItem): Promise<일정생성결�
  *   taskId 없음  → 사용자가 직접 만든 일정이다. POST 로 '생성' 한다.
  *
  * 돌려주는 `바뀐id` 로 호출부가 화면의 임시 id 를 서버 task_id 로 교체합니다 —
- * 안 하면 그 일정의 상태 변경이 계속 저장되지 않습니다.
+ * 안 하면 그 일정의 상태 변경이 계속 저장되지 않습니다. `저장못함` 은 서버에 남지 않은
+ * 일정의 화면 id 입니다(호출부가 화면에서 뺍니다).
  */
 export async function 일정등록(
   새항목: ScheduleItem[],
-): Promise<{ 바뀐id: Map<string, string>; 실패: number; 건너뜀: number }> {
+): Promise<{ 바뀐id: Map<string, string>; 실패: number; 건너뜀: number; 로그인필요: boolean; 저장못함: Set<string> }> {
   const 바뀐id = new Map<string, string>();
+  const 저장못함 = new Set<string>();
   let 실패 = 0;
   let 건너뜀 = 0;
-  if (!API켜짐()) return { 바뀐id, 실패, 건너뜀: 새항목.length };
+  let 로그인필요 = false;
+  if (!API켜짐()) return { 바뀐id, 실패, 건너뜀: 새항목.length, 로그인필요, 저장못함 };
 
   await Promise.all(
     새항목.map(async (item) => {
-      if (!서버항목인가(item.planId)) {
-        건너뜀 += 1;
-        return;
-      }
       // ── 경우 ① 이미 있는 할일 — 날짜만 추가한다
       if (item.taskId && 서버항목인가(item.taskId)) {
         try {
-          await 할일수정(item.planId, item.taskId, {
-            due_date: item.date || undefined,
-          });
+          await 일정수정(item.taskId, { due_date: item.date || null });
+          바뀐id.set(item.id, item.taskId);
         } catch (e) {
           if (!없음인가(e)) 실패 += 1;
           else 건너뜀 += 1;
@@ -237,10 +256,16 @@ export async function 일정등록(
       }
       // ── 경우 ② 사용자가 만든 일정 — 새로 만든다
       const r = await 일정생성(item);
-      if (r.결과 === "저장됨") 바뀐id.set(item.id, r.taskId);
-      else if (r.결과 === "실패") 실패 += 1;
-      else 건너뜀 += 1;
+      if (r.결과 === "저장됨") {
+        바뀐id.set(item.id, r.taskId);
+      } else if (r.결과 === "건너뜀") {
+        건너뜀 += 1;
+      } else {
+        저장못함.add(item.id);
+        if (r.결과 === "로그인필요") 로그인필요 = true;
+        else 실패 += 1;
+      }
     }),
   );
-  return { 바뀐id, 실패, 건너뜀 };
+  return { 바뀐id, 실패, 건너뜀, 로그인필요, 저장못함 };
 }

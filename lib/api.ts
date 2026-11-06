@@ -83,16 +83,42 @@ export const 할일추가 = (planId: number | string, 입력: {
   //    적어 두면 「집행」 일정이 조용히 「결제후」로 접혀 나갑니다.
   구분?: "결제전" | "결제후" | "집행";
   due_date?: string;
-  유형?: "기타" | "계약" | "비교견적";
+  유형?: 할일["유형"];
+  상태?: 할일["상태"];
 }) => POST(`/api/plans/${planId}/tasks`, 입력) as Promise<할일>;
+
+/** 지출계획에 묶이지 않은 일정을 만듭니다. */
+export const 일정추가 = (입력: {
+  항목: string; 설명?: string;
+  구분?: 할일["구분"];
+  due_date?: string;
+  유형?: 할일["유형"];
+  상태?: 할일["상태"];
+}) => POST("/api/tasks", 입력) as Promise<할일>;
+
+/**
+ * 집행 일정 화면의 수정. 계획 없는 일정도 같은 경로를 씁니다. 보낸 값만 바뀝니다.
+ * 주의: `due_date: null` 은 날짜를 비웁니다(「날짜 미정」으로 옮겨 갑니다).
+ */
+export const 일정수정 = (taskId: number | string, 입력: {
+  항목?: string; 설명?: string | null;
+  구분?: 할일["구분"];
+  due_date?: string | null;
+  유형?: 할일["유형"];
+  상태?: 할일["상태"];
+}) => PATCH(`/api/tasks/${taskId}`, 입력) as Promise<할일>;
+
+/** 사용자가 만든 일정만 지워집니다. 규정 점검이 만든 일정은 서버가 거절합니다(409). */
+export const 일정삭제 = (taskId: number | string) =>
+  DELETE(`/api/tasks/${taskId}`) as Promise<{ 삭제: boolean; task_id: number }>;
 
 export const 할일수정 = (
   planId: number | string,
   taskId: number | string,
   입력: {
-    상태?: "준비필요" | "집행예정" | "완료";
+    상태?: 할일["상태"];
     due_date?: string;
-    유형?: "기타" | "계약" | "비교견적";
+    유형?: 할일["유형"];
   },
 ) => PATCH(`/api/plans/${planId}/tasks/${taskId}`, 입력) as Promise<할일>;
 

@@ -86,6 +86,8 @@ export type ScheduleItem = {
    *    사용자가 직접 만든 일정에는 없습니다.
    */
   taskId?: string;
+  /** 서버 행의 출처. "ai" 는 규정 점검이 만든 일정이라 날짜와 상태만 바꿀 수 있습니다. */
+  출처?: "ai" | "user";
   title: string;
   date: string;
   type: "사전승인" | "사전 확인" | "비교견적" | "계약" | "집행" | "증빙" | "기타";

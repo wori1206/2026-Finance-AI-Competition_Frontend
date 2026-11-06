@@ -104,7 +104,7 @@ export type 할일 = {
   항목: string;
   설명: string | null;
   due_date: string | null;
-  유형: "기타" | "계약" | "비교견적";
+  유형: "기타" | "계약" | "비교견적" | "사전승인" | "사전확인" | "증빙";
   날짜_사용자수정: boolean;
   상태: "준비필요" | "집행예정" | "완료";
   계획제목?: string | null;
