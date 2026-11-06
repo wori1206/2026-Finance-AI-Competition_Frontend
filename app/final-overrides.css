@@ -1358,3 +1358,16 @@ input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-ou
 .move-schedule-list li b{flex:none;font-weight:650;color:#16231e}
 .move-schedule-list li.more{justify-content:center;color:#6f7773}
 @media (max-width:620px){.recheck-required-modal>footer{flex-wrap:wrap}.recheck-required-modal>footer button{flex:1 1 auto}}
+
+/* 지출 건별 진행 단계 */
+.expense-stage-bar{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;list-style:none;margin:0 0 14px;padding:0}
+.expense-stage-bar button{display:flex;flex-direction:column;align-items:flex-start;gap:3px;width:100%;height:100%;padding:10px 12px;border:1px solid #e2e5e3;border-radius:8px;background:#fff;text-align:left;cursor:pointer}
+.expense-stage-bar b{font-size:12px;font-weight:700;color:#16231e}
+.expense-stage-bar small{font-size:11px;color:#6f7773}
+.expense-stage-bar .stage-완료 button{background:#f0f8f4;border-color:#bfe0cf}
+.expense-stage-bar .stage-완료 small{color:#1f7a4d}
+.expense-stage-bar .stage-항목없음 button{background:#fafbfa}
+.expense-stage-bar .stage-항목없음 b,.expense-stage-bar .stage-항목없음 small{color:#9aa19d}
+.expense-stage-bar .current button{border-color:#16231e;box-shadow:inset 0 0 0 1px #16231e}
+.title-cell .plan-current-stage{display:block;margin-top:2px;font-size:11px;font-weight:500;color:#6f7773}
+@media (max-width:620px){.expense-stage-bar{grid-template-columns:repeat(2,minmax(0,1fr))}}

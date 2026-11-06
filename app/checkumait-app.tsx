@@ -13,7 +13,7 @@ import { API켜짐 } from "../lib/config";
 import { 판정실행 } from "../lib/judge";
 import { 정규화하기 } from "../lib/normalize";
 import { 인증오류 } from "../lib/http";
-import { 계획목록, 비목목록, 계획추가, 계획수정, 규정업로드, 규정처리기다리기, L3현재문서목록, 계획삭제, 일정수정 } from "../lib/api";
+import { 계획목록, 계획상세, 비목목록, 계획추가, 계획수정, 규정업로드, 규정처리기다리기, L3현재문서목록, 계획삭제, 일정수정 } from "../lib/api";
 import type { L3처리결과 } from "../lib/server-types";
 import { 체크저장, 일정변경저장, 일정등록, 일정지우기, 점검일정인가 } from "../lib/tasks";
 import { 기본규정, 서버규정읽기, type 적용규정항목 } from "../lib/norms";
@@ -1278,6 +1278,7 @@ export default function CheckumaitApp() {
       else if (실패) notify("일정을 저장하지 못했습니다. 잠시 뒤 다시 시도해 주세요.");
       else if (API켜짐() && 건너뜀) notify(화면에만반영);
       else if (완료문구) notify(완료문구);
+      for (const id of new Set(새항목.map((s) => s.planId))) 단계다시읽기(id);
     });
   };
 
@@ -1309,7 +1310,10 @@ export default function CheckumaitApp() {
     setSchedules(다음);
     void planService.saveSchedules(다음);
     void 일정지우기(item)
-      .then(() => notify("일정을 삭제했습니다."))
+      .then(() => {
+        notify("일정을 삭제했습니다.");
+        단계다시읽기(item.planId);
+      })
       .catch((e: unknown) => {
         setSchedules(이전);
         notify(`일정을 삭제하지 못했습니다. ${오류사유(e)}`);
@@ -1321,10 +1325,34 @@ export default function CheckumaitApp() {
    * 주의: 판정 경로가 집행예정일을 읽지 않아 「재점검 필요」를 띄우지 않습니다.
    */
   const [지출일창, set지출일창] = useState<{ plan: ExpensePlan; 새날짜: string; 줄들: ScheduleItem[] } | null>(null);
+  /** 일정·체크가 바뀐 뒤 진행 단계를 다시 받습니다. 단계는 서버가 할일에서 계산합니다. */
+  const 단계다시읽기 = (planId: string) => {
+    if (!API켜짐() || !/^\d+$/.test(planId)) return;
+    계획상세(planId)
+      .then((d) =>
+        setPlans((이전) =>
+          이전.map((p) => (p.id === planId ? { ...p, 단계요약: d.단계요약, 현재단계: d.현재단계 ?? null } : p)),
+        ),
+      )
+      .catch((e: unknown) => console.warn("[CHECKUMAIT] 진행 단계를 다시 읽지 못했습니다.", e));
+  };
+  /** 실제 지출을 서버에 저장합니다. 집행 단계가 완료로 바뀌므로 일정도 다시 읽습니다. */
+  const 실제지출저장 = (plan: ExpensePlan, 날짜: string, 금액: number): Promise<void> =>
+    계획수정(plan.id, { 실제지출일: 날짜, 실제지출액: 금액 }).then((d) => {
+      계획반영({
+        ...plan,
+        actualDate: 날짜,
+        actualAmount: 금액,
+        executionStatus: "결제 완료",
+        단계요약: d.단계요약,
+        현재단계: d.현재단계 ?? null,
+      });
+      return planService.listSchedules().then(setSchedules);
+    });
   const 지출일저장 = (plan: ExpensePlan, 새날짜: string, 일정이동: boolean) => {
     계획수정(plan.id, { 집행예정일: 새날짜 || null, 일정이동 })
       .then((d) => {
-        계획반영({ ...plan, plannedDate: d.집행예정일 ?? "" });
+        계획반영({ ...plan, plannedDate: d.집행예정일 ?? "", 단계요약: d.단계요약, 현재단계: d.현재단계 ?? null });
         notify(
           일정이동 && plan.plannedDate && 새날짜
             ? "예상 지출일과 연결된 일정을 옮겼습니다."
@@ -1360,6 +1388,10 @@ export default function CheckumaitApp() {
       if (없음.length) {
         notify("일부 일정은 서버에 없어 이 화면에서만 바뀝니다.");
       }
+      // 주의: 일정 유형과 상태가 진행 단계를 정합니다. 바뀐 줄의 계획만 다시 받습니다.
+      const 전 = new Map(이전.map((s) => [s.id, s]));
+      const 바뀐계획 = next.filter((s) => 전.has(s.id) && 전.get(s.id) !== s).map((s) => s.planId);
+      for (const id of new Set(바뀐계획)) 단계다시읽기(id);
     });
   };
   /**
@@ -1418,6 +1450,7 @@ export default function CheckumaitApp() {
     // 주의: 서버 저장은 '한 번' 입니다 — 두 화면이 각자 PATCH 하면 경합합니다.
     체크저장(planId, taskId, 완료)
       .then((결과) => {
+        if (결과 === "저장됨") 단계다시읽기(planId);
         if (결과 !== "없음") return;
         console.warn("[할일] 서버에 없음 — plan_id=%s task_id=%s", planId, taskId);
         notify("이 항목은 서버에 없어 화면에서만 바뀝니다.");
@@ -1692,6 +1725,7 @@ export default function CheckumaitApp() {
             판정시작={판정시작}
             update={계획반영}
             지출일변경={지출일변경}
+            실제지출저장={실제지출저장}
             addSchedules={(items) => 일정추가하기(items)}
             할일동기화={할일동기화}
             remove={() => {
@@ -4169,7 +4203,10 @@ function PlansPage({
                       />
                     </label>
                   </td>
-                  <td className="title-cell"><b>{plan.name}</b></td>
+                  <td className="title-cell">
+                    <b>{plan.name}</b>
+                    {plan.현재단계 && <small className="plan-current-stage">현재: {plan.현재단계}</small>}
+                  </td>
                   <td>{plan.category || "미정"}</td>
                   <td className="amount-cell"><strong>{won(plan.amount)}</strong></td>
                   <td className="status-cell"><Status value={plan.status} /></td>
@@ -5178,6 +5215,7 @@ function PlanDetail({
   판정시작,
   update,
   지출일변경,
+  실제지출저장,
   addSchedules,
   할일동기화,
   remove,
@@ -5189,6 +5227,7 @@ function PlanDetail({
   판정시작: (작업: 판정시작입력) => boolean;
   update: (plan: ExpensePlan) => void;
   지출일변경: (plan: ExpensePlan, 새날짜: string) => void;
+  실제지출저장: (plan: ExpensePlan, 날짜: string, 금액: number) => Promise<void>;
   addSchedules: (items: ScheduleItem[]) => void;
   /** 주의: 체크박스는 이걸로 바꿉니다 — 집행 일정까지 같이 움직이고 서버 저장도 여기서. */
   할일동기화: (planId: string, taskId: string, 완료: boolean) => void;
@@ -5300,6 +5339,16 @@ function PlanDetail({
     const 종류 = 집행확인;
     set집행확인(null);
     if (!종류) return;
+    const 완료문구 = 종류 === "등록" ? "실제 집행 정보를 등록했습니다." : "실제 집행 정보를 수정했습니다.";
+    if (API켜짐() && /^\d+$/.test(plan.id)) {
+      실제지출저장(plan, actualDate, savedActualAmount)
+        .then(() => {
+          set집행수정중(false);
+          notify(완료문구);
+        })
+        .catch((e: unknown) => notify(`실제 집행 정보를 저장하지 못했습니다. ${오류사유(e)}`));
+      return;
+    }
     update({
       ...plan,
       actualDate,
@@ -5308,7 +5357,7 @@ function PlanDetail({
       updatedAt: 시각표기(new Date().toISOString()),
     });
     set집행수정중(false);
-    notify(API켜짐() ? 화면에만반영 : 종류 === "등록" ? "실제 집행 정보를 등록했습니다." : "실제 집행 정보를 수정했습니다.");
+    notify(API켜짐() ? 화면에만반영 : 완료문구);
   };
 
   /** 수정을 그만둘 때 — 등록돼 있던 값으로 되돌립니다. */
@@ -5617,6 +5666,30 @@ function PlanDetail({
               <p>결제 전 확인부터 지출 후 증빙까지 단계별로 관리하세요.</p>
             </div>
           </header>
+          {!!plan.단계요약?.length && (
+            <ol className="expense-stage-bar" aria-label="진행 단계">
+              {plan.단계요약.map((칸) => (
+                <li key={칸.단계} className={`stage-${칸.상태}${칸.단계 === plan.현재단계 ? " current" : ""}`}>
+                  <button
+                    onClick={() =>
+                      document
+                        .getElementById(칸.단계 === "집행" ? "execution-card" : 칸.단계 === "증빙" ? "evidence-card" : "payment-before")
+                        ?.scrollIntoView({ behavior: "smooth", block: "center" })
+                    }
+                  >
+                    <b>{칸.단계}</b>
+                    <small>
+                      {칸.상태 === "항목없음"
+                        ? "항목 없음"
+                        : 칸.상태 === "완료"
+                          ? "완료"
+                          : `${칸.완료}/${칸.전체}`}
+                    </small>
+                  </button>
+                </li>
+              ))}
+            </ol>
+          )}
           <div className="expense-v5-prep-grid">
             <section id="payment-before">
               <header>
@@ -5657,11 +5730,11 @@ function PlanDetail({
             {/* 주의: 1 결제 전 확인 / 2·3 결제 이후 — 세 카드가 한 덩어리로 붙어 있어
                 「지금 뭘 해야 하나」가 안 보였습니다. 결제를 기준으로 끊습니다. */}
             <div className="expense-v5-prep-split" role="presentation" />
-            <section className="expense-v5-execution-card">
+            <section className="expense-v5-execution-card" id="execution-card">
               <header>
                 <div>
                   <h3><i>2</i><span>실제 집행 정보</span></h3>
-                  <small>{API켜짐() ? "아직 서버에 저장되지 않는 정보" : "누적 집행액 계산에 반영되는 정보"}</small>
+                  <small>누적 집행액 계산에 반영되는 정보</small>
                 </div>
                 {plan.executionStatus && <b>{plan.executionStatus}</b>}
               </header>
@@ -5698,9 +5771,7 @@ function PlanDetail({
                 <span>
                   {집행잠김
                     ? "등록을 마쳐 잠겨 있습니다. 값을 바꾸려면 수정하기를 누르세요."
-                    : API켜짐()
-                      ? "실제 집행 정보는 아직 서버에 저장되지 않아 새로고침하면 사라집니다."
-                      : "등록한 실제 지출액은 누적 집행액에 반영됩니다."}
+                    : "등록한 실제 지출액은 누적 집행액에 반영됩니다."}
                 </span>
                 {/* 주의: 상태에 따라 버튼이 하나씩만 뜹니다 — 「등록」과 「수정」이 같이
                     보이면 어느 것이 지금 할 일인지 안 보입니다. */}
@@ -5716,7 +5787,7 @@ function PlanDetail({
                 )}
               </footer>
             </section>
-            <section className="expense-v5-evidence-section">
+            <section className="expense-v5-evidence-section" id="evidence-card">
               <header>
                 <div>
                   <h3><i>3</i><span>결제 후 필요 증빙</span></h3>
@@ -5823,9 +5894,7 @@ function PlanDetail({
               <div>
                 <h2>지출을 {집행확인}하시겠습니까?</h2>
                 <p>
-                  {API켜짐()
-                    ? "이 화면에만 반영되고 서버에는 저장되지 않아 새로고침하면 사라집니다."
-                    : 집행확인 === "등록"
+                  {집행확인 === "등록"
                       ? "등록하면 누적 집행액에 반영되고, 이후에는 수정하기를 눌러야 값을 바꿀 수 있습니다."
                       : "바꾼 금액으로 누적 집행액이 다시 계산됩니다."}
                 </p>

@@ -1,3 +1,5 @@
+import type { 단계항목 } from "./server-types";
+
 // 주의: 「점검 중」은 서버 값이 아니라 판정이 도는 동안 화면에서만 씌우는 값입니다(`CheckumaitApp` 의 `화면계획`).
 export type PlanStatus = "점검 전" | "점검 중" | "재점검 필요" | "특이사항 없음" | "확인 필요" | "위험";
 
@@ -21,6 +23,9 @@ export type ExpensePlan = {
   amount: number;
   actualAmount?: number;
   actualDate?: string;
+  /** 진행 단계. 서버 계획에만 있습니다. */
+  단계요약?: 단계항목[];
+  현재단계?: string | null;
   executionStatus?: "결제 완료";
   plannedDate: string;
   category: string;

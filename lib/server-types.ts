@@ -75,6 +75,18 @@ export type 계획요약 = {
   updated_at: string | null;
   사업명: string | null;
   상태: "draft" | "judged";
+  실제지출일?: string | null;
+  실제지출액?: number | null;
+  단계요약?: 단계항목[];
+  현재단계?: string | null;
+};
+
+/** 지출 건의 진행 단계 한 칸. 서버가 할일에서 계산합니다. */
+export type 단계항목 = {
+  단계: string;
+  상태: "완료" | "진행중" | "시작전" | "항목없음";
+  완료: number;
+  전체: number;
 };
 
 export type 계획통계 = {
