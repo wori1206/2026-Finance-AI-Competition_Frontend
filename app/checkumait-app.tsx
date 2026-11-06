@@ -13,9 +13,9 @@ import { API켜짐 } from "../lib/config";
 import { 판정실행 } from "../lib/judge";
 import { 정규화하기 } from "../lib/normalize";
 import { 인증오류 } from "../lib/http";
-import { 계획목록, 비목목록, 계획추가, 규정업로드, 규정처리기다리기, L3현재문서목록, 계획삭제, 할일수정 } from "../lib/api";
+import { 계획목록, 비목목록, 계획추가, 규정업로드, 규정처리기다리기, L3현재문서목록, 계획삭제, 일정수정 } from "../lib/api";
 import type { L3처리결과 } from "../lib/server-types";
-import { 체크저장, 일정변경저장, 일정등록 } from "../lib/tasks";
+import { 체크저장, 일정변경저장, 일정등록, 일정지우기, 점검일정인가 } from "../lib/tasks";
 import { 기본규정, 서버규정읽기, type 적용규정항목 } from "../lib/norms";
 import { 기관검색, 사업요약, 기관저장, 선택기관, 기본기관명, 계정등록, type 기관 } from "../lib/orgs";
 import { 첨부보관, 첨부읽기, 첨부쓰기, 파일을첨부로, 크기표기, type 첨부 } from "../lib/attachments";
@@ -1255,41 +1255,64 @@ export default function CheckumaitApp() {
    *    교체합니다 — 안 하면 그 일정의 '상태 변경' 이 계속 저장되지 않습니다
    *    (`일정상태저장()` 은 숫자 id 만 서버 항목으로 봅니다).
    */
-  const 일정추가하기 = (새항목: ScheduleItem[]) => {
+  const 일정추가하기 = (새항목: ScheduleItem[], 완료문구?: string) => {
     if (!새항목.length) return;
     // 주의: 날짜 미정으로 이미 받은 할일에 날짜를 넣는 경우 같은 줄이 둘이 되지 않게 바꿔 끼웁니다.
     const 있는할일 = new Set(새항목.map((s) => s.taskId).filter(Boolean));
     setSchedules((이전) => [...이전.filter((s) => !s.taskId || !있는할일.has(s.taskId)), ...새항목]);
-    void 일정등록(새항목).then(({ 바뀐id, 실패 }) => {
-      if (바뀐id.size) {
+    void 일정등록(새항목).then(({ 바뀐id, 실패, 건너뜀, 로그인필요, 저장못함 }) => {
+      if (바뀐id.size || 저장못함.size) {
+        // 주의: 서버에 남지 않은 일정을 화면에 두면 저장된 줄로 보입니다. 빼고 사유를 알립니다.
         setSchedules((이전) =>
-          이전.map((s) =>
-            바뀐id.has(s.id) ? { ...s, id: 바뀐id.get(s.id) as string } : s,
-          ),
+          이전
+            .filter((s) => !저장못함.has(s.id))
+            .map((s) => {
+              const 서버id = 바뀐id.get(s.id);
+              if (!서버id) return s;
+              // 주의: 이미 있던 할일에 날짜를 넣은 줄은 출처를 모릅니다. 새로 읽을 때까지 점검 일정처럼 다룹니다.
+              return s.taskId ? { ...s, id: 서버id } : { ...s, id: 서버id, taskId: 서버id, 출처: "user" as const };
+            }),
         );
       }
-      if (실패) notify("일부 일정을 서버에 저장하지 못했습니다.");
+      if (로그인필요) notify("로그인하면 일정이 서버에 저장됩니다. 로그인한 뒤 다시 추가해 주세요.");
+      else if (실패) notify("일정을 저장하지 못했습니다. 잠시 뒤 다시 시도해 주세요.");
+      else if (API켜짐() && 건너뜀) notify(화면에만반영);
+      else if (완료문구) notify(완료문구);
     });
   };
 
   /**
    * 「날짜 미정」 줄에 날짜를 넣습니다. 먼저 그리고, 저장에 실패하면 되돌립니다.
-   * 서버 할일이 아닌 일정(계획 없는 일정, 예시 모드)은 지금 화면 값만 바꿉니다.
+   * 서버 할일이 아닌 일정(예시 모드)은 지금 화면 값만 바꿉니다.
    */
   const 일정날짜저장 = (item: ScheduleItem, 날짜: string) => {
     const 이전 = schedules;
     const 다음 = schedules.map((s) => (s.id === item.id ? { ...s, date: 날짜 } : s));
     setSchedules(다음);
     void planService.saveSchedules(다음);
-    if (!API켜짐() || !item.taskId || !/^\d+$/.test(item.planId)) {
+    if (!API켜짐() || !item.taskId) {
       notify(API켜짐() ? 화면에만반영 : "날짜를 정했습니다.");
       return;
     }
-    할일수정(item.planId, item.taskId, { due_date: 날짜 })
+    일정수정(item.taskId, { due_date: 날짜 })
       .then(() => notify("날짜를 정했습니다."))
       .catch((e: unknown) => {
         setSchedules(이전);
         notify(`날짜를 저장하지 못했습니다. ${오류사유(e)}`);
+      });
+  };
+
+  /** 일정을 지웁니다. 먼저 빼고, 서버가 거절하면 되돌립니다. */
+  const 일정지우기하기 = (item: ScheduleItem) => {
+    const 이전 = schedules;
+    const 다음 = schedules.filter((s) => s.id !== item.id);
+    setSchedules(다음);
+    void planService.saveSchedules(다음);
+    void 일정지우기(item)
+      .then(() => notify("일정을 삭제했습니다."))
+      .catch((e: unknown) => {
+        setSchedules(이전);
+        notify(`일정을 삭제하지 못했습니다. ${오류사유(e)}`);
       });
   };
 
@@ -1302,7 +1325,7 @@ export default function CheckumaitApp() {
     void 일정변경저장(이전, next).then(({ 실패, 없음 }) => {
       if (실패.length) {
         setSchedules(이전);
-        notify("일정 상태를 저장하지 못했습니다. 잠시 뒤 다시 시도해 주세요.");
+        notify("일정을 저장하지 못했습니다. 잠시 뒤 다시 시도해 주세요.");
         return;
       }
       if (없음.length) {
@@ -1658,7 +1681,8 @@ export default function CheckumaitApp() {
             자료받음={자료받음}
             일정실패={일정실패}
             save={persistSchedules}
-            추가={(item) => 일정추가하기([item])}
+            추가={(item) => 일정추가하기([item], "일정을 저장했습니다.")}
+            지우기={일정지우기하기}
             날짜저장={일정날짜저장}
             할일동기화={할일동기화}
             notify={notify}
@@ -6564,6 +6588,7 @@ function SchedulePage({
   일정실패,
   save,
   추가,
+  지우기,
   날짜저장,
   할일동기화,
   notify,
@@ -6577,6 +6602,7 @@ function SchedulePage({
   save: (items: ScheduleItem[]) => void;
   /** 주의: '새로 만든' 일정 전용. save 는 상태 변경만 서버에 보냅니다. */
   추가: (item: ScheduleItem) => void;
+  지우기: (item: ScheduleItem) => void;
   날짜저장: (item: ScheduleItem, 날짜: string) => void;
   /** 주의: 서버 할일에서 온 일정이면 이걸로 바꿉니다 — 상세 체크박스까지 같이 움직입니다. */
   할일동기화: (planId: string, taskId: string, 완료: boolean) => void;
@@ -6693,12 +6719,12 @@ function SchedulePage({
     // 주의: 서버 할일에서 온 일정이면 '상세 체크박스와 같이' 움직입니다.
     //    (그쪽에서 서버 저장까지 한 번에 합니다)
     const taskId = 대상.taskId;
-    if (taskId && 대상.planId) {
+    if (taskId && 대상.planId && 대상.planId !== "other") {
       할일동기화(대상.planId, taskId, 완료);
       return;
     }
 
-    // 사용자가 직접 만든 일정 — 연결된 할일이 없어 화면 안에서만 바뀝니다.
+    // 계획 없는 일정은 묶인 체크박스가 없어 일정만 바꿉니다.
     save(
       schedules.map((item) =>
         item.id === id
@@ -7043,28 +7069,25 @@ function SchedulePage({
                         <Icon name="edit" size={14} />
                         수정
                       </button>
-                      <button
-                        className="danger"
-                        onClick={() => {
-                          setOpenMenu(null);
-                          void 확인({
-                            제목: "일정을 삭제할까요?",
-                            설명: `'${item.title}' 일정을 삭제합니다.`,
-                            실행문구: "삭제",
-                          }).then((확인함) => {
-                            if (!확인함) return;
-                            save(
-                              schedules.filter(
-                                (schedule) => schedule.id !== item.id,
-                              ),
-                            );
-                            notify(API켜짐() ? 화면에만반영 : "일정을 삭제했습니다.");
-                          });
-                        }}
-                      >
-                        <Icon name="trash" size={14} />
-                        삭제
-                      </button>
+                      {/* 주의: 규정 점검이 만든 일정은 지워도 다음 점검이 다시 만들어 버튼을 내지 않습니다. */}
+                      {!점검일정인가(item) && (
+                        <button
+                          className="danger"
+                          onClick={() => {
+                            setOpenMenu(null);
+                            void 확인({
+                              제목: "일정을 삭제할까요?",
+                              설명: `'${item.title}' 일정을 삭제합니다.`,
+                              실행문구: "삭제",
+                            }).then((확인함) => {
+                              if (확인함) 지우기(item);
+                            });
+                          }}
+                        >
+                          <Icon name="trash" size={14} />
+                          삭제
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -7229,11 +7252,10 @@ function SchedulePage({
           close={() => setModal(false)}
           save={(item) => {
             // 주의: '새로 만든' 일정이라 전체 목록 저장이 아니라 추가 경로로 보냅니다.
-            //    `save()`(=persistSchedules)는 상태 '변경' 만 서버에 보내므로
-            //    새 항목은 그 길로 가면 서버에 안 남습니다.
+            //    `save()`(=persistSchedules)는 이미 있는 줄의 '변경' 만 서버에 보내므로
+            //    새 항목은 그 길로 가면 서버에 안 남습니다. 저장 결과 안내도 추가 경로가 합니다.
             추가(item);
             setModal(false);
-            notify("일정을 저장했습니다.");
           }}
         />
       )}
@@ -7243,18 +7265,13 @@ function SchedulePage({
           plans={plans}
           close={() => setEditing(null)}
           save={(item) => {
-            const 이전 = schedules.find((schedule) => schedule.id === item.id);
             save(
               schedules.map((schedule) =>
                 schedule.id === item.id ? item : schedule,
               ),
             );
             setEditing(null);
-            // 주의: 서버에는 상태만 보냅니다(`lib/tasks.ts`). 제목·날짜·메모는 새로고침하면 돌아갑니다.
-            const 상태만 = !!이전 && JSON.stringify({ ...item, state: 이전.state }) === JSON.stringify(이전);
-            notify(!API켜짐() || 상태만
-              ? "일정을 수정했습니다."
-              : "상태 말고 고친 내용은 이 화면에만 반영했습니다. 새로고침하면 사라집니다.");
+            notify("일정을 수정했습니다.");
           }}
         />
       )}
@@ -7263,6 +7280,22 @@ function SchedulePage({
           item={viewing}
           plan={plans.find((plan) => plan.id === viewing.planId)}
           close={() => setViewing(null)}
+          remove={
+            점검일정인가(viewing)
+              ? undefined
+              : () => {
+                  const 대상 = viewing;
+                  void 확인({
+                    제목: "일정을 삭제할까요?",
+                    설명: `'${대상.title}' 일정을 삭제합니다.`,
+                    실행문구: "삭제",
+                  }).then((확인함) => {
+                    if (!확인함) return;
+                    setViewing(null);
+                    지우기(대상);
+                  });
+                }
+          }
           toggleComplete={() => {
             const updated: ScheduleItem = {
               ...viewing,
@@ -7274,7 +7307,7 @@ function SchedulePage({
                   : "완료",
             };
             // 주의: 상세 모달에서 눌러도 같은 규칙 — 서버 할일이면 체크박스까지 같이.
-            if (viewing.taskId && viewing.planId) {
+            if (viewing.taskId && viewing.planId && viewing.planId !== "other") {
               할일동기화(viewing.planId, viewing.taskId, updated.state === "완료");
             } else {
               save(
@@ -7310,7 +7343,7 @@ function ScheduleFormModal({
   const [draft, setDraft] = useState<ScheduleItem>(
     item || {
       id: `s-${Date.now()}`,
-      planId: plans[0]?.id || "",
+      planId: plans[0]?.id || "other",
       title: "",
       date: 오늘날짜(),
       type: "사전 확인",
@@ -7318,13 +7351,19 @@ function ScheduleFormModal({
       memo: "",
     },
   );
+  // 주의: 규정 점검이 다시 쓰는 값은 고쳐도 사라지므로 잠급니다. 계획을 옮기는 API 는 없어 수정 때 잠급니다.
+  const 잠김 = !!item && 점검일정인가(item);
   return (
     <div className="modal-backdrop schedule-modal-backdrop">
       <section className="schedule-create-modal">
         <header>
           <div>
             <h2>{item ? "일정 수정" : "일정 추가"}</h2>
-            <p>일정 정보와 메모를 관리할 수 있습니다.</p>
+            <p>
+              {잠김
+                ? "규정 점검이 만든 일정이라 날짜와 상태만 바꿀 수 있습니다."
+                : "일정 정보와 메모를 관리할 수 있습니다."}
+            </p>
           </div>
           <button onClick={close}>×</button>
         </header>
@@ -7336,6 +7375,8 @@ function ScheduleFormModal({
                 일정 제목
                 <input
                   value={draft.title}
+                  disabled={잠김}
+                  maxLength={300}
                   onChange={(e) =>
                     setDraft({ ...draft, title: e.target.value })
                   }
@@ -7346,6 +7387,7 @@ function ScheduleFormModal({
                 일정 유형
                 <select
                   value={draft.type}
+                  disabled={잠김}
                   onChange={(e) =>
                     setDraft({
                       ...draft,
@@ -7372,6 +7414,7 @@ function ScheduleFormModal({
                 관련 지출 계획
                 <select
                   value={draft.planId}
+                  disabled={!!item}
                   onChange={(e) =>
                     setDraft({ ...draft, planId: e.target.value })
                   }
@@ -7381,11 +7424,7 @@ function ScheduleFormModal({
                       {plan.name}
                     </option>
                   ))}
-                  {/* 주의: `plan_tasks.plan_id` 는 NULL 을 허용하지만 그런 행을 만드는 API
-                      경로가 없습니다 — 추가 라우트가 `/api/plans/{plan_id}/tasks` 라
-                      plan_id 가 '필수' 입니다. 그래서 이걸 고르면 서버에 안 남습니다.
-                      조용히 사라지게 두지 않고 라벨로 말합니다. */}
-                  <option value="other">기타 (이 브라우저에만 저장)</option>
+                  <option value="other">기타 (지출 계획과 무관한 일정)</option>
                 </select>
               </label>
             </div>
@@ -7403,6 +7442,7 @@ function ScheduleFormModal({
                       setDraft({ ...draft, date: e.target.value })
                     }
                   />
+                  <small>비워 두면 「날짜 미정」으로 모입니다.</small>
                 </label>
                 <label>
                   상태
@@ -7429,6 +7469,7 @@ function ScheduleFormModal({
               메모
               <textarea
                 maxLength={500}
+                disabled={잠김}
                 value={draft.memo || ""}
                 onChange={(e) => setDraft({ ...draft, memo: e.target.value })}
                 placeholder="추가로 기록할 내용을 입력하세요."
@@ -7458,12 +7499,14 @@ function ScheduleDetailModal({
   item,
   plan,
   close,
+  remove,
   toggleComplete,
   edit,
 }: {
   item: ScheduleItem;
   plan?: ExpensePlan;
   close: () => void;
+  remove?: () => void;
   toggleComplete: () => void;
   edit: () => void;
 }) {
@@ -7521,6 +7564,11 @@ function ScheduleDetailModal({
           </span>
         </label>
         <footer>
+          {remove && (
+            <button className="outline danger" onClick={remove}>
+              삭제
+            </button>
+          )}
           <button className="outline" onClick={close}>
             닫기
           </button>
