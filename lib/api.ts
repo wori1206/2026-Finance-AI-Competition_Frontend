@@ -80,8 +80,10 @@ export const 계획추가 = (입력: {
  * 주의: 판정은 바뀌지 않습니다. 판정 경로가 집행예정일을 읽지 않습니다.
  */
 export const 계획수정 = (planId: number | string, 입력: {
-  집행예정일: string | null;
-  일정이동: boolean;
+  집행예정일?: string | null;
+  일정이동?: boolean;
+  실제지출일?: string;
+  실제지출액?: number;
 }) => PATCH(`/api/plans/${planId}`, 입력) as Promise<계획상세형>;
 
 /* ── 할 일 ──────────────────────────────────── */

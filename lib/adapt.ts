@@ -319,6 +319,11 @@ export function 요약을계획으로(s: 계획요약): ExpensePlan {
     aiChecks: [],
     evidence: [],
     rules: [],
+    단계요약: s.단계요약,
+    현재단계: s.현재단계 ?? null,
+    actualDate: s.실제지출일 ?? undefined,
+    actualAmount: s.실제지출액 ?? undefined,
+    executionStatus: s.실제지출일 ? "결제 완료" : undefined,
   };
 }
 
