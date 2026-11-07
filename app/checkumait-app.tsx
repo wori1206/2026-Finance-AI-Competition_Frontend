@@ -5555,6 +5555,41 @@ function NewPlanPage({
 }
 
 /**
+ * 용어 하나를 찾는 식. 서버 `ontology_terms._식` 과 같은 규칙이어야 합니다:
+ * 글자 사이 띄어쓰기 무시(「사전 심의」 = 「사전심의」) · 낱말 앞 경계(「예비창업자」 안의 「창업」 아님) · 영문 · 숫자로 끝나면 뒤 경계.
+ */
+function 용어식(용어: string): RegExp | null {
+  const 글자 = Array.from(용어.replace(/\s+/g, ""));
+  if (글자.length < 2) return null;
+  const 몸 = 글자.map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s*");
+  const 뒤 = /[A-Za-z0-9]/.test(글자[글자.length - 1]) ? "(?![A-Za-z0-9])" : "";
+  return new RegExp(`(?<![가-힣A-Za-z0-9])${몸}${뒤}`, "g");
+}
+
+/**
+ * 이 글에 나온 말의 풀이. 서버 `ontology_terms.글에서_찾기` 와 같이 긴 용어가 자리를 먼저 차지하고
+ * (「사업비 정산」 안의 「사업비」는 세지 않음), 처음 나온 순서로 돌려줍니다.
+ */
+function 글에_나온_풀이(글: string, 풀이: 용어풀이항목[]): 용어풀이항목[] {
+  const 후보: { 길이: number; 시작: number; 끝: number; i: number }[] = [];
+  풀이.forEach((t, i) => {
+    const 식 = 용어식(t.용어);
+    if (!식) return;
+    const 길이 = t.용어.replace(/\s+/g, "").length;
+    for (const m of 글.matchAll(식)) 후보.push({ 길이, 시작: m.index ?? 0, 끝: (m.index ?? 0) + m[0].length, i });
+  });
+  후보.sort((a, b) => b.길이 - a.길이 || a.시작 - b.시작 || a.끝 - b.끝 || a.i - b.i);
+  const 덮임 = new Array<boolean>(글.length).fill(false);
+  const 첫자리 = new Map<number, number>();
+  for (const h of 후보) {
+    if (덮임.slice(h.시작, h.끝).some(Boolean)) continue;
+    덮임.fill(true, h.시작, h.끝);
+    첫자리.set(h.i, Math.min(첫자리.get(h.i) ?? h.시작, h.시작));
+  }
+  return [...첫자리.entries()].sort((a, b) => a[1] - b[1]).map(([i]) => 풀이[i]);
+}
+
+/**
  * 3단계 확인 질문 한 개. 재점검 창이 함께 쓰는 `Question` 과 달리 이유와 규정 원문이 딸려 있습니다.
  * 주의: 세 버튼은 칸 너비까지 같게 둡니다. 「모르겠어요」가 작거나 흐리면 모른다고 답하기 어려워집니다.
  */
@@ -5571,9 +5606,7 @@ function 확인질문카드({
   onChange: (값: string) => void;
 }) {
   const 근거 = 질문.근거;
-  // 서버는 띄어쓰기가 달라도 같은 용어로 봅니다(「사전 심의」 = 「사전심의」). 여기서도 공백을 빼고 맞춥니다.
-  const 붙인질문 = 질문.질문문.replace(/\s+/g, "");
-  const 이질문풀이 = (풀이 ?? []).filter((t) => 붙인질문.includes(t.용어.replace(/\s+/g, "")));
+  const 이질문풀이 = 글에_나온_풀이(질문.질문문, 풀이 ?? []);
   return (
     <div className="question confirm-question">
       <div className="confirm-question-text">
