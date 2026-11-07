@@ -5535,9 +5535,9 @@ function PlanDetail({
   };
   // 이번 판정의 분류를 먼저 쓰고, 새로고침 뒤에는 계획에 저장해 둔 세목으로 같은 모양을 만듭니다.
   // 주의: 수정 창에서 화면에만 고친 비목이면 그 값을 그대로 보여 줍니다. 옛 세목을 붙이면 고친 비목과 어긋납니다.
-  // 「확인할 조건」 묶음에 이미 있는 문장은 결제 전 확인에 다시 적지 않습니다
+  // 「확인할 조건」 묶음이나 AI 해설에 이미 있는 문장은 결제 전 확인에 다시 적지 않습니다
   const 조건문장 = [...(plan.조건 ?? []), ...(plan.금지조건 ?? []), ...(plan.해당시조건 ?? [])];
-  const 결제전항목 = plan.aiChecks.filter((item) => !조건문장.includes(item.label));
+  const 결제전항목 = plan.aiChecks.filter((item) => !조건문장.includes(item.label) && item.label !== plan.aiSummary);
   const 표시분류 = plan.화면만수정
     ? plan.category
     : plan.분류?.표시문 ?? (plan.확정세목 ? `${plan.category} > ${plan.확정세목}` : plan.category);
