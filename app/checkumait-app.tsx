@@ -13,8 +13,8 @@ import { API켜짐 } from "../lib/config";
 import { 판정실행 } from "../lib/judge";
 import { 정규화하기 } from "../lib/normalize";
 import { 인증오류 } from "../lib/http";
-import { 계획목록, 계획상세, 비목목록, 계획추가, 계획수정, 규정업로드, 규정처리기다리기, 규정적용, 규정거절, L3현재문서목록, 팀조회, 팀만들기, 초대코드재발급, 팀들어가기, 팀나가기, 팀원내보내기, 계획삭제, 일정수정, 피드백저장 } from "../lib/api";
-import type { L3처리결과 } from "../lib/server-types";
+import { 계획목록, 계획상세, 비목목록, 계획추가, 계획수정, 규정업로드, 규정처리기다리기, 규정적용, 규정거절, 조문연결저장, L3현재문서목록, 팀조회, 팀만들기, 초대코드재발급, 팀들어가기, 팀나가기, 팀원내보내기, 계획삭제, 일정수정, 피드백저장 } from "../lib/api";
+import type { L3처리결과, L3현재문서 } from "../lib/server-types";
 import { 체크저장, 일정변경저장, 일정등록, 일정지우기, 점검일정인가 } from "../lib/tasks";
 import { 기본규정, 서버규정읽기, type 적용규정항목 } from "../lib/norms";
 import { 기관검색, 사업요약, 기관저장, 선택기관, 기본기관명, 계정등록, 초대코드등록, type 기관 } from "../lib/orgs";
@@ -32,7 +32,7 @@ import {
 } from "../lib/attachments";
 import { 지금출처, 출처구독, 출처문구 } from "../lib/data-source";
 import { 인증켜짐, 로그인 as supabase로그인, 가입 as supabase가입, 로그아웃 as supabase로그아웃, 이메일 as supabase이메일, 팀이름 as supabase팀이름, 팀이름쓰기 as supabase팀이름쓰기, 온보딩기록읽기, 온보딩마침, 재설정링크읽기, 재설정끝내기, 재설정메일보내기, 새비밀번호저장 } from "../lib/supabase";
-import { 상세를계획으로, 판정제목, 행동문구, 조건칸상태, 시각표기, L3등록사실, L3현재문서요약짓기, 문서명보기, 답표기, 로조사, 부가세확정, 부가세표기, 부가세질문id, type L3현재문서요약 } from "../lib/adapt";
+import { 상세를계획으로, 판정제목, 행동문구, 조건칸상태, 시각표기, L3등록사실, L3현재문서요약짓기, 조문연결셈, 문서명보기, 답표기, 로조사, 부가세확정, 부가세표기, 부가세질문id, type L3현재문서요약 } from "../lib/adapt";
 import { 질문가져오기, 추가입력초기값, 추가입력값만들기, type 질문결과 } from "../lib/questions";
 // 주의: `데모종료` 는 남깁니다 — 「계정 없이 둘러보기」를 없앴어도 예전에 받아 둔
 //    데모 토큰이 브라우저에 2시간 남아 있을 수 있고, 그게 로그인 조회를 가로챕니다.
@@ -660,6 +660,132 @@ function L3확인창({
         <footer>
           <button className="outline" disabled={처리중} onClick={() => void 처리("거절")}>올리지 않기</button>
           <button className="primary" disabled={처리중} onClick={() => void 처리("적용")}>이 문서로 적용</button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+/** 조문 연결 고르기 값. 화면에는 표시문만 보이고, 값은 저장할 때만 씁니다. */
+const 연결_고르지않음 = "__고르지않음";
+const 연결_공통 = "__공통";
+const 연결값 = (ids: string[] | null): string => (ids === null ? 연결_고르지않음 : ids.length === 0 ? 연결_공통 : ids.join("|"));
+
+/**
+ * 기관 세부기준의 조문마다 어느 비목에 해당하는지 확인하는 창(2026-11-07, P4-5). 마이페이지 「주관기관 세부 안내」에서 엽니다.
+ *
+ * 서버 추천이 기본으로 골라져 있고(「저장」하면 그대로 확인), 조마다 고치거나 「고르지 않음」으로 둘 수 있습니다.
+ * 고르지 않은 조문은 지금처럼 모든 판정에 함께 들어갑니다. 「나중에」는 아무것도 저장하지 않습니다.
+ */
+function L3연결창({
+  문서,
+  닫기,
+  저장됨,
+}: {
+  문서: L3현재문서;
+  닫기: () => void;
+  저장됨: (r: L3현재문서) => void;
+}) {
+  const 목록 = 문서.연결 ?? [];
+  const 선택지 = 문서.연결선택지 ?? [];
+  const [고름, set고름] = useState<Record<number, string>>(() =>
+    Object.fromEntries(목록.map((x) => [x.article_id, 연결값(x.concept_ids)])),
+  );
+  const [처리중, set처리중] = useState(false);
+  const [오류, set오류] = useState("");
+  const 추천없음뿐 = 목록.length > 0 && 목록.every((x) => x.상태 === "추천없음");
+  const 안내 =
+    문서.연결상태 === "추천작성중"
+      ? "추천을 만드는 중이에요. 잠시 뒤 다시 열면 추천이 채워져요. 지금 직접 골라도 됩니다."
+      : 문서.연결상태 === "추천실패" || (추천없음뿐 && 문서.연결상태 !== "추천일부실패")
+        ? "자동 추천을 만들지 못했어요. 조문마다 직접 골라 주세요."
+        : 문서.연결상태 === "추천일부실패"
+          ? "일부 조문은 추천을 만들지 못했어요. 비어 있는 조문은 직접 골라 주세요."
+          : null;
+
+  const 저장 = async () => {
+    const 값: Record<string, string[] | null> = {};
+    for (const x of 목록) {
+      const v = 고름[x.article_id] ?? 연결_고르지않음;
+      if (v === 연결_고르지않음) {
+        if (x.상태 === "확인") 값[String(x.article_id)] = null; // 확인했던 조를 되돌린다
+      } else {
+        값[String(x.article_id)] = v === 연결_공통 ? [] : v.split("|");
+      }
+    }
+    if (Object.keys(값).length === 0) {
+      닫기();
+      return;
+    }
+    set처리중(true);
+    set오류("");
+    try {
+      저장됨(await 조문연결저장(문서.doc_id, 값));
+    } catch (e) {
+      set오류(`저장하지 못했습니다 — ${오류사유(e)}`);
+      set처리중(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop">
+      <section className="modal wide" role="dialog" aria-modal="true" aria-labelledby="l3-link-title">
+        <header>
+          <div>
+            <h2 id="l3-link-title">조문 연결 확인</h2>
+            <p>
+              조문마다 어느 비목에 해당하는지 골라 주세요. 판정할 때 고른 비목의 조문을 먼저 보고, 다른 비목에 연결한
+              조문은 빼요.
+            </p>
+          </div>
+          <button onClick={닫기} aria-label="닫기" disabled={처리중}>×</button>
+        </header>
+        <div className="recommend-list" style={{ padding: 20 }}>
+          {안내 && <p className="section-copy" role="status">{안내}</p>}
+          <p className="section-copy">
+            고르지 않은 조문은 지금처럼 모든 판정에 함께 봅니다. 기관 규정이 상위 규정보다 느슨해도 판정은 상위 규정을 따릅니다.
+          </p>
+          {목록.map((x) => {
+            const 지금 = 고름[x.article_id] ?? 연결_고르지않음;
+            // 추천이 여러 분류를 묶었거나 지금 목록 밖 분류로 확인한 조는 그 값을 따로 둡니다(고치면 목록에서 고릅니다)
+            const 원래 = 연결값(x.concept_ids);
+            const 원래따로 = 원래 !== 연결_고르지않음 && 원래 !== 연결_공통 && !선택지.some((s) => s.concept_id === 원래);
+            return (
+              <label key={x.article_id}>
+                <span>
+                  <b>{[x.조번호, x.조제목].filter(Boolean).join(" ")}</b>
+                  {x.미리보기 && <small>{x.미리보기}</small>}
+                  {x.옛판문구.map((o, i) => (
+                    <small key={i}>
+                      <span className="institution-badge warn">옛 판 문구</span> 「{o.문서}」와 같은 문장이에요: “{o.문장}”
+                      지금 판 기준과 다를 수 있어요.
+                    </small>
+                  ))}
+                </span>
+                <em>{x.상태 === "확인" ? "확인함" : x.상태 === "추천" ? "추천" : "추천 없음"}</em>
+                <select
+                  value={지금}
+                  disabled={처리중}
+                  aria-label={`${x.조번호} 연결할 비목`}
+                  onChange={(event) => set고름((v) => ({ ...v, [x.article_id]: event.target.value }))}
+                >
+                  <option value={연결_고르지않음}>고르지 않음 (모든 판정에 함께 봄)</option>
+                  <option value={연결_공통}>모든 지출에 공통</option>
+                  {원래따로 && <option value={원래}>{x.표시문.join(" · ") || "이전에 고른 분류"}</option>}
+                  {선택지.map((s) => (
+                    <option key={s.concept_id} value={s.concept_id}>
+                      {s.표시문}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            );
+          })}
+        </div>
+        {오류 && <p className="section-copy" role="alert" style={{ padding: "0 20px" }}>ⓘ {오류}</p>}
+        <footer>
+          <button className="outline" disabled={처리중} onClick={닫기}>나중에</button>
+          <button className="primary" disabled={처리중} onClick={() => void 저장()}>저장</button>
         </footer>
       </section>
     </div>
@@ -8927,6 +9053,22 @@ function MyPage({
   const [기준실패, set기준실패] = useState<L3실패 | null>(null);
   const [기준확인, set기준확인] = useState<L3확인 | null>(null);
   const 지금기준파일 = 방금등록?.파일명 ?? 기준문서.파일명;
+  /** 조문 연결 확인 창에 띄운 문서(P4-5). */
+  const [연결창, set연결창] = useState<L3현재문서 | null>(null);
+  /**
+   * 서버가 연결 추천을 만드는 동안(업로드 직후) 5초마다 다시 읽어 줄을 바꿉니다. 3분이 지나면 멈춥니다
+   * (서버는 30분 넘게 멈춘 추천을 「추천 실패」로 바꿔 줍니다). 창이 열려 있으면 읽지 않습니다(고르던 값이 바뀌지 않게).
+   */
+  const 추천기다림 = useRef(0);
+  const 추천작성중 = 기준문서.연결문서?.연결상태 === "추천작성중";
+  useEffect(() => {
+    if (!추천작성중 || 연결창 || 추천기다림.current >= 36) return;
+    const t = setTimeout(() => {
+      추천기다림.current += 1;
+      set기준재조회((n) => n + 1);
+    }, 5000);
+    return () => clearTimeout(t);
+  }, [추천작성중, 연결창, 기준문서]);
 
   /**
    * 기준 문서 교체 — 업로드한 뒤 서버가 다 읽을 때까지 기다려 결과대로 갈립니다.
@@ -9189,6 +9331,37 @@ function MyPage({
             </small>
           </div>
         </article>
+        {/* 방금 올린 문서를 서버에서 다시 읽기 전에는 이전 문서의 연결을 보이지 않습니다 */}
+        {기준문서.연결문서 && (!방금등록 || 방금등록.파일명 === 기준문서.연결문서.원본파일명) && (() => {
+          const 연결 = 기준문서.연결문서;
+          const 셈 = 조문연결셈(연결);
+          const 작성중 = 연결.연결상태 === "추천작성중";
+          const 옛판 = 셈.옛판 > 0 ? ` 옛 판 지침과 같은 문구가 있는 조문이 ${셈.옛판}개 있어요. 지금 판 기준과 다를 수 있어요.` : "";
+          const [제목, 설명, 버튼] = 작성중
+            ? ["조문 연결 추천을 만들고 있어요", "조문마다 어느 비목에 해당하는지 추천해요. 확인하기 전에는 모든 조문을 함께 보고 판정합니다.", "지금 보기"]
+            : 셈.확인전 > 0
+              ? [
+                  `조문 연결을 확인해 주세요 (확인 전 ${셈.확인전}개 조)`,
+                  (연결.연결상태 === "추천실패" ? "자동 추천을 만들지 못했어요. 직접 골라 주세요. " : "") +
+                    "비목에 연결하면 판정할 때 그 비목의 조문을 먼저 봅니다. 확인 전에는 모든 조문을 함께 봅니다.",
+                  "연결 확인하기",
+                ]
+              : [`조문 연결을 확인했어요 (${셈.전체}개 조)`, "판정할 때 고른 비목의 조문을 먼저 봅니다.", "연결 고치기"];
+          return (
+            <article>
+              <span className={`institution-badge${셈.확인전 > 0 || 셈.옛판 > 0 ? " warn" : ""}`}>
+                {셈.확인전 > 0 ? "연결 확인 전" : "조문 연결"}
+              </span>
+              <div>
+                <b>{제목}</b>
+                <small>{설명}{옛판}</small>
+              </div>
+              <button className="outline small institution-review-button" onClick={() => set연결창(연결)}>
+                {버튼}
+              </button>
+            </article>
+          );
+        })()}
         {기준문서.확인대기목록.map((문서) => (
           <article key={문서.doc_id} className="institution-file-failed">
             <span className="institution-badge warn">확인 필요</span>
@@ -9319,6 +9492,20 @@ function MyPage({
           실패={기준실패}
           닫기={() => set기준실패(null)}
           다시올리기={(파일) => void 기준문서올리기(파일)}
+        />
+      )}
+      {연결창 && (
+        <L3연결창
+          문서={연결창}
+          닫기={() => {
+            set연결창(null);
+            set기준재조회((n) => n + 1);
+          }}
+          저장됨={() => {
+            set연결창(null);
+            notify("조문 연결을 저장했어요. 다음 판정부터 반영돼요.");
+            set기준재조회((n) => n + 1);
+          }}
         />
       )}
       {editingProfile && (

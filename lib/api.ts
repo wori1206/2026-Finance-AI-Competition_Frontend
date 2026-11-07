@@ -280,6 +280,13 @@ export const 규정거절 = (docId: string) => POST(`/api/l3/${docId}/reject`, {
 
 export const L3처리중 = (상태: string) => 상태 === "파싱대기" || 상태 === "파싱중";
 
+/**
+ * 조문 연결 저장(2026-11-07, `PATCH /api/l3/{doc_id}/links`). 값: `[concept_id]` · `[]`(모든 지출에 공통) · `null`(확인 안 함).
+ * 같은 기관의 판정에 쓰는 문서만 저장됩니다. 고를 수 없는 분류가 섞이면 하나도 저장하지 않고 400 입니다.
+ */
+export const 조문연결저장 = (docId: string, 값: Record<string, string[] | null>) =>
+  PATCH(`/api/l3/${docId}/links`, 값) as Promise<L3현재문서>;
+
 /* ── 서버 살았나 ─────────────────────────────── */
 
 export const 헬스 = () =>
