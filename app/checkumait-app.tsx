@@ -5219,7 +5219,7 @@ function 결과문장목록({ 제목, 항목 }: { 제목: string; 항목?: strin
   );
 }
 
-/** 해당할 때만 필요한 조건. 첫 화면을 채우지 않게 접어 두고, 다른 조건이 없으면 펼쳐 둡니다. */
+/** 해당할 때만 필요한 조건 · 사업 전체 공통 사항. 첫 화면을 채우지 않게 접어 둡니다. */
 function 결과접는목록({ 제목, 항목, 펼침 }: { 제목: string; 항목?: string[]; 펼침: boolean }) {
   if (!항목?.length) return null;
   return (
@@ -5535,8 +5535,8 @@ function PlanDetail({
   };
   // 이번 판정의 분류를 먼저 쓰고, 새로고침 뒤에는 계획에 저장해 둔 세목으로 같은 모양을 만듭니다.
   // 주의: 수정 창에서 화면에만 고친 비목이면 그 값을 그대로 보여 줍니다. 옛 세목을 붙이면 고친 비목과 어긋납니다.
-  // 「확인할 조건」 묶음이나 AI 해설에 이미 있는 문장은 결제 전 확인에 다시 적지 않습니다
-  const 조건문장 = [...(plan.조건 ?? []), ...(plan.금지조건 ?? []), ...(plan.해당시조건 ?? [])];
+  // 조건 묶음이나 AI 해설에 이미 있는 문장은 결제 전 확인에 다시 적지 않습니다
+  const 조건문장 = [...(plan.조건 ?? []), ...(plan.기한조건 ?? []), ...(plan.금지조건 ?? []), ...(plan.해당시조건 ?? []), ...(plan.공통사항 ?? [])];
   const 결제전항목 = plan.aiChecks.filter((item) => !조건문장.includes(item.label) && item.label !== plan.aiSummary);
   const 표시분류 = plan.화면만수정
     ? plan.category
@@ -5721,12 +5721,12 @@ function PlanDetail({
                           : "추가 확인이 필요합니다."
                       }`}
                 </h3>
-                {행동문구(plan.판정, Boolean(plan.분류), plan.문의처) && (
+                {행동문구(plan.판정, Boolean(plan.분류), plan.문의처, Boolean(plan.금지조건?.length)) && (
                   <p className="ai-verdict-action">
                     <b>
                       {plan.코드판정?.종류 === "부가세기준미정" && 부가세_고를수있음(plan.부가세구분)
                         ? `부가세 포함 여부를 고르면 다시 판정합니다. 모르면 ${plan.문의처 || "주관기관에"} 확인하세요.`
-                        : 행동문구(plan.판정, Boolean(plan.분류), plan.문의처)}
+                        : 행동문구(plan.판정, Boolean(plan.분류), plan.문의처, Boolean(plan.금지조건?.length))}
                     </b>
                   </p>
                 )}
@@ -5742,9 +5742,11 @@ function PlanDetail({
             {plan.코드판정 && (
               <코드판정카드 판정={plan.코드판정} 부가세={plan.부가세구분} 문의처={plan.문의처} 다시점검={() => setRecheckQuestions(true)} />
             )}
-            <결과문장목록 제목="확인할 조건" 항목={plan.조건} />
+            <결과문장목록 제목="이번 지출에 영향 있는 조건" 항목={plan.조건} />
+            <결과문장목록 제목="기한이 있는 일" 항목={plan.기한조건} />
             <결과문장목록 제목="이런 경우에는 안 돼요" 항목={plan.금지조건} />
-            <결과접는목록 제목="해당할 때만 필요해요" 항목={plan.해당시조건} 펼침={!plan.조건?.length} />
+            <결과접는목록 제목="해당할 때만 필요해요" 항목={plan.해당시조건} 펼침={!plan.조건?.length && !plan.기한조건?.length} />
+            <결과접는목록 제목="사업 전체 공통 사항" 항목={plan.공통사항} 펼침={false} />
             <확인한내용 항목={plan.사용자답변} />
             <div className="ai-explanation">
               <Icon name="spark" size={20} />
