@@ -21,7 +21,7 @@ import { 기관검색, 사업요약, 기관저장, 선택기관, 기본기관명
 import { 첨부보관, 첨부읽기, 첨부쓰기, 파일을첨부로, 크기표기, type 첨부 } from "../lib/attachments";
 import { 지금출처, 출처구독, 출처문구 } from "../lib/data-source";
 import { 인증켜짐, 로그인 as supabase로그인, 가입 as supabase가입, 로그아웃 as supabase로그아웃, 이메일 as supabase이메일, 팀이름 as supabase팀이름, 팀이름쓰기 as supabase팀이름쓰기, 온보딩기록읽기, 온보딩마침, 재설정링크읽기, 재설정끝내기, 재설정메일보내기, 새비밀번호저장 } from "../lib/supabase";
-import { 상세를계획으로, 판정제목, 행동문구, 시각표기, L3등록사실, L3현재문서요약짓기, 문서명보기, 답표기, 로조사, 부가세확정, 부가세표기, 부가세질문id, type L3현재문서요약 } from "../lib/adapt";
+import { 상세를계획으로, 판정제목, 행동문구, 조건칸상태, 시각표기, L3등록사실, L3현재문서요약짓기, 문서명보기, 답표기, 로조사, 부가세확정, 부가세표기, 부가세질문id, type L3현재문서요약 } from "../lib/adapt";
 import { 질문가져오기, 추가입력초기값, 추가입력값만들기, type 질문결과 } from "../lib/questions";
 // 주의: `데모종료` 는 남깁니다 — 「계정 없이 둘러보기」를 없앴어도 예전에 받아 둔
 //    데모 토큰이 브라우저에 2시간 남아 있을 수 있고, 그게 로그인 조회를 가로챕니다.
@@ -5721,12 +5721,12 @@ function PlanDetail({
                           : "추가 확인이 필요합니다."
                       }`}
                 </h3>
-                {행동문구(plan.판정, Boolean(plan.분류), plan.문의처, Boolean(plan.금지조건?.length)) && (
+                {행동문구(plan.판정, Boolean(plan.분류), plan.문의처, 조건칸상태(plan)) && (
                   <p className="ai-verdict-action">
                     <b>
                       {plan.코드판정?.종류 === "부가세기준미정" && 부가세_고를수있음(plan.부가세구분)
                         ? `부가세 포함 여부를 고르면 다시 판정합니다. 모르면 ${plan.문의처 || "주관기관에"} 확인하세요.`
-                        : 행동문구(plan.판정, Boolean(plan.분류), plan.문의처, Boolean(plan.금지조건?.length))}
+                        : 행동문구(plan.판정, Boolean(plan.분류), plan.문의처, 조건칸상태(plan))}
                     </b>
                   </p>
                 )}

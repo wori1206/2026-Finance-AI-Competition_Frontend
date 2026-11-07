@@ -74,10 +74,21 @@ export function 판정제목(판정: 판정값 | undefined, 비목: string): str
  * 주의: 물어볼 곳은 자금마다 다릅니다(창업활동자금은 멘토기관 담당자). 서버가 준 `문의처` 를 그대로 씁니다.
  * 주의: 금지 칸이 남아 있으면 채워서 되는 일이 아닙니다. 「채우면 집행할 수 있다」를 쓰지 않습니다.
  */
-export function 행동문구(판정: 판정값 | undefined, 온톨로지경로 = false, 문의처: string | null | undefined = null, 금지있음 = false): string | null {
+export type 조건칸상태값 = "금지" | "보임" | "공통만" | "없음";
+
+/** 판정 화면에 바로 보이는 조건 칸이 무엇인지. 공통 사항은 접혀 있어 「아래 항목」이라고 말할 수 없습니다. */
+export function 조건칸상태(p: { 조건?: string[]; 기한조건?: string[]; 금지조건?: string[]; 해당시조건?: string[]; 공통사항?: string[] }): 조건칸상태값 {
+  if (p.금지조건?.length) return "금지";
+  if (p.조건?.length || p.기한조건?.length || p.해당시조건?.length) return "보임";
+  return p.공통사항?.length ? "공통만" : "없음";
+}
+
+export function 행동문구(판정: 판정값 | undefined, 온톨로지경로 = false, 문의처: string | null | undefined = null, 칸상태: 조건칸상태값 = "보임"): string | null {
   switch (판정) {
     case "조건부":
-      if (금지있음) return "아래 안 되는 경우에 해당하지 않는지 먼저 확인한 뒤 집행하세요.";
+      if (칸상태 === "금지") return "아래 안 되는 경우에 해당하지 않는지 먼저 확인한 뒤 집행하세요.";
+      if (온톨로지경로 && 칸상태 === "공통만") return "아래 「사업 전체 공통 사항」을 펼쳐 확인한 뒤 집행하세요.";
+      if (온톨로지경로 && 칸상태 === "없음") return `집행 전에 ${문의처 || "주관기관에"} 확인하세요.`;
       return 온톨로지경로 ? "아래 항목을 확인한 뒤 집행하세요." : "아래 조건을 채우면 집행할 수 있습니다.";
     case "판단불가":
       return `규정만으로는 결론이 나지 않습니다. 집행 전에 ${문의처 || "주관기관에"} 확인하세요.`;
