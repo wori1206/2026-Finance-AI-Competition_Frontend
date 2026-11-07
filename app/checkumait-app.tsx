@@ -5158,10 +5158,12 @@ function 코드판정제목(판정: 코드판정값 | null | undefined, 분류: 
 function 코드판정카드({
   판정,
   부가세,
+  문의처,
   다시점검,
 }: {
   판정: 코드판정값;
   부가세?: 부가세구분;
+  문의처?: string | null;
   다시점검: () => void;
 }) {
   const 고를수있음 = 판정.종류 === "부가세기준미정" && 부가세_고를수있음(부가세);
@@ -5180,7 +5182,7 @@ function 코드판정카드({
         ? null
         : 고를수있음
           ? "입력한 금액에 부가세가 포함됐는지에 따라 결과가 달라져요. 부가세 포함 여부를 골라 다시 점검해 주세요."
-          : "규정에 금액의 부가세 기준이 적혀 있지 않아 결과를 정하지 못했어요. 주관기관에 확인해 주세요.";
+          : `규정에 금액의 부가세 기준이 적혀 있지 않아 결과를 정하지 못했어요. ${문의처 || "주관기관에"} 확인해 주세요.`;
   return (
     <section className="ai-confirmed ai-code-verdict">
       <b>{제목}</b>
@@ -5312,9 +5314,11 @@ function Question({
  */
 function 문의초안카드({
   초안,
+  문의처,
   notify,
 }: {
   초안: string;
+  문의처?: string | null;
   notify: (message: string) => void;
 }) {
   const [복사됨, set복사됨] = useState(false);
@@ -5338,7 +5342,7 @@ function 문의초안카드({
         <div className="ai-inquiry-title">
           <Icon name="fileText" size={20} />
           <div>
-            <b>주관기관에 보낼 문의 초안</b>
+            <b>{문의처 || "주관기관에"} 보낼 문의 초안</b>
             <small>규정만으로 결론이 안 나서, 물어볼 내용을 정리했습니다.</small>
           </div>
         </div>
@@ -5717,12 +5721,12 @@ function PlanDetail({
                           : "추가 확인이 필요합니다."
                       }`}
                 </h3>
-                {행동문구(plan.판정, Boolean(plan.분류)) && (
+                {행동문구(plan.판정, Boolean(plan.분류), plan.문의처) && (
                   <p className="ai-verdict-action">
                     <b>
                       {plan.코드판정?.종류 === "부가세기준미정" && 부가세_고를수있음(plan.부가세구분)
-                        ? "부가세 포함 여부를 고르면 다시 판정합니다. 모르면 주관기관에 확인하세요."
-                        : 행동문구(plan.판정, Boolean(plan.분류))}
+                        ? `부가세 포함 여부를 고르면 다시 판정합니다. 모르면 ${plan.문의처 || "주관기관에"} 확인하세요.`
+                        : 행동문구(plan.판정, Boolean(plan.분류), plan.문의처)}
                     </b>
                   </p>
                 )}
@@ -5736,7 +5740,7 @@ function PlanDetail({
               </div>
             </div>
             {plan.코드판정 && (
-              <코드판정카드 판정={plan.코드판정} 부가세={plan.부가세구분} 다시점검={() => setRecheckQuestions(true)} />
+              <코드판정카드 판정={plan.코드판정} 부가세={plan.부가세구분} 문의처={plan.문의처} 다시점검={() => setRecheckQuestions(true)} />
             )}
             <결과문장목록 제목="확인할 조건" 항목={plan.조건} />
             <결과문장목록 제목="이런 경우에는 안 돼요" 항목={plan.금지조건} />
@@ -5821,7 +5825,7 @@ function PlanDetail({
             {/* 주의: 「판단불가」의 결말입니다. 배지와 해설은 '못 정했다' 까지만 말하고,
                 「그래서 뭐라고 물어보나」는 여기 있습니다. 서버가 준 값이 있을 때만
                 나옵니다 — 없으면 카드 전체를 렌더링하지 않습니다(빈 카드를 남기지 않습니다). */}
-            {plan.문의초안 && <문의초안카드 초안={plan.문의초안} notify={notify} />}
+            {plan.문의초안 && <문의초안카드 초안={plan.문의초안} 문의처={plan.문의처} notify={notify} />}
             {plan.저장안됨 && (
               <p className="ai-result-notice">
                 <span>ⓘ</span>이번 점검 결과는 저장되지 않았습니다. 새로고침하면 사라지니,
