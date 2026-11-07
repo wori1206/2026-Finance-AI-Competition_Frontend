@@ -23,16 +23,22 @@ export function 주소(경로: string, 쿼리?: Record<string, unknown>): string
   return u.toString();
 }
 
+/** 권한 문제가 아니라 사용자가 고칠 수 있는 이유라서 그대로 보여 주는 403 입니다 (팀 API). */
+const 그대로보일_403 = new Set(["다른 주관기관의 팀에는 들어갈 수 없습니다.", "대표만 할 수 있습니다."]);
+
 /**
  * 401/403 을 '조용히' 실패시키지 않기 위한 오류 타입입니다.
  * 화면은 `err instanceof 인증오류` 로 「로그인이 풀렸습니다」를 구분해 보여줄 수 있습니다.
  */
 export class 인증오류 extends Error {
   readonly 상태: number;
+  /** 일반 오류와 같은 이름입니다. 호출부가 `e.status` 하나로 상태 코드를 봅니다. */
+  readonly status: number;
   constructor(상태: number, 메시지: string) {
     super(메시지);
     this.name = "인증오류";
     this.상태 = 상태;
+    this.status = 상태;
   }
 }
 
@@ -81,7 +87,9 @@ export async function 응답처리(res: Response) {
           ? "로그인이 만료되었습니다. 다시 로그인해 주세요."
           : 사유 === "등록되지 않은 계정입니다"
             ? "이 계정은 아직 주관기관에 등록되지 않았습니다. 다시 로그인해 주관기관을 선택해 주세요."
-            : "이 계정으로는 볼 수 없는 자료입니다.",
+            : 사유 && 그대로보일_403.has(사유)
+              ? 사유
+              : "이 계정으로는 볼 수 없는 자료입니다.",
       );
     }
 
@@ -96,10 +104,12 @@ export async function 응답처리(res: Response) {
     //    호출부가 문자열에서 상태코드를 찾으면 '영원히 못 찾습니다'.
     //    실제로 `deletePlan()` 의 「404 는 이미 없다는 뜻이니 실패로 안 친다」가 그렇게
     //    한 번도 발동하지 않고 있었습니다. 문자열 대신 이 필드를 보세요.
-    throw Object.assign(
-      new Error(꺼내기("오류") ?? 꺼내기("detail") ?? `요청 실패 (${res.status})`),
-      { status: res.status },
-    );
+    const 서버문구 = 꺼내기("오류") ?? 꺼내기("detail");
+    // 주의: 서버의 404 문구에는 내부 번호가 들어 있습니다(「할일 123 을(를) 찾을 수 없습니다」). 화면에 내지 않습니다.
+    const 문구 = res.status === 404 && 서버문구 && / 을\(를\) 찾을 수 없습니다/.test(서버문구)
+      ? "이미 지워졌거나 찾을 수 없는 항목입니다. 새로고침해 주세요."
+      : 서버문구;
+    throw Object.assign(new Error(문구 ?? `요청 실패 (${res.status})`), { status: res.status });
   }
   return res.status === 204 ? null : res.json();
 }

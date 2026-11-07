@@ -2,23 +2,34 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps } from "react";
 import { INITIAL_PLANS } from "../lib/mock-data";
 import { planService } from "../lib/plan-service";
-import type {
+import type { 기준문서정보,
   AppRoute,
   ExpensePlan,
   PlanStatus,
   ScheduleItem,
 } from "../lib/types";
-import type { 비목후보, 답변항목, 확인질문, 사용자답변항목, 부가세구분, 분류값, 추가입력칸, 용어풀이항목, 코드판정값 } from "../lib/server-types";
+import type { 서버팀, 비목후보, 답변항목, 확인질문, 사용자답변항목, 판정피드백, 부가세구분, 분류값, 추가입력칸, 용어풀이항목, 코드판정값 } from "../lib/server-types";
 import { API켜짐 } from "../lib/config";
 import { 판정실행 } from "../lib/judge";
 import { 정규화하기 } from "../lib/normalize";
 import { 인증오류 } from "../lib/http";
-import { 계획목록, 비목목록, 계획추가, 규정업로드, 규정처리기다리기, L3현재문서목록, 계획삭제 } from "../lib/api";
+import { 계획목록, 계획상세, 비목목록, 계획추가, 계획수정, 규정업로드, 규정처리기다리기, 규정적용, 규정거절, L3현재문서목록, 팀조회, 팀만들기, 초대코드재발급, 팀들어가기, 팀나가기, 팀원내보내기, 계획삭제, 일정수정, 피드백저장 } from "../lib/api";
 import type { L3처리결과 } from "../lib/server-types";
-import { 체크저장, 일정변경저장, 일정등록 } from "../lib/tasks";
+import { 체크저장, 일정변경저장, 일정등록, 일정지우기, 점검일정인가 } from "../lib/tasks";
 import { 기본규정, 서버규정읽기, type 적용규정항목 } from "../lib/norms";
-import { 기관검색, 사업요약, 기관저장, 선택기관, 기본기관명, 계정등록, type 기관 } from "../lib/orgs";
-import { 첨부보관, 첨부읽기, 첨부쓰기, 파일을첨부로, 크기표기, type 첨부 } from "../lib/attachments";
+import { 기관검색, 사업요약, 기관저장, 선택기관, 기본기관명, 계정등록, 초대코드등록, type 기관 } from "../lib/orgs";
+import {
+  use첨부,
+  첨부accept,
+  첨부검사,
+  첨부내려받기,
+  첨부다시올리기,
+  첨부새로읽기,
+  첨부올리기,
+  첨부지우기,
+  크기표기,
+  type 첨부,
+} from "../lib/attachments";
 import { 지금출처, 출처구독, 출처문구 } from "../lib/data-source";
 import { 인증켜짐, 로그인 as supabase로그인, 가입 as supabase가입, 로그아웃 as supabase로그아웃, 이메일 as supabase이메일, 팀이름 as supabase팀이름, 팀이름쓰기 as supabase팀이름쓰기, 온보딩기록읽기, 온보딩마침, 재설정링크읽기, 재설정끝내기, 재설정메일보내기, 새비밀번호저장 } from "../lib/supabase";
 import { 상세를계획으로, 판정제목, 행동문구, 조건칸상태, 시각표기, L3등록사실, L3현재문서요약짓기, 문서명보기, 답표기, 로조사, 부가세확정, 부가세표기, 부가세질문id, type L3현재문서요약 } from "../lib/adapt";
@@ -385,7 +396,7 @@ function use적용규정(사업명: string): 적용규정항목[] {
   return 값;
 }
 
-const 빈기준문서: L3현재문서요약 = { 파일명: null, 안내: null, 등록일: null, ocr: false, 실패목록: [], 처리중목록: [] };
+const 빈기준문서: L3현재문서요약 = { 파일명: null, 안내: null, 등록일: null, ocr: false, 실패목록: [], 처리중목록: [], 확인대기목록: [], 조회실패: false };
 
 /**
  * 마이페이지 「주관기관 세부 안내」 — 이 기관에 지금 적용 중인 L3 문서.
@@ -404,7 +415,8 @@ function use현재기준문서(재조회?: unknown): L3현재문서요약 {
         if (살아있음) set값(L3현재문서요약짓기(r?.문서 ?? []));
       })
       .catch(() => {
-        /* 실패해도 조용히 넘어갑니다 — 이 문서 이름은 참고용이지 판정을 막지 않습니다 */
+        // 판정을 막지는 않지만 문서가 없는 것처럼 보이면 안 됩니다
+        if (살아있음) set값({ ...빈기준문서, 조회실패: true });
       });
     return () => {
       살아있음 = false;
@@ -565,9 +577,118 @@ function 오류사유(e: unknown): string {
   return "알 수 없는 오류입니다.";
 }
 
+/** 올린 문서가 이 기관 세부기준이 맞는지 사용자에게 묻는 창의 값. */
+type L3확인 = {
+  doc_id: string;
+  파일명: string;
+  조_건수: number;
+  이유: string | null;
+  /** 지금 판정에 쓰는 문서. `null` 이면 공통 관리 기준만으로 판정합니다. */
+  적용중: string | null;
+};
+
+/**
+ * 읽기는 했지만 세부기준이 맞는지 불확실한 문서를 쓸지 묻는 창. 온보딩과 마이페이지가 같이 씁니다.
+ *
+ * 고르기 전에는 판정에 쓰지 않습니다. ×로 닫으면 마이페이지 「주관기관 세부 안내」에서 다시 고를 수 있습니다.
+ */
+function L3확인창({
+  확인,
+  닫기,
+  적용,
+  거절,
+}: {
+  확인: L3확인;
+  닫기: () => void;
+  적용: (결과: L3처리결과) => void;
+  거절: () => void;
+}) {
+  const [처리중, set처리중] = useState(false);
+  const [오류, set오류] = useState("");
+  const 처리 = async (동작: "적용" | "거절") => {
+    set처리중(true);
+    set오류("");
+    try {
+      if (동작 === "적용") {
+        적용(await 규정적용(확인.doc_id));
+      } else {
+        await 규정거절(확인.doc_id);
+        거절();
+      }
+    } catch (e) {
+      set오류(`처리하지 못했습니다 — ${오류사유(e)}`);
+      set처리중(false);
+    }
+  };
+  return (
+    <div className="modal-backdrop">
+      <section
+        className="modal narrow file-replace-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="l3-confirm-title"
+      >
+        <header>
+          <div>
+            <h2 id="l3-confirm-title">이 문서를 세부기준으로 쓸까요?</h2>
+            <p>이 기관의 사업비 기준 문서가 아닐 수 있습니다.</p>
+          </div>
+          <button onClick={닫기} aria-label="닫기" disabled={처리중}>×</button>
+        </header>
+        <dl className="file-replace-list">
+          <div>
+            <dt>올린 문서</dt>
+            <dd>{확인.파일명}</dd>
+          </div>
+          <div>
+            <dt>찾은 항목</dt>
+            <dd>{확인.조_건수}개</dd>
+          </div>
+          <div>
+            <dt>판정에 쓰는 문서</dt>
+            <dd>{확인.적용중 ?? "없음 · 공통 관리 기준만 적용"}</dd>
+          </div>
+        </dl>
+        {확인.이유 && (
+          <p className="file-replace-notice">
+            <span>ⓘ</span>
+            {확인.이유}
+          </p>
+        )}
+        <p className="section-copy">고르기 전까지 지금 판정에 쓰는 기준을 그대로 둡니다.</p>
+        {오류 && <p className="file-replace-notice" role="alert"><span>ⓘ</span>{오류}</p>}
+        <footer>
+          <button className="outline" disabled={처리중} onClick={() => void 처리("거절")}>올리지 않기</button>
+          <button className="primary" disabled={처리중} onClick={() => void 처리("적용")}>이 문서로 적용</button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+/** 결과 화면 맨 위의 한 줄. 이 판정이 어떤 기준 문서로 점검했는지 알립니다. 판정 값은 바꾸지 않습니다. */
+function 기준문서줄({ 정보, 기준문서보기 }: { 정보: 기준문서정보; 기준문서보기: () => void }) {
+  const 쓴기준 = 정보.문서명 ? `기존 문서 「${정보.문서명}」` : "공통 규정";
+  const [문구, 버튼] =
+    정보.상태 === "적용"
+      ? [`「${정보.문서명}」 기준으로 점검했어요.`, null]
+      : 정보.상태 === "없음"
+        ? ["기관 세부기준 없이 공통 규정으로 점검했어요.", "기준 문서 올리기"]
+        : 정보.상태 === "읽기실패"
+          ? [`읽지 못한 문서가 있어요(「${정보.대기문서명}」). ${쓴기준} 기준으로 점검했어요.`, "다시 올리기"]
+          : [`확인 전인 문서가 있어요(「${정보.대기문서명}」). ${쓴기준} 기준으로 점검했어요.`, "확인하기"];
+  return (
+    <div className={`criteria-basis${정보.상태 === "적용" ? "" : " is-notice"}`}>
+      <span>{문구}</span>
+      {버튼 && <button className="outline small" onClick={기준문서보기}>{버튼}</button>}
+    </div>
+  );
+}
+
 type L3처리 =
   | { 종류: "완료"; 결과: L3처리결과 }
   | { 종류: "처리중"; 결과: L3처리결과 }
+  | { 종류: "확인"; 확인: L3확인 }
   | { 종류: "실패"; 실패: L3실패 };
 
 /**
@@ -609,6 +730,18 @@ async function 기준문서처리(파일: File): Promise<L3처리> {
       실패: {
         파일명: 파일.name,
         메시지: r.메시지 || "문서를 읽지 못했습니다. 다시 올려 주세요.",
+        적용중: r.적용중_문서 ?? null,
+      },
+    };
+  }
+  if (r.상태 === "확인필요") {
+    return {
+      종류: "확인",
+      확인: {
+        doc_id: r.doc_id,
+        파일명: 파일.name,
+        조_건수: r.조_건수 ?? 0,
+        이유: r.검토이유 ?? null,
         적용중: r.적용중_문서 ?? null,
       },
     };
@@ -1038,7 +1171,13 @@ async function 온보딩기록적용(): Promise<boolean> {
   const 기록 = await 온보딩기록읽기();
   if (기록?.사업) 사업저장(기록.사업);
   if (기록?.기관) 기관저장(기록.기관);
-  return (기록?.필요 ?? false) || (await 미등록계정());
+  const 필요 = (기록?.필요 ?? false) || (await 미등록계정());
+  // 팀이면 사업은 팀의 값을 씁니다. 구성원마다 다른 사업으로 판정받으면 안 됩니다.
+  if (!필요 && API켜짐()) {
+    const 팀 = await 팀조회().catch(() => null);
+    if (팀?.팀?.사업명) 사업저장(팀.팀.사업명);
+  }
+  return 필요;
 }
 
 /**
@@ -1133,6 +1272,10 @@ export default function CheckumaitApp() {
   useEffect(() => {
     계획Ref.current = plans;
   }, [plans]);
+  const 일정Ref = useRef<ScheduleItem[]>(schedules);
+  useEffect(() => {
+    일정Ref.current = schedules;
+  }, [schedules]);
   const 작업바꾸기 = (바꾸기: (이전: 판정작업[]) => 판정작업[]) => {
     작업Ref.current = 바꾸기(작업Ref.current);
     set작업들(작업Ref.current);
@@ -1163,6 +1306,12 @@ export default function CheckumaitApp() {
     if (!작업) return;
     // 점검 중에 지운 계획을 결과로 되살리지 않습니다.
     if (판정된계획 && 계획Ref.current.some((p) => p.id === 판정된계획.id)) 계획반영(판정된계획);
+    // 판정이 할일을 만들거나 지우므로 일정도 다시 읽습니다. 안 그러면 새로고침 전까지 옛 목록이 보입니다.
+    if (판정된계획 && API켜짐()) {
+      planService.listSchedules().then(setSchedules).catch((e: unknown) => {
+        console.warn("[CHECKUMAIT] 점검 뒤 일정을 다시 읽지 못했습니다.", e);
+      });
+    }
     if (!작업.접은적) {
       작업바꾸기((이전) => 이전.filter((j) => j.키 !== 키));
       작업.끝남(판정된계획, 오류);
@@ -1249,19 +1398,129 @@ export default function CheckumaitApp() {
    *    교체합니다 — 안 하면 그 일정의 '상태 변경' 이 계속 저장되지 않습니다
    *    (`일정상태저장()` 은 숫자 id 만 서버 항목으로 봅니다).
    */
-  const 일정추가하기 = (새항목: ScheduleItem[]) => {
+  const 일정추가하기 = (새항목: ScheduleItem[], 완료문구?: string) => {
     if (!새항목.length) return;
-    setSchedules((이전) => [...이전, ...새항목]);
-    void 일정등록(새항목).then(({ 바뀐id, 실패 }) => {
-      if (바뀐id.size) {
+    // 주의: 날짜 미정으로 이미 받은 할일에 날짜를 넣는 경우 같은 줄이 둘이 되지 않게 바꿔 끼웁니다.
+    const 있는할일 = new Set(새항목.map((s) => s.taskId).filter(Boolean));
+    setSchedules((이전) => [...이전.filter((s) => !s.taskId || !있는할일.has(s.taskId)), ...새항목]);
+    void 일정등록(새항목).then(({ 바뀐id, 실패, 건너뜀, 로그인필요, 저장못함 }) => {
+      if (바뀐id.size || 저장못함.size) {
+        // 주의: 서버에 남지 않은 일정을 화면에 두면 저장된 줄로 보입니다. 빼고 사유를 알립니다.
         setSchedules((이전) =>
-          이전.map((s) =>
-            바뀐id.has(s.id) ? { ...s, id: 바뀐id.get(s.id) as string } : s,
-          ),
+          이전
+            .filter((s) => !저장못함.has(s.id))
+            .map((s) => {
+              const 서버id = 바뀐id.get(s.id);
+              if (!서버id) return s;
+              // 주의: 이미 있던 할일에 날짜를 넣은 줄은 출처를 모릅니다. 새로 읽을 때까지 점검 일정처럼 다룹니다.
+              return s.taskId ? { ...s, id: 서버id } : { ...s, id: 서버id, taskId: 서버id, 출처: "user" as const };
+            }),
         );
       }
-      if (실패) notify("일부 일정을 서버에 저장하지 못했습니다.");
+      if (로그인필요) notify("로그인하면 일정이 서버에 저장됩니다. 로그인한 뒤 다시 추가해 주세요.");
+      else if (실패) notify("일정을 저장하지 못했습니다. 잠시 뒤 다시 시도해 주세요.");
+      else if (API켜짐() && 건너뜀) notify(화면에만반영);
+      else if (완료문구) notify(완료문구);
+      for (const id of new Set(새항목.map((s) => s.planId))) 단계다시읽기(id);
     });
+  };
+
+  /**
+   * 「날짜 미정」 줄에 날짜를 넣습니다. 먼저 그리고, 저장에 실패하면 되돌립니다.
+   * 서버 할일이 아닌 일정(예시 모드)은 지금 화면 값만 바꿉니다.
+   */
+  const 일정날짜저장 = (item: ScheduleItem, 날짜: string) => {
+    const 이전 = schedules;
+    const 다음 = schedules.map((s) => (s.id === item.id ? { ...s, date: 날짜 } : s));
+    setSchedules(다음);
+    void planService.saveSchedules(다음);
+    if (!API켜짐() || !item.taskId) {
+      notify(API켜짐() ? 화면에만반영 : "날짜를 정했습니다.");
+      return;
+    }
+    일정수정(item.taskId, { due_date: 날짜 })
+      .then(() => notify("날짜를 정했습니다."))
+      .catch((e: unknown) => {
+        setSchedules(이전);
+        notify(`날짜를 저장하지 못했습니다. ${오류사유(e)}`);
+      });
+  };
+
+  /** 일정을 지웁니다. 먼저 빼고, 서버가 거절하면 되돌립니다. */
+  const 일정지우기하기 = (item: ScheduleItem) => {
+    const 이전 = schedules;
+    const 다음 = schedules.filter((s) => s.id !== item.id);
+    setSchedules(다음);
+    void planService.saveSchedules(다음);
+    void 일정지우기(item)
+      .then(() => {
+        notify("일정을 삭제했습니다.");
+        단계다시읽기(item.planId);
+      })
+      .catch((e: unknown) => {
+        setSchedules(이전);
+        notify(`일정을 삭제하지 못했습니다. ${오류사유(e)}`);
+      });
+  };
+
+  /**
+   * 예상 지출일을 바꿉니다. 옮길 일정이 있으면 먼저 묻고, 없으면 바로 저장합니다.
+   * 주의: 판정 경로가 집행예정일을 읽지 않아 「재점검 필요」를 띄우지 않습니다.
+   */
+  const [지출일창, set지출일창] = useState<{ plan: ExpensePlan; 새날짜: string; 줄들: ScheduleItem[] } | null>(null);
+  /** 일정·체크가 바뀐 뒤 진행 단계를 다시 받습니다. 단계는 서버가 할일에서 계산합니다. */
+  const 단계다시읽기 = (planId: string) => {
+    if (!API켜짐() || !/^\d+$/.test(planId)) return;
+    계획상세(planId)
+      .then((d) =>
+        setPlans((이전) =>
+          이전.map((p) => (p.id === planId ? { ...p, 단계요약: d.단계요약, 현재단계: d.현재단계 ?? null } : p)),
+        ),
+      )
+      .catch((e: unknown) => console.warn("[CHECKUMAIT] 진행 단계를 다시 읽지 못했습니다.", e));
+  };
+  /** 저장이 끝난 뒤 일정을 다시 읽습니다. 저장은 이미 됐으므로 읽기 실패는 저장 실패가 아닙니다. */
+  const 일정다시읽기 = () => {
+    void planService
+      .listSchedules()
+      .then(setSchedules)
+      .catch((e: unknown) => console.warn("[CHECKUMAIT] 일정을 다시 읽지 못했습니다.", e));
+  };
+  /** 실제 지출을 서버에 저장합니다. 집행 단계가 완료로 바뀌므로 일정도 다시 읽습니다. */
+  const 실제지출저장 = (plan: ExpensePlan, 날짜: string, 금액: number): Promise<void> =>
+    계획수정(plan.id, { 실제지출일: 날짜, 실제지출액: 금액 }).then((d) => {
+      계획반영({
+        ...plan,
+        actualDate: 날짜,
+        actualAmount: 금액,
+        executionStatus: "결제 완료",
+        단계요약: d.단계요약,
+        현재단계: d.현재단계 ?? null,
+      });
+      일정다시읽기();
+    });
+  const 지출일저장 = (plan: ExpensePlan, 새날짜: string, 일정이동: boolean, 옮길일정있음: boolean) => {
+    계획수정(plan.id, { 집행예정일: 새날짜 || null, 일정이동 })
+      .then((d) => {
+        계획반영({ ...plan, plannedDate: d.집행예정일 ?? "", 단계요약: d.단계요약, 현재단계: d.현재단계 ?? null });
+        notify(
+          일정이동 && 옮길일정있음
+            ? "예상 지출일과 연결된 일정을 옮겼습니다."
+            : "예상 지출일을 저장했습니다.",
+        );
+        일정다시읽기();
+      })
+      .catch((e: unknown) => notify(`예상 지출일을 저장하지 못했습니다. ${오류사유(e)}`));
+  };
+  const 지출일변경 = (plan: ExpensePlan, 새날짜: string) => {
+    const 줄들 = schedules.filter(
+      (s) => s.planId === plan.id && !!s.date && s.state !== "완료" && !s.지출일연동,
+    );
+    if (plan.plannedDate && 새날짜 && 줄들.length) {
+      set지출일창({ plan, 새날짜, 줄들 });
+      return;
+    }
+    지출일저장(plan, 새날짜, true, false);
   };
 
   const persistSchedules = (next: ScheduleItem[]) => {
@@ -1273,12 +1532,16 @@ export default function CheckumaitApp() {
     void 일정변경저장(이전, next).then(({ 실패, 없음 }) => {
       if (실패.length) {
         setSchedules(이전);
-        notify("일정 상태를 저장하지 못했습니다. 잠시 뒤 다시 시도해 주세요.");
+        notify("일정을 저장하지 못했습니다. 잠시 뒤 다시 시도해 주세요.");
         return;
       }
       if (없음.length) {
         notify("일부 일정은 서버에 없어 이 화면에서만 바뀝니다.");
       }
+      // 주의: 일정 유형과 상태가 진행 단계를 정합니다. 바뀐 줄의 계획만 다시 받습니다.
+      const 전 = new Map(이전.map((s) => [s.id, s]));
+      const 바뀐계획 = next.filter((s) => 전.has(s.id) && 전.get(s.id) !== s).map((s) => s.planId);
+      for (const id of new Set(바뀐계획)) 단계다시읽기(id);
     });
   };
   /**
@@ -1293,10 +1556,11 @@ export default function CheckumaitApp() {
    *    없으므로 그런 건 예전처럼 화면 안에서만 움직입니다.
    */
   const 할일동기화 = (planId: string, taskId: string, 완료: boolean) => {
-    const 이전계획 = plans;
-    const 이전일정 = schedules;
+    // 주의: 증빙 파일 업로드가 끝난 뒤에도 불립니다. 그때의 값을 읽어야 그동안 바뀐 체크·판정을 덮지 않습니다.
+    const 이전계획 = 계획Ref.current;
+    const 이전일정 = 일정Ref.current;
 
-    const 다음계획 = plans.map((p) => {
+    const 다음계획 = 이전계획.map((p) => {
       if (p.id !== planId) return p;
       const aiChecks = p.aiChecks.map((c) =>
         c.id === taskId ? { ...c, done: 완료 } : c,
@@ -1316,7 +1580,7 @@ export default function CheckumaitApp() {
       };
     });
 
-    const 다음일정 = schedules.map((s) =>
+    const 다음일정 = 이전일정.map((s) =>
       (s.taskId ?? s.id) === taskId && s.planId === planId
         ? {
             ...s,
@@ -1329,6 +1593,8 @@ export default function CheckumaitApp() {
         : s,
     );
 
+    계획Ref.current = 다음계획;
+    일정Ref.current = 다음일정;
     setPlans(다음계획);
     setSchedules(다음일정);
     void planService.savePlans(다음계획);
@@ -1337,6 +1603,7 @@ export default function CheckumaitApp() {
     // 주의: 서버 저장은 '한 번' 입니다 — 두 화면이 각자 PATCH 하면 경합합니다.
     체크저장(planId, taskId, 완료)
       .then((결과) => {
+        if (결과 === "저장됨") 단계다시읽기(planId);
         if (결과 !== "없음") return;
         console.warn("[할일] 서버에 없음 — plan_id=%s task_id=%s", planId, taskId);
         notify("이 항목은 서버에 없어 화면에서만 바뀝니다.");
@@ -1567,6 +1834,7 @@ export default function CheckumaitApp() {
           <PlansPage
             plans={화면계획}
             판정시작={판정시작}
+            지출일변경={지출일변경}
             schedules={schedules}
             go={go}
             자료받음={자료받음}
@@ -1579,8 +1847,11 @@ export default function CheckumaitApp() {
         {route.page === "plan-new" && (
           <NewPlanPage
             판정시작={판정시작}
+            notify={notify}
             save={(plan, temporary, 점검오류) => {
               계획반영(plan);
+              // 지출일이 있는 계획은 서버가 집행 줄을 만들므로 일정도 다시 읽습니다.
+              if (API켜짐()) void planService.listSchedules().then(setSchedules).catch(() => undefined);
               if (temporary) {
                 go({ page: "plans" });
                 notify("지출 계획을 임시저장했습니다.");
@@ -1607,8 +1878,15 @@ export default function CheckumaitApp() {
             allPlans={화면계획}
             판정시작={판정시작}
             update={계획반영}
+            지출일변경={지출일변경}
+            실제지출저장={실제지출저장}
+            확인={확인}
             addSchedules={(items) => 일정추가하기(items)}
             할일동기화={할일동기화}
+            기준문서보기={() => {
+              go({ page: "rules" });
+              window.setTimeout(() => document.getElementById("institution-criteria")?.scrollIntoView({ block: "center" }), 400);
+            }}
             remove={() => {
               const target = plans.find((plan) => plan.id === route.id);
               if (!target) return;
@@ -1629,12 +1907,14 @@ export default function CheckumaitApp() {
             자료받음={자료받음}
             일정실패={일정실패}
             save={persistSchedules}
-            추가={(item) => 일정추가하기([item])}
+            추가={(item) => 일정추가하기([item], "일정을 저장했습니다.")}
+            지우기={일정지우기하기}
+            날짜저장={일정날짜저장}
             할일동기화={할일동기화}
             notify={notify}
           />
         )}
-        {route.page === "rules" && <MyPage notify={notify} />}
+        {route.page === "rules" && <MyPage notify={notify} 확인={확인} 계획수={plans.length} />}
       </main>
       {챗봇_켬 && (
         <button
@@ -1724,6 +2004,16 @@ export default function CheckumaitApp() {
           답={(확인함) => {
             확인대기.끝(확인함);
             set확인대기(null);
+          }}
+        />
+      )}
+      {지출일창 && (
+        <지출일변경창
+          {...지출일창}
+          닫기={() => set지출일창(null)}
+          저장={(일정이동) => {
+            지출일저장(지출일창.plan, 지출일창.새날짜, 일정이동, true);
+            set지출일창(null);
           }}
         />
       )}
@@ -1911,6 +2201,36 @@ function Login({
   const [기준파싱문구, set기준파싱문구] = useState("");
   /** 기준 문서를 읽지 못했을 때 띄우는 창의 내용. 사용자가 닫거나 다시 올릴 때까지 둡니다. */
   const [기준실패, set기준실패] = useState<L3실패 | null>(null);
+  /** 세부기준이 맞는지 물어야 하는 문서. */
+  const [기준확인, set기준확인] = useState<L3확인 | null>(null);
+  /** 「초대 코드가 있어요」 입력. null 이면 칸을 접어 둡니다. */
+  const [초대코드, set초대코드] = useState<string | null>(null);
+  const [초대오류, set초대오류] = useState("");
+  const [초대처리중, set초대처리중] = useState(false);
+  /** 초대 코드로 등록합니다. 기관과 사업은 팀의 것이므로 고르는 단계를 건너뜁니다. */
+  const 초대코드로시작 = async () => {
+    if (!초대코드?.trim() || 초대처리중) return;
+    set초대처리중(true);
+    set초대오류("");
+    try {
+      const r = await 초대코드등록(초대코드.trim());
+      사업저장(r.사업명);
+      setProgram(r.사업명);
+      기관저장(r.기관명, r.slug);
+      setInstitution(r.기관명);
+      setInstitutionSlug(r.slug);
+      // 기관 세부기준은 기관 단위라 팀의 기관에 이미 있을 수 있습니다. 다음 화면 문구가 사실과 맞게 읽어 둡니다.
+      const 현재 = await L3현재문서목록().catch(() => null);
+      set기관문서(현재?.문서.find((d) => d.파싱품질 === "pass" || d.파싱품질 === "warn")?.원본파일명 ?? "");
+      setStep("ready");
+    } catch (e) {
+      set초대오류(오류사유(e));
+    } finally {
+      set초대처리중(false);
+    }
+  };
+  /** 기준 문서 칸 아래에 띄우는 안내(형식이 맞지 않음, 쓰지 않은 문서 등). */
+  const [기준안내, set기준안내] = useState("");
   /** 서버가 다 읽어 판정 기준에 반영했는가 / 2분이 지나도 아직 읽는 중인가. */
   const [기준반영됨, set기준반영됨] = useState(false);
   const [기준처리중, set기준처리중] = useState(false);
@@ -1934,6 +2254,11 @@ function Login({
       setCriteriaBlob(null);
       setCriteriaFile("");
       set기준실패(결과.실패);
+      return;
+    }
+    if (결과.종류 === "확인") {
+      set기준파싱중(false);
+      set기준확인(결과.확인);
       return;
     }
     // 완료면 읽은 조 수를, 2분이 지나도 읽는 중이면 서버 안내("끝날 때까지는 기존 규정으로 판정")를
@@ -2610,6 +2935,39 @@ function Login({
                 <span>중소벤처기업부 · 창업진흥원</span>
                 <small>최초에는 주로 사용하는 사업 1개만 설정합니다.</small>
               </div>
+              {API켜짐() && (
+                <div className="onboarding-invite">
+                  {초대코드 === null ? (
+                    <button type="button" className="text-button" onClick={() => set초대코드("")}>
+                      팀원에게 받은 초대 코드가 있어요
+                    </button>
+                  ) : (
+                    <>
+                      <label>
+                        초대 코드
+                        <input
+                          value={초대코드}
+                          autoFocus
+                          maxLength={20}
+                          placeholder="예: ABCD-2345"
+                          onChange={(e) => set초대코드(e.target.value)}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="outline"
+                        disabled={!초대코드.trim() || 초대처리중}
+                        onClick={() => void 초대코드로시작()}
+                      >
+                        {초대처리중 ? "확인 중…" : "이 팀으로 시작"}
+                      </button>
+                      <small role={초대오류 ? "alert" : undefined}>
+                        {초대오류 || "팀의 사업과 주관기관으로 바로 시작합니다."}
+                      </small>
+                    </>
+                  )}
+                </div>
+              )}
               <div className="onboarding-actions">
                 <button
                   className="outline large"
@@ -2790,12 +3148,11 @@ function Login({
                   // 클릭 경로의 accept 와 '같은 규칙' 을 여기서도 겁니다. 드롭은 accept 를
                   // 안 거치므로 .docx 를 추가하면 서버가 415 로 거부합니다 — 미리 막습니다.
                   if (!/\.(pdf|hwp|hwpx)$/i.test(f.name)) {
-                    // 이 화면에는 `notify` 가 없습니다 — 온보딩이 이미 쓰는
-                    // `기준파싱문구` 자리에 띄웁니다(같은 곳에 결과가 나오니 일관됩니다).
-                    set기준파싱문구("PDF·HWP·HWPX 파일만 올릴 수 있습니다.");
+                    // 이 화면에는 `notify` 가 없어 칸 아래 안내 자리에 띄웁니다.
+                    set기준안내("PDF·HWP·HWPX 파일만 올릴 수 있습니다.");
                     return;
                   }
-                  set기준파싱문구("");
+                  set기준안내("");
                   setCriteriaBlob(f);
                   setCriteriaFile(f.name);
                 }}
@@ -2808,6 +3165,7 @@ function Login({
                   accept=".pdf,.hwp,.hwpx"
                   onChange={(event) => {
                     const f = event.target.files?.[0] ?? null;
+                    set기준안내("");
                     setCriteriaBlob(f);
                     setCriteriaFile(f?.name || "");
                   }}
@@ -2828,10 +3186,11 @@ function Login({
               {/* 주의: 2026-11-03 — 기관당 기준 문서는 하나입니다. 서버가 새 문서를 읽으면 바로
                   그 문서로 판정하고, 읽지 못하면 기존 문서를 계속 씁니다(백엔드 `l3_parse.적용문서_정리`).
                   예전 문구 「기관 검토 후 반영」은 실제로 없는 절차였습니다. */}
-              <p className="onboarding-notice">
-                {!criteriaBlob
-                  ? "등록한 문서는 기관별 금액 기준, 사전승인·심의 조건, 필요 증빙 판단에 사용됩니다."
-                  : "올린 문서를 읽고 나면 바로 이 문서로 판정합니다. 읽지 못하면 기존에 등록된 기준 문서를 계속 씁니다."}
+              <p className="onboarding-notice" role={기준안내 ? "alert" : undefined}>
+                {기준안내 ||
+                  (!criteriaBlob
+                    ? "등록한 문서는 기관별 금액 기준, 사전승인·심의 조건, 필요 증빙 판단에 사용됩니다."
+                    : "세부기준 문서가 맞으면 읽은 뒤 바로 이 문서로 판정합니다. 맞는지 불확실하면 먼저 묻고, 읽지 못하면 기존 문서를 계속 씁니다.")}
               </p>
               <div className="onboarding-actions">
                 <button
@@ -2859,6 +3218,28 @@ function Login({
             </>
           )}
           {기준파싱중 && <L3읽는중 파일명={criteriaFile} 문구={기준파싱문구} 반영됨={기준반영됨} />}
+          {기준확인 && (
+            <L3확인창
+              확인={기준확인}
+              닫기={() => {
+                set기준확인(null);
+                setCriteriaBlob(null);
+                setCriteriaFile("");
+                set기준안내("아직 쓰지 않은 문서입니다. 설정을 마친 뒤 마이페이지에서 고를 수 있습니다.");
+              }}
+              적용={() => {
+                set기준확인(null);
+                set기준반영됨(true);
+                setStep("ready");
+              }}
+              거절={() => {
+                set기준확인(null);
+                setCriteriaBlob(null);
+                setCriteriaFile("");
+                set기준안내("이 문서는 쓰지 않습니다. 다른 문서를 고르거나 그대로 설정을 마칠 수 있습니다.");
+              }}
+            />
+          )}
           {기준실패 && (
             <L3실패창
               실패={기준실패}
@@ -2980,6 +3361,9 @@ function HomePage({
     .filter((item) => item.state !== "완료" && !!item.date && (!API켜짐() || item.date >= 오늘))
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, 5);
+  const 기한지남수 = API켜짐()
+    ? schedules.filter((item) => item.state !== "완료" && !!item.date && item.date < 오늘).length
+    : 0;
 
   return (
     <div className="page home-v3">
@@ -3156,6 +3540,17 @@ function HomePage({
             </button>
           </header>
           <div className="home-v3-timeline">
+            {기한지남수 > 0 && (
+              <button
+                type="button"
+                className="home-overdue-line"
+                onClick={() => go({ page: "schedule" })}
+              >
+                <Icon name="bell" size={15} />
+                <b>기한 지난 일정 {기한지남수}건</b>
+                <span>확인하기</span>
+              </button>
+            )}
             {다가오는일정.length === 0 && (
               <p className="schedule-detail-empty">
                 {!자료받음
@@ -3185,7 +3580,7 @@ function HomePage({
                   <small>{item.type}</small>
                 </time>
                 <span>
-                  <b>{item.title}</b>
+                  <b>{item.title}{item.작성자 && <span className="item-author"> · {item.작성자}</span>}</b>
                   <small>{plans.find((p) => p.id === item.planId)?.name}</small>
                 </span>
                 <em
@@ -3591,6 +3986,58 @@ function PlanRecheckQuestionsModal({
   );
 }
 
+/** 예상 지출일을 바꿀 때 연결된 일정도 옮길지 묻습니다. 고르기 전에는 아무것도 저장하지 않습니다. */
+function 지출일변경창({
+  plan,
+  새날짜,
+  줄들,
+  닫기,
+  저장,
+}: {
+  plan: ExpensePlan;
+  새날짜: string;
+  줄들: ScheduleItem[];
+  닫기: () => void;
+  저장: (일정이동: boolean) => void;
+}) {
+  const 일수 = Math.round(
+    (new Date(`${새날짜}T00:00:00`).getTime() - new Date(`${plan.plannedDate}T00:00:00`).getTime()) / 86400000,
+  );
+  const 월일 = (값: string) => {
+    const d = new Date(`${값}T00:00:00`);
+    return `${d.getMonth() + 1}/${d.getDate()}`;
+  };
+  const 옮긴날 = (값: string) => {
+    const d = new Date(`${값}T00:00:00`);
+    d.setDate(d.getDate() + 일수);
+    return `${d.getMonth() + 1}/${d.getDate()}`;
+  };
+  return (
+    <div className="ai-checking-backdrop" role="presentation">
+      <section className="recheck-required-modal" role="dialog" aria-modal="true" aria-labelledby="move-schedule-title">
+        <h2 id="move-schedule-title">연결된 일정 {줄들.length}건도 옮길까요?</h2>
+        <p>
+          예상 지출일: {월일(plan.plannedDate)} → {월일(새날짜)}. 완료한 일정은 그대로 둡니다.
+        </p>
+        <ul className="move-schedule-list">
+          {줄들.slice(0, 5).map((s) => (
+            <li key={s.id}>
+              <span>{s.title}</span>
+              <b>{월일(s.date)} → {옮긴날(s.date)}</b>
+            </li>
+          ))}
+          {줄들.length > 5 && <li className="more">외 {줄들.length - 5}건</li>}
+        </ul>
+        <footer>
+          <button className="outline" onClick={닫기}>취소</button>
+          <button className="outline" onClick={() => 저장(false)}>지출일만 바꾸기</button>
+          <button className="primary" onClick={() => 저장(true)}>같이 옮기기</button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
 /** 서버에 보내지 않는 변경의 안내. 저장된 것처럼 말하면 새로고침 뒤 사라졌을 때 알 길이 없습니다. */
 const 화면에만반영 = "이 화면에만 반영했습니다. 새로고침하면 사라집니다.";
 
@@ -3598,9 +4045,13 @@ const 화면에만반영 = "이 화면에만 반영했습니다. 새로고침하
  * 서버 모드의 계획 수정. 계획 수정 API 가 없어, 비어 있던 비목을 고른 것 말고는 화면에만 남습니다.
  * 주의: 판정은 서버의 저장 값으로 하므로 바뀐 금액 옆에 이전 판정이 그대로 보입니다. 표시를 남겨 알립니다.
  */
-function 서버모드수정(이전: ExpensePlan, 수정: ExpensePlan): { 계획: ExpensePlan; 안내: string } {
-  // 주의: 첨부파일은 수정 창이 따로 저장하므로 계획 값이 같아도 저장한 것이 있을 수 있습니다.
-  if (JSON.stringify(수정) === JSON.stringify(이전)) return { 계획: 이전, 안내: "저장했습니다." };
+function 서버모드수정(이전: ExpensePlan, 입력: ExpensePlan): { 계획: ExpensePlan; 안내: string } {
+  // 주의: 예상 지출일은 `지출일변경` 이 따로 저장합니다. 여기서는 옛 값으로 두고 나머지만 봅니다.
+  const 수정 = { ...입력, plannedDate: 이전.plannedDate };
+  // 주의: 첨부파일은 올리는 즉시 저장되므로 여기서 다루지 않습니다.
+  if (JSON.stringify(수정) === JSON.stringify(이전)) {
+    return { 계획: 이전, 안내: 입력.plannedDate === 이전.plannedDate ? "저장했습니다." : "" };
+  }
   // 서버에 비목이 없는 계획은 여기서 고른 비목으로 점검합니다. 그 외 값은 서버에 저장할 길이 없습니다.
   const 비목반영 = !이전.category || !!이전.비목직접선택;
   const 비목골랐다 = 비목반영 && 수정.category !== 이전.category;
@@ -3627,8 +4078,10 @@ function PlansPage({
   확인,
   update,
   판정시작,
+  지출일변경,
 }: {
   판정시작: (작업: 판정시작입력) => boolean;
+  지출일변경: (plan: ExpensePlan, 새날짜: string) => void;
   plans: ExpensePlan[];
   schedules: ScheduleItem[];
   go: (route: AppRoute) => void;
@@ -4025,7 +4478,10 @@ function PlansPage({
                       />
                     </label>
                   </td>
-                  <td className="title-cell"><b>{plan.name}</b></td>
+                  <td className="title-cell">
+                    <b>{plan.name}</b>
+                    {plan.현재단계 && <small className="plan-current-stage">현재: {plan.현재단계}</small>}
+                  </td>
                   <td>{plan.category || "미정"}</td>
                   <td className="amount-cell"><strong>{won(plan.amount)}</strong></td>
                   <td className="status-cell"><Status value={plan.status} /></td>
@@ -4196,6 +4652,8 @@ function PlansPage({
         <EditPlan
           plan={draft}
           setPlan={setDraft}
+          확인={확인}
+          notify={notify}
           close={() => {
             setEditing(null);
             setDraft(null);
@@ -4205,7 +4663,8 @@ function PlansPage({
             if (API켜짐() && 이전) {
               const { 계획, 안내 } = 서버모드수정(이전, draft);
               update(계획);
-              notify(안내);
+              if (안내) notify(안내);
+              if (draft.plannedDate !== 이전.plannedDate) 지출일변경(계획, draft.plannedDate || "");
             } else {
               update(draft);
             }
@@ -4222,8 +4681,10 @@ function NewPlanPage({
   save,
   cancel,
   판정시작,
+  notify,
 }: {
   판정시작: (작업: 판정시작입력) => boolean;
+  notify: (message: string) => void;
   /** `점검오류` 는 계획은 저장됐지만 판정이 실패했을 때의 사유입니다. */
   save: (plan: ExpensePlan, temporary?: boolean, 점검오류?: string) => void;
   cancel: () => void;
@@ -4478,18 +4939,29 @@ function NewPlanPage({
     });
 
   /**
-   * 주의: 계획을 목록으로 넘기기 '직전' 에 첨부파일을 그 계획 id 로 옮깁니다.
-   *    예전에는 `attachments` 를 화면에서 보여주기만 하고 저장할 때 그냥 버렸습니다
-   *    — 붙인 파일이 상세에서 사라지던 이유입니다.
+   * 계획을 만든 직후 고른 파일을 올립니다. 결과는 상세 화면의 첨부 목록에 나타나고, 실패한 파일은
+   * 거기서 다시 올릴 수 있습니다.
+   * 주의: 점검 시작과 점검 끝에 모두 불리므로 한 번만 올립니다.
    */
+  const 첨부넘긴 = useRef(false);
+  const 첨부넘기기 = (planId: string) => {
+    if (첨부넘긴.current) return;
+    첨부넘긴.current = true;
+    attachments.forEach((file) => {
+      void 첨부올리기(planId, file).then((저장됨) => {
+        if (!저장됨) notify(`「${file.name}」 파일을 저장하지 못했습니다. 계획 상세에서 다시 올려 주세요.`);
+      });
+    });
+  };
+
   const 저장 = (계획: ExpensePlan, 임시?: boolean, 점검오류?: string) => {
-    첨부보관(계획.id, attachments);
+    첨부넘기기(계획.id);
     save(계획, 임시, 점검오류);
   };
 
   const 점검시작 = (계획: ExpensePlan, planId?: string) => {
-    // 창을 닫으면 이 화면을 떠나므로 첨부파일을 먼저 계획에 붙입니다.
-    첨부보관(계획.id, attachments);
+    // 창을 닫으면 이 화면을 떠나므로 첨부파일을 먼저 올립니다.
+    첨부넘기기(계획.id);
     판정시작({
       계획,
       count: 1,
@@ -4692,22 +5164,17 @@ function NewPlanPage({
                 <div className="new-plan-file-head">
                   <span>
                     <b className="field-label">첨부파일</b>
-                    <small>견적서·과업자료 등이 있다면 첨부해주세요.</small>
+                    <small>견적서·과업자료 등이 있다면 첨부해주세요. 보관용이며 AI 점검에는 쓰이지 않습니다.</small>
                   </span>
                   <label className="new-plan-file-button">
                     <input
                       type="file"
                       multiple
+                      accept={첨부accept}
                       onChange={(event) => {
-                        // 주의: 상세 화면과 같은 한도(개별 3MB · 최대 10개)를 여기서도 겁니다.
-                        //    여기서 안 막으면 상세에서 못 다루는 파일이 들어옵니다.
-                        const selectedFiles = Array.from(event.target.files || []);
-                        const 넘김 = selectedFiles.filter((f) => f.size > 3 * 1024 * 1024);
-                        const 통과 = selectedFiles.filter((f) => f.size <= 3 * 1024 * 1024);
-                        if (넘김.length) set연동오류("첨부파일은 개별 3MB 이하만 올릴 수 있습니다.");
-                        if (통과.length) {
-                          setAttachments((current) => [...current, ...통과].slice(0, 10));
-                        }
+                        const { 통과, 안내 } = 첨부검사(attachments.length, Array.from(event.target.files || []));
+                        if (안내) set연동오류(안내);
+                        if (통과.length) setAttachments((current) => [...current, ...통과]);
                         event.target.value = "";
                       }}
                     />
@@ -5377,21 +5844,220 @@ function 문의초안카드({
   );
 }
 
+/** 첨부파일 한 줄. 올리는 중·실패·완료를 보여 주고 내려받기·다시 올리기·삭제를 합니다. */
+function 첨부줄({
+  planId,
+  file,
+  확인,
+  notify,
+  className,
+}: {
+  planId: string;
+  file: 첨부;
+  확인: (요청: 확인요청) => Promise<boolean>;
+  notify: (message: string) => void;
+  className?: string;
+}) {
+  const 지우기 = () => {
+    const 저장됨 = file.상태 === "완료";
+    void (저장됨
+      ? 확인({
+          제목: "첨부파일을 삭제할까요?",
+          설명: `'${file.name}'을(를) 삭제합니다. 되돌릴 수 없습니다.`,
+          실행문구: "삭제",
+        })
+      : Promise.resolve(true)
+    ).then((확인함) => {
+      if (!확인함) return;
+      첨부지우기(planId, file).catch((e: unknown) => notify(`파일을 삭제하지 못했습니다. ${오류사유(e)}`));
+    });
+  };
+  return (
+    <li className={`${className ?? ""} ${file.상태 === "실패" ? "attachment-failed" : ""}`}>
+      <Icon name="fileText" size={15} />
+      <span className="attachment-name">
+        <b>{file.name}{file.작성자 && <span className="item-author"> · {file.작성자}</span>}</b>
+        <small>
+          {file.상태 === "올리는중" ? "올리는 중…" : file.상태 === "실패" ? file.오류 : file.size}
+        </small>
+      </span>
+      {file.상태 === "완료" && (
+        <button
+          type="button"
+          aria-label={`${file.name} 다운로드`}
+          onClick={() =>
+            void 첨부내려받기(planId, file).catch((e: unknown) =>
+              notify(`파일을 내려받지 못했습니다. ${오류사유(e)}`),
+            )
+          }
+        >
+          ↓
+        </button>
+      )}
+      {file.상태 === "실패" && file.file && (
+        <button type="button" className="attachment-retry" onClick={() => void 첨부다시올리기(planId, file)}>
+          다시 올리기
+        </button>
+      )}
+      {file.상태 !== "올리는중" && (
+        <button type="button" aria-label={`${file.name} 삭제`} onClick={지우기}>
+          ×
+        </button>
+      )}
+    </li>
+  );
+}
+
+const 틀림이유: { 값: NonNullable<판정피드백["이유"]>; 글: string }[] = [
+  { 값: "판정이 다름", 글: "판정이 달라요" },
+  { 값: "근거가 다름", 글: "근거가 달라요" },
+  { 값: "기타", 글: "기타" },
+];
+
+/** 점검 결과의 「맞았어요 / 틀렸어요」. 맞았어요는 바로 저장하고, 틀렸어요는 이유를 받은 뒤 저장합니다. */
+function 결과평가칸({
+  plan,
+  저장됨,
+  notify,
+}: {
+  plan: ExpensePlan;
+  저장됨: (값: 판정피드백) => void;
+  notify: (message: string) => void;
+}) {
+  const [현재, set현재] = useState<판정피드백 | null>(plan.내피드백 ?? null);
+  const [펼침, set펼침] = useState(false);
+  const [이유, set이유] = useState<판정피드백["이유"]>(plan.내피드백?.이유 ?? null);
+  const [의견, set의견] = useState(plan.내피드백?.의견 ?? "");
+  const [저장중, set저장중] = useState(false);
+
+  const 저장 = (값: 판정피드백, 완료문구: string) => {
+    if (plan.latestDecisionId == null) return;
+    set저장중(true);
+    피드백저장(plan.latestDecisionId, 값)
+      .then((결과) => {
+        set현재(결과);
+        set펼침(false);
+        저장됨(결과);
+        notify(완료문구);
+      })
+      .catch((e: unknown) => notify(`평가를 저장하지 못했습니다. ${오류사유(e)}`))
+      .finally(() => set저장중(false));
+  };
+
+  const 이유글 = 틀림이유.find((항목) => 항목.값 === 현재?.이유)?.글;
+  return (
+    <section className="result-feedback">
+      {!!plan.팀평가?.length && (
+        <ul className="result-feedback-team">
+          {plan.팀평가.map((평가) => (
+            <li key={평가.작성자}>
+              <b>{평가.작성자}</b> {평가.평가 === "맞음" ? "맞았어요" : `틀렸어요${평가.이유 ? ` · ${평가.이유}` : ""}`}
+              {평가.의견 && <small>{평가.의견}</small>}
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="result-feedback-head">
+        <b>이 점검 결과가 맞았나요?</b>
+        <div>
+          <button
+            type="button"
+            className={현재?.평가 === "맞음" ? "is-selected" : ""}
+            aria-pressed={현재?.평가 === "맞음"}
+            disabled={저장중}
+            onClick={() => 저장({ 평가: "맞음", 이유: null, 의견: null }, "평가를 저장했습니다.")}
+          >
+            맞았어요
+          </button>
+          <button
+            type="button"
+            className={현재?.평가 === "틀림" || 펼침 ? "is-selected is-wrong" : ""}
+            aria-pressed={현재?.평가 === "틀림"}
+            aria-expanded={펼침}
+            disabled={저장중}
+            onClick={() => set펼침(true)}
+          >
+            틀렸어요
+          </button>
+        </div>
+      </div>
+      {펼침 ? (
+        <form
+          className="result-feedback-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (이유) 저장({ 평가: "틀림", 이유, 의견: 의견.trim() || null }, "의견을 저장했습니다. 고맙습니다.");
+          }}
+        >
+          <fieldset>
+            <legend>어떤 점이 달랐나요?</legend>
+            {틀림이유.map((항목) => (
+              <label key={항목.값}>
+                <input
+                  type="radio"
+                  name="result-feedback-reason"
+                  checked={이유 === 항목.값}
+                  onChange={() => set이유(항목.값)}
+                />
+                {항목.글}
+              </label>
+            ))}
+          </fieldset>
+          <label className="result-feedback-comment">
+            <span>자세한 의견 (선택)</span>
+            <textarea
+              rows={3}
+              maxLength={1000}
+              value={의견}
+              onChange={(e) => set의견(e.target.value)}
+              placeholder="담당기관에서 다르게 안내받았다면 그 내용을 적어 주세요."
+            />
+          </label>
+          <footer>
+            <button type="button" className="outline" disabled={저장중} onClick={() => set펼침(false)}>
+              취소
+            </button>
+            <button type="submit" className="primary" disabled={저장중 || !이유}>
+              저장
+            </button>
+          </footer>
+        </form>
+      ) : (
+        현재?.평가 === "틀림" && (
+          <p className="result-feedback-saved">
+            {이유글}
+            {현재.의견 ? ` · ${현재.의견}` : ""}
+          </p>
+        )
+      )}
+      <small>평가는 서비스 개선에 쓰이며, 이 점검 결과를 바꾸지는 않습니다.</small>
+    </section>
+  );
+}
+
 function PlanDetail({
   plan,
   allPlans,
   판정시작,
   update,
+  지출일변경,
+  실제지출저장,
+  확인,
   addSchedules,
   할일동기화,
+  기준문서보기,
   remove,
   back,
   notify,
 }: {
   plan?: ExpensePlan;
   allPlans: ExpensePlan[];
+  기준문서보기: () => void;
+  확인: (요청: 확인요청) => Promise<boolean>;
   판정시작: (작업: 판정시작입력) => boolean;
   update: (plan: ExpensePlan) => void;
+  지출일변경: (plan: ExpensePlan, 새날짜: string) => void;
+  실제지출저장: (plan: ExpensePlan, 날짜: string, 금액: number) => Promise<void>;
   addSchedules: (items: ScheduleItem[]) => void;
   /** 주의: 체크박스는 이걸로 바꿉니다 — 집행 일정까지 같이 움직이고 서버 저장도 여기서. */
   할일동기화: (planId: string, taskId: string, 완료: boolean) => void;
@@ -5411,18 +6077,14 @@ function PlanDetail({
   // 주의: 2026-09-04 — 여기에 「○○ 견적서.pdf」·「○○ 참고자료.pdf」 두 건을 '지어내고'
   //    있었습니다. 이제 '사용자가 실제로 붙인' 파일만 보여줍니다
   //    (새 지출 계획에서 붙인 것 + 이 화면에서 추가한 것).
-  const [planFiles, setPlanFiles] = useState<첨부[]>(() =>
-    plan ? 첨부읽기(plan.id) : [],
-  );
-  // 다른 계획을 열면 그 계획의 첨부로 갈아 끼웁니다.
+  const 첨부칸 = use첨부(plan?.id ?? "");
+  // 증빙 항목에 올린 파일은 그 항목 옆에 보여 줍니다. 항목이 사라진 파일은 일반 첨부로 돌아옵니다.
+  const 증빙id = new Set((plan?.evidence ?? []).map((item) => item.id));
+  const planFiles = 첨부칸.목록.filter((file) => !file.taskId || !증빙id.has(file.taskId));
+  // 다른 기기에서 올린 파일까지 보이도록 계획을 열 때마다 읽습니다.
   useEffect(() => {
-    setPlanFiles(plan ? 첨부읽기(plan.id) : []);
+    if (plan?.id) void 첨부새로읽기(plan.id);
   }, [plan?.id]);
-  // 이 화면에서 추가·삭제한 결과를 보관함에 되돌려 놓습니다 — 나갔다 와도 남게.
-  useEffect(() => {
-    if (plan?.id) 첨부쓰기(plan.id, planFiles);
-  }, [plan?.id, planFiles]);
-  const [evidenceFiles, setEvidenceFiles] = useState<Record<string, File>>({});
   const [actualDate, setActualDate] = useState(plan?.actualDate || plan?.plannedDate || "");
   const [actualAmount, setActualAmount] = useState(
     plan?.actualAmount ? String(plan.actualAmount) : "",
@@ -5503,6 +6165,16 @@ function PlanDetail({
     const 종류 = 집행확인;
     set집행확인(null);
     if (!종류) return;
+    const 완료문구 = 종류 === "등록" ? "실제 집행 정보를 등록했습니다." : "실제 집행 정보를 수정했습니다.";
+    if (API켜짐() && /^\d+$/.test(plan.id)) {
+      실제지출저장(plan, actualDate, savedActualAmount)
+        .then(() => {
+          set집행수정중(false);
+          notify(완료문구);
+        })
+        .catch((e: unknown) => notify(`실제 집행 정보를 저장하지 못했습니다. ${오류사유(e)}`));
+      return;
+    }
     update({
       ...plan,
       actualDate,
@@ -5511,7 +6183,7 @@ function PlanDetail({
       updatedAt: 시각표기(new Date().toISOString()),
     });
     set집행수정중(false);
-    notify(API켜짐() ? 화면에만반영 : 종류 === "등록" ? "실제 집행 정보를 등록했습니다." : "실제 집행 정보를 수정했습니다.");
+    notify(API켜짐() ? 화면에만반영 : 완료문구);
   };
 
   /** 수정을 그만둘 때 — 등록돼 있던 값으로 되돌립니다. */
@@ -5519,19 +6191,6 @@ function PlanDetail({
     setActualDate(plan.actualDate || plan.plannedDate || "");
     setActualAmount(plan.actualAmount ? String(plan.actualAmount) : "");
     set집행수정중(false);
-  };
-  const formatSize = (size: number) =>
-    size >= 1024 * 1024
-      ? `${(size / 1024 / 1024).toFixed(1)}MB`
-      : `${Math.max(1, Math.round(size / 1024))}KB`;
-  const downloadFile = (name: string, file?: File) => {
-    const blob = file || new Blob([`${name} 파일 미리보기`], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = name;
-    link.click();
-    URL.revokeObjectURL(url);
   };
   // 이번 판정의 분류를 먼저 쓰고, 새로고침 뒤에는 계획에 저장해 둔 세목으로 같은 모양을 만듭니다.
   // 주의: 수정 창에서 화면에만 고친 비목이면 그 값을 그대로 보여 줍니다. 옛 세목을 붙이면 고친 비목과 어긋납니다.
@@ -5611,32 +6270,16 @@ function PlanDetail({
               <div>
                 {planFiles.length === 0 && (
                   <p className="expense-v5-file-empty">
-                    첨부한 파일이 없습니다. 견적서·과업자료가 있으면 올려 두세요.
+                    {첨부칸.읽기 === "대기"
+                      ? "첨부 목록을 불러오는 중입니다."
+                      : 첨부칸.읽기 === "실패"
+                        ? "첨부 목록을 불러오지 못했습니다. 새로고침해 주세요."
+                        : "첨부한 파일이 없습니다. 견적서·과업자료가 있으면 올려 두세요."}
                   </p>
                 )}
                 <ul>
                   {planFiles.map((file) => (
-                    <li key={file.id}>
-                      <Icon name="fileText" size={15} />
-                      <b>{file.name}</b>
-                      <small>{file.size}</small>
-                      <button
-                        aria-label={`${file.name} 다운로드`}
-                        onClick={() => downloadFile(file.name, file.file)}
-                      >
-                        ↓
-                      </button>
-                      <button
-                        aria-label={`${file.name} 삭제`}
-                        onClick={() =>
-                          setPlanFiles((items) =>
-                            items.filter((item) => item.id !== file.id),
-                          )
-                        }
-                      >
-                        ×
-                      </button>
-                    </li>
+                    <첨부줄 key={file.id} planId={plan.id} file={file} 확인={확인} notify={notify} />
                   ))}
                 </ul>
                 <footer>
@@ -5644,28 +6287,17 @@ function PlanDetail({
                     <input
                       type="file"
                       multiple
+                      accept={첨부accept}
                       onChange={(event) => {
-                        const selectedFiles = Array.from(event.target.files || []);
-                        if (selectedFiles.some((file) => file.size > 3 * 1024 * 1024)) {
-                          notify("첨부파일은 개별 3MB 이하만 등록할 수 있습니다.");
-                        }
-                        const added = selectedFiles
-                          .filter((file) => file.size <= 3 * 1024 * 1024)
-                          .map(
-                          (file) => ({
-                            id: `${file.name}-${file.lastModified}-${Math.random()}`,
-                            name: file.name,
-                            size: formatSize(file.size),
-                            file,
-                          }),
-                        );
-                        setPlanFiles((items) => [...items, ...added].slice(0, 10));
+                        const { 통과, 안내 } = 첨부검사(첨부칸.목록.length, Array.from(event.target.files || []));
+                        if (안내) notify(안내);
+                        통과.forEach((file) => void 첨부올리기(plan.id, file));
                         event.target.value = "";
                       }}
                     />
                     파일 추가
                   </label>
-                  <small>최대 10개 / 개별 3MB 이하</small>
+                  <small>최대 10개 / 개별 3MB 이하 · 보관용이며 AI 점검에는 쓰이지 않습니다</small>
                 </footer>
               </div>
             </div>
@@ -5705,6 +6337,10 @@ function PlanDetail({
             </div>
           )}
           <div className={`ai-result-frame ${plan.status === "재점검 필요" ? "is-stale" : ""}`}>
+            {/* 판단불가는 규정을 끝까지 적용하지 못한 결과라 어느 기준으로 점검했다고 말하지 않습니다. */}
+            {plan.기준문서 && plan.판정 && plan.판정 !== "판단불가" && (
+              <기준문서줄 정보={plan.기준문서} 기준문서보기={기준문서보기} />
+            )}
             <div className="ai-verdict-row">
               <Status value={plan.status === "재점검 필요" ? plan.previousStatus || "확인 필요" : plan.status} />
               <div>
@@ -5824,6 +6460,15 @@ function PlanDetail({
             </section>
             <결과문장목록 제목="근거 경로" 항목={plan.근거경로} />
             <결과용어풀이 항목={plan.용어풀이} />
+            {/* 주의: 저장된 최신 판정에만 평가를 받습니다. 재점검하면 번호가 바뀌어 칸이 새로 열립니다. */}
+            {plan.latestDecisionId != null && !plan.저장안됨 && plan.status !== "재점검 필요" && (
+              <결과평가칸
+                key={plan.latestDecisionId}
+                plan={plan}
+                저장됨={(값) => update({ ...plan, 내피드백: 값 })}
+                notify={notify}
+              />
+            )}
             {/* 주의: 「판단불가」의 결말입니다. 배지와 해설은 '못 정했다' 까지만 말하고,
                 「그래서 뭐라고 물어보나」는 여기 있습니다. 서버가 준 값이 있을 때만
                 나옵니다 — 없으면 카드 전체를 렌더링하지 않습니다(빈 카드를 남기지 않습니다). */}
@@ -5847,6 +6492,30 @@ function PlanDetail({
               <p>결제 전 확인부터 지출 후 증빙까지 단계별로 관리하세요.</p>
             </div>
           </header>
+          {!!plan.단계요약?.length && (
+            <ol className="expense-stage-bar" aria-label="진행 단계">
+              {plan.단계요약.map((칸) => (
+                <li key={칸.단계} className={`stage-${칸.상태}${칸.단계 === plan.현재단계 ? " current" : ""}`}>
+                  <button
+                    onClick={() =>
+                      document
+                        .getElementById(칸.단계 === "집행" ? "execution-card" : 칸.단계 === "증빙" ? "evidence-card" : "payment-before")
+                        ?.scrollIntoView({ behavior: "smooth", block: "center" })
+                    }
+                  >
+                    <b>{칸.단계}</b>
+                    <small>
+                      {칸.상태 === "항목없음"
+                        ? "항목 없음"
+                        : 칸.상태 === "완료"
+                          ? "완료"
+                          : `${칸.완료}/${칸.전체}`}
+                    </small>
+                  </button>
+                </li>
+              ))}
+            </ol>
+          )}
           <div className="expense-v5-prep-grid">
             <section id="payment-before">
               <header>
@@ -5887,11 +6556,11 @@ function PlanDetail({
             {/* 주의: 1 결제 전 확인 / 2·3 결제 이후 — 세 카드가 한 덩어리로 붙어 있어
                 「지금 뭘 해야 하나」가 안 보였습니다. 결제를 기준으로 끊습니다. */}
             <div className="expense-v5-prep-split" role="presentation" />
-            <section className="expense-v5-execution-card">
+            <section className="expense-v5-execution-card" id="execution-card">
               <header>
                 <div>
                   <h3><i>2</i><span>실제 집행 정보</span></h3>
-                  <small>{API켜짐() ? "아직 서버에 저장되지 않는 정보" : "누적 집행액 계산에 반영되는 정보"}</small>
+                  <small>누적 집행액 계산에 반영되는 정보</small>
                 </div>
                 {plan.executionStatus && <b>{plan.executionStatus}</b>}
               </header>
@@ -5928,9 +6597,7 @@ function PlanDetail({
                 <span>
                   {집행잠김
                     ? "등록을 마쳐 잠겨 있습니다. 값을 바꾸려면 수정하기를 누르세요."
-                    : API켜짐()
-                      ? "실제 집행 정보는 아직 서버에 저장되지 않아 새로고침하면 사라집니다."
-                      : "등록한 실제 지출액은 누적 집행액에 반영됩니다."}
+                    : "등록한 실제 지출액은 누적 집행액에 반영됩니다."}
                 </span>
                 {/* 주의: 상태에 따라 버튼이 하나씩만 뜹니다 — 「등록」과 「수정」이 같이
                     보이면 어느 것이 지금 할 일인지 안 보입니다. */}
@@ -5946,7 +6613,7 @@ function PlanDetail({
                 )}
               </footer>
             </section>
-            <section className="expense-v5-evidence-section">
+            <section className="expense-v5-evidence-section" id="evidence-card">
               <header>
                 <div>
                   <h3><i>3</i><span>결제 후 필요 증빙</span></h3>
@@ -5977,52 +6644,49 @@ function PlanDetail({
                     <label className="outline small expense-v5-upload">
                       <input
                         type="file"
+                        accept={첨부accept}
                         onChange={(event) => {
-                          const file = event.target.files?.[0];
-                          if (!file) return;
-                          if (file.size > 3 * 1024 * 1024) {
-                            notify("첨부파일은 개별 3MB 이하만 등록할 수 있습니다.");
-                            event.target.value = "";
-                            return;
-                          }
-                          setEvidenceFiles((files) => ({ ...files, [item.id]: file }));
+                          const { 통과, 안내 } = 첨부검사(
+                            첨부칸.목록.length,
+                            Array.from(event.target.files || []).slice(0, 1),
+                          );
                           event.target.value = "";
+                          if (안내) notify(안내);
+                          const file = 통과[0];
+                          if (!file) return;
+                          // 주의: 파일이 저장된 뒤에만 완료로 표시합니다. 체크를 풀어도 파일은 남습니다.
+                          void 첨부올리기(plan.id, file, item.id).then((저장됨) => {
+                            if (!저장됨) {
+                              notify(`「${item.label}」 파일을 올리지 못했습니다. 이유를 확인해 다시 올려 주세요.`);
+                              return;
+                            }
+                            if (item.done) {
+                              notify("파일을 저장했습니다.");
+                              return;
+                            }
+                            할일동기화(plan.id, item.id, true);
+                            notify(`파일을 저장하고 「${item.label}」을(를) 완료로 표시했습니다.`);
+                          });
                         }}
                       />
                       <Icon name="upload" size={14} />
                       파일 업로드
                     </label>
-                    {evidenceFiles[item.id] && (
-                      <div className="expense-v5-uploaded-file">
-                        <Icon name="fileText" size={14} />
-                        <span>
-                          <b>{evidenceFiles[item.id].name}</b>
-                          <small>{formatSize(evidenceFiles[item.id].size)}</small>
-                        </span>
-                        <button
-                          aria-label={`${evidenceFiles[item.id].name} 다운로드`}
-                          onClick={() =>
-                            downloadFile(
-                              evidenceFiles[item.id].name,
-                              evidenceFiles[item.id],
-                            )
-                          }
-                        >
-                          ↓
-                        </button>
-                        <button
-                          aria-label={`${evidenceFiles[item.id].name} 삭제`}
-                          onClick={() =>
-                            setEvidenceFiles((files) => {
-                              const next = { ...files };
-                              delete next[item.id];
-                              return next;
-                            })
-                          }
-                        >
-                          ×
-                        </button>
-                      </div>
+                    {첨부칸.목록.some((file) => file.taskId === item.id) && (
+                      <ul className="expense-v5-uploaded-files">
+                        {첨부칸.목록
+                          .filter((file) => file.taskId === item.id)
+                          .map((file) => (
+                            <첨부줄
+                              key={file.id}
+                              planId={plan.id}
+                              file={file}
+                              확인={확인}
+                              notify={notify}
+                              className="expense-v5-uploaded-file"
+                            />
+                          ))}
+                      </ul>
                     )}
                   </div>
                 ))}
@@ -6053,9 +6717,7 @@ function PlanDetail({
               <div>
                 <h2>지출을 {집행확인}하시겠습니까?</h2>
                 <p>
-                  {API켜짐()
-                    ? "이 화면에만 반영되고 서버에는 저장되지 않아 새로고침하면 사라집니다."
-                    : 집행확인 === "등록"
+                  {집행확인 === "등록"
                       ? "등록하면 누적 집행액에 반영되고, 이후에는 수정하기를 눌러야 값을 바꿀 수 있습니다."
                       : "바꾼 금액으로 누적 집행액이 다시 계산됩니다."}
                 </p>
@@ -6094,7 +6756,8 @@ function PlanDetail({
         <EditPlan
           plan={draft}
           setPlan={setDraft}
-          onFilesSaved={setPlanFiles}
+          확인={확인}
+          notify={notify}
           close={() => setEditing(false)}
           save={() => {
             // 주의: 계획 수정 API 가 아직 없습니다. 서버 모드에서 재점검을 권하면 판정은 서버의 옛 값으로
@@ -6103,7 +6766,8 @@ function PlanDetail({
               const { 계획, 안내 } = 서버모드수정(plan, draft);
               update(계획);
               setEditing(false);
-              notify(안내);
+              if (안내) notify(안내);
+              if (draft.plannedDate !== plan.plannedDate) 지출일변경(계획, draft.plannedDate || "");
               return;
             }
             update({
@@ -6555,6 +7219,8 @@ function LegacyPlanDetail({
         <EditPlan
           plan={draft}
           setPlan={setDraft}
+          확인={() => Promise.resolve(true)}
+          notify={() => {}}
           close={() => setEditing(false)}
           save={() => {
             update(draft);
@@ -6641,37 +7307,29 @@ function EditPlan({
   setPlan,
   close,
   save,
-  onFilesSaved,
+  확인,
+  notify,
 }: {
   plan: ExpensePlan;
   setPlan: (plan: ExpensePlan) => void;
   close: () => void;
   save: () => void;
-  /** 저장이 끝난 뒤 '부모 화면' 의 첨부 목록도 같은 값으로 맞춥니다. */
-  onFilesSaved?: (files: 첨부[]) => void;
+  확인: (요청: 확인요청) => Promise<boolean>;
+  notify: (message: string) => void;
 }) {
   /**
-   * 주의: 「첨부 파일 [+ 파일 교체·추가]」는 '누르는 데가 없는 장식' 이었습니다.
-   *    input 도 onClick 도 없었고, 상세 화면의 첨부 목록과도 이어져 있지 않아서
-   *    수정 창에서는 붙인 파일이 보이지도 않고 새로 붙일 수도 없었습니다.
-   *    → 상세와 '같은 보관함'(lib/attachments)을 봅니다. 여기서 지운 파일은
-   *      상세에서도 사라지고, 여기서 붙인 파일은 상세에 그대로 나타납니다.
-   *
-   * 주의: 초안입니다. 「취소」로 닫으면 보관함을 건드리지 않습니다 — 다른 입력칸과
-   *    같은 규칙이어야 합니다. 실제 반영은 「수정 저장」에서 한 번에 합니다.
+   * 상세 화면과 같은 첨부 목록(lib/attachments)을 봅니다.
+   * 주의: 파일은 다른 입력칸과 달리 올리는 즉시 저장되므로 「취소」로 되돌아가지 않습니다. 화면에 그렇게 씁니다.
    */
-  const [편집첨부, set편집첨부] = useState<첨부[]>(() => 첨부읽기(plan.id));
+  const 편집칸 = use첨부(plan.id);
+  const 편집첨부 = 편집칸.목록;
   const [첨부오류, set첨부오류] = useState("");
   const 비목선택지 = use비목선택지();
   useEffect(() => {
-    set편집첨부(첨부읽기(plan.id));
     set첨부오류("");
+    // 목록에서 바로 연 수정 창은 첨부를 아직 읽지 않았습니다.
+    void 첨부새로읽기(plan.id);
   }, [plan.id]);
-
-  const 첨부저장 = () => {
-    첨부쓰기(plan.id, 편집첨부);
-    onFilesSaved?.(편집첨부);
-  };
 
   return (
     <div className="modal-backdrop">
@@ -6745,27 +7403,16 @@ function EditPlan({
             <b>첨부 파일</b>
             {편집첨부.length === 0 ? (
               <p className="edit-file-empty">
-                첨부한 파일이 없습니다. 견적서·과업자료가 있으면 올려 두세요.
+                {편집칸.읽기 === "대기"
+                  ? "첨부 목록을 불러오는 중입니다."
+                  : 편집칸.읽기 === "실패"
+                    ? "첨부 목록을 불러오지 못했습니다. 새로고침해 주세요."
+                    : "첨부한 파일이 없습니다. 견적서·과업자료가 있으면 올려 두세요."}
               </p>
             ) : (
               <ul>
                 {편집첨부.map((file) => (
-                  <li key={file.id}>
-                    <Icon name="fileText" size={15} />
-                    <b>{file.name}</b>
-                    <small>{file.size}</small>
-                    <button
-                      type="button"
-                      aria-label={`${file.name} 삭제`}
-                      onClick={() =>
-                        set편집첨부((items) =>
-                          items.filter((item) => item.id !== file.id),
-                        )
-                      }
-                    >
-                      ×
-                    </button>
-                  </li>
+                  <첨부줄 key={file.id} planId={plan.id} file={file} 확인={확인} notify={notify} />
                 ))}
               </ul>
             )}
@@ -6774,31 +7421,17 @@ function EditPlan({
                 <input
                   type="file"
                   multiple
+                  accept={첨부accept}
                   onChange={(event) => {
-                    const 고른것 = Array.from(event.target.files || []);
-                    // 주의: 상세 화면과 '같은' 한도여야 합니다. 여기서만 큰 파일이
-                    //    들어오면 상세에서 다룰 수 없는 첨부가 생깁니다.
-                    const 넘김 = 고른것.filter((f) => f.size > 3 * 1024 * 1024);
-                    set첨부오류(
-                      넘김.length
-                        ? "첨부파일은 개별 3MB 이하만 올릴 수 있습니다."
-                        : "",
-                    );
-                    const 쓸것 = 고른것.filter((f) => f.size <= 3 * 1024 * 1024);
-                    // 주의: 순번을 '기존 개수부터' 셉니다. 0 부터 다시 세면 같은 파일을
-                    //    두 번에 나눠 붙였을 때 id 가 겹쳐 지우기가 엉킵니다.
-                    set편집첨부((items) =>
-                      [
-                        ...items,
-                        ...쓸것.map((f, i) => 파일을첨부로(f, items.length + i)),
-                      ].slice(0, 10),
-                    );
+                    const { 통과, 안내 } = 첨부검사(편집첨부.length, Array.from(event.target.files || []));
+                    set첨부오류(안내 ?? "");
+                    통과.forEach((file) => void 첨부올리기(plan.id, file));
                     event.target.value = "";
                   }}
                 />
                 파일 추가
               </label>
-              <small>최대 10개 / 개별 3MB 이하</small>
+              <small>파일은 올리거나 지우는 즉시 저장됩니다 · 최대 10개 / 개별 3MB 이하 · 보관용이며 AI 점검에는 쓰이지 않습니다</small>
             </footer>
             {첨부오류 && <p className="edit-file-error">{첨부오류}</p>}
           </div>
@@ -6809,10 +7442,7 @@ function EditPlan({
           </button>
           <button
             className="primary"
-            onClick={() => {
-              첨부저장();
-              save();
-            }}
+            onClick={save}
           >
             수정 저장
           </button>
@@ -6923,6 +7553,8 @@ function SchedulePage({
   일정실패,
   save,
   추가,
+  지우기,
+  날짜저장,
   할일동기화,
   notify,
   확인,
@@ -6935,6 +7567,8 @@ function SchedulePage({
   save: (items: ScheduleItem[]) => void;
   /** 주의: '새로 만든' 일정 전용. save 는 상태 변경만 서버에 보냅니다. */
   추가: (item: ScheduleItem) => void;
+  지우기: (item: ScheduleItem) => void;
+  날짜저장: (item: ScheduleItem, 날짜: string) => void;
   /** 주의: 서버 할일에서 온 일정이면 이걸로 바꿉니다 — 상세 체크박스까지 같이 움직입니다. */
   할일동기화: (planId: string, taskId: string, 완료: boolean) => void;
   notify: (message: string) => void;
@@ -6968,14 +7602,35 @@ function SchedulePage({
   const 오늘문자 = 오늘
     ? `${오늘.y}-${String(오늘.m).padStart(2, "0")}-${String(오늘.d).padStart(2, "0")}`
     : "2026-08-29";
-  // 주의: 날짜가 없는 할일(규정에 기한 근거가 없음)은 맨 뒤로 보냅니다.
-  const upcoming = [...schedules].sort((a, b) =>
-    (a.date || "9999").localeCompare(b.date || "9999"),
+  // 주의: 달력·통계·다가오는 일정은 날짜 있는 줄만 봅니다. 날짜 없는 줄은 「날짜 미정」에 모읍니다.
+  const upcoming = schedules
+    .filter((item) => !!item.date)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const 지났나 = (item: ScheduleItem) =>
+    item.state !== "완료" && !!item.date && item.date < 오늘문자;
+  const 기한지남 = upcoming.filter(지났나);
+  const visibleUpcoming = upcoming.filter(
+    (item) => item.state !== "완료" && !지났나(item),
   );
-  const visibleUpcoming = upcoming.filter((item) => item.state !== "완료");
-  const activeUpcoming = visibleUpcoming
-    .filter((item) => item.date >= 오늘문자)
-    .slice(0, 3);
+  const activeUpcoming = visibleUpcoming.slice(0, 3);
+  const [미정펼침, set미정펼침] = useState(false);
+  const [날짜입력, set날짜입력] = useState<{ id: string; 값: string } | null>(null);
+  const 날짜미정 = schedules.filter((item) => !item.date && item.state !== "완료");
+  const 미정묶음 = [
+    ...plans
+      .map((plan) => ({
+        id: plan.id,
+        name: plan.name,
+        items: 날짜미정.filter((item) => item.planId === plan.id),
+      }))
+      .filter((group) => group.items.length > 0),
+    ...(() => {
+      const 나머지 = 날짜미정.filter(
+        (item) => !plans.some((plan) => plan.id === item.planId),
+      );
+      return 나머지.length ? [{ id: "unlinked", name: "기타 일정", items: 나머지 }] : [];
+    })(),
+  ];
   const dday = (date: string) =>
     Math.ceil(
       (new Date(`${date}T00:00:00`).getTime() -
@@ -7029,12 +7684,12 @@ function SchedulePage({
     // 주의: 서버 할일에서 온 일정이면 '상세 체크박스와 같이' 움직입니다.
     //    (그쪽에서 서버 저장까지 한 번에 합니다)
     const taskId = 대상.taskId;
-    if (taskId && 대상.planId) {
+    if (taskId && 대상.planId && 대상.planId !== "other") {
       할일동기화(대상.planId, taskId, 완료);
       return;
     }
 
-    // 사용자가 직접 만든 일정 — 연결된 할일이 없어 화면 안에서만 바뀝니다.
+    // 계획 없는 일정은 묶인 체크박스가 없어 일정만 바꿉니다.
     save(
       schedules.map((item) =>
         item.id === id
@@ -7070,6 +7725,34 @@ function SchedulePage({
             ? "일정을 불러오지 못했습니다. 새로고침해 주세요. 아래 건수와 달력은 실제 일정이 아닙니다."
             : "일정을 불러오는 중입니다."}
         </p>
+      )}
+      {기한지남.length > 0 && (
+        <section className="schedule-overdue" aria-label="기한 지난 일정">
+          <header>
+            <h2>기한 지난 일정 {기한지남.length}건</h2>
+            <p>아직 완료하지 않은 일정입니다. 끝냈다면 체크하고, 미뤄졌다면 날짜를 고쳐 주세요.</p>
+          </header>
+          <ul>
+            {기한지남.map((item) => (
+              <li key={item.id}>
+                <input
+                  type="checkbox"
+                  checked={false}
+                  aria-label={`${item.title} 완료 처리`}
+                  onChange={() => toggleDone(item.id)}
+                />
+                <button type="button" onClick={() => setViewing(item)}>
+                  <time>{월일표기(item.date)}</time>
+                  <span>
+                    <b>{item.title}{item.작성자 && <span className="item-author"> · {item.작성자}</span>}</b>
+                    <small>{plans.find((p) => p.id === item.planId)?.name || "기타"}</small>
+                  </span>
+                  <em>{-dday(item.date)}일 지남</em>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
       <section className="schedule-v2-metrics">
         <article>
@@ -7224,9 +7907,12 @@ function SchedulePage({
             <div className="schedule-v2-list-view">
               {upcoming.map((item) => (
                 <button key={item.id} onClick={() => setViewing(item)}>
-                  <time>{item.date || "날짜 미정"}</time>
+                  <time>
+                    {item.date}
+                    {지났나(item) && <small className="past-date">지남</small>}
+                  </time>
                   <span>
-                    <b>{item.title}</b>
+                    <b>{item.title}{item.작성자 && <span className="item-author"> · {item.작성자}</span>}</b>
                     <small>
                       {plans.find((p) => p.id === item.planId)?.name}
                     </small>
@@ -7280,11 +7966,10 @@ function SchedulePage({
                 ? "일정을 불러오는 중입니다."
                 : 일정실패
                   ? "일정을 불러오지 못했습니다. 새로고침해 주세요."
-                  : "남은 일정이 없습니다. 날짜가 없는 할일은 지출 계획 상세에서 확인할 수 있습니다."}
+                  : "앞으로 남은 일정이 없습니다."}
             </p>
           )}
           {upcomingView === "all" ? visibleUpcoming.map((item) => {
-            const past = !!item.date && item.date < 오늘문자;
             const activeIndex = activeUpcoming.findIndex(
               (active) => active.id === item.id,
             );
@@ -7310,14 +7995,12 @@ function SchedulePage({
                       <b>
                         {월일표기(item.date)}
                       </b>
-                      {past ? (
-                        <small className="past-date">지남</small>
-                      ) : activeIndex >= 0 ? (
+                      {activeIndex >= 0 ? (
                         <small className="dday">D-{dday(item.date)}</small>
                       ) : null}
                     </time>
                     <span>
-                      <b>{item.title}</b>
+                      <b>{item.title}{item.작성자 && <span className="item-author"> · {item.작성자}</span>}</b>
                       <small>
                         {plans.find((p) => p.id === item.planId)?.name || "기타"}
                       </small>
@@ -7351,28 +8034,25 @@ function SchedulePage({
                         <Icon name="edit" size={14} />
                         수정
                       </button>
-                      <button
-                        className="danger"
-                        onClick={() => {
-                          setOpenMenu(null);
-                          void 확인({
-                            제목: "일정을 삭제할까요?",
-                            설명: `'${item.title}' 일정을 삭제합니다.`,
-                            실행문구: "삭제",
-                          }).then((확인함) => {
-                            if (!확인함) return;
-                            save(
-                              schedules.filter(
-                                (schedule) => schedule.id !== item.id,
-                              ),
-                            );
-                            notify(API켜짐() ? 화면에만반영 : "일정을 삭제했습니다.");
-                          });
-                        }}
-                      >
-                        <Icon name="trash" size={14} />
-                        삭제
-                      </button>
+                      {/* 주의: 규정 점검이 만든 일정은 지워도 다음 점검이 다시 만들어 버튼을 내지 않습니다. */}
+                      {!점검일정인가(item) && !item.지출일연동 && (
+                        <button
+                          className="danger"
+                          onClick={() => {
+                            setOpenMenu(null);
+                            void 확인({
+                              제목: "일정을 삭제할까요?",
+                              설명: `'${item.title}' 일정을 삭제합니다.`,
+                              실행문구: "삭제",
+                            }).then((확인함) => {
+                              if (확인함) 지우기(item);
+                            });
+                          }}
+                        >
+                          <Icon name="trash" size={14} />
+                          삭제
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -7382,7 +8062,11 @@ function SchedulePage({
             <div className="upcoming-plan-groups">
               {upcomingGroups.map((group) => {
                 const open = expandedPlans.includes(group.id);
-                const nearest = group.items[0];
+                // 주의: 끝낸 일과 지난 일은 「가까운 일정」이 아닙니다. 지난 일은 옆에 따로 셉니다.
+                const nearest = group.items.find(
+                  (item) => item.state !== "완료" && !지났나(item),
+                );
+                const 지남수 = group.items.filter(지났나).length;
                 return (
                   <section className="upcoming-plan-group" key={group.id}>
                     <button
@@ -7401,7 +8085,8 @@ function SchedulePage({
                       </span>
                       <span className="upcoming-plan-meta nearest-date">
                         <small>가장 가까운 일정</small>
-                        <b>{nearest.date.replaceAll("-", ".")}</b>
+                        <b>{nearest ? nearest.date.replaceAll("-", ".") : "없음"}</b>
+                        {지남수 > 0 && <small className="past-date">{지남수}건 지남</small>}
                       </span>
                       <Icon name="chevronDown" size={16} />
                     </button>
@@ -7427,9 +8112,10 @@ function SchedulePage({
                               >
                                 <time>
                                   {월일표기(item.date)}
+                                  {지났나(item) && <small className="past-date">지남</small>}
                                 </time>
                                 <span>
-                                  <b>{item.title}</b>
+                                  <b>{item.title}{item.작성자 && <span className="item-author"> · {item.작성자}</span>}</b>
                                   <small>{item.type}</small>
                                 </span>
                                 <em
@@ -7456,17 +8142,85 @@ function SchedulePage({
           )}
         </aside>
       </div>
+      {날짜미정.length > 0 && (
+        <section className="schedule-undated">
+          <button
+            type="button"
+            className="schedule-undated-head"
+            aria-expanded={미정펼침}
+            onClick={() => set미정펼침((v) => !v)}
+          >
+            <span>
+              <b>날짜 미정 {날짜미정.length}건</b>
+              <small>규정에 기한이 없거나 아직 날짜를 정하지 않은 일정입니다.</small>
+            </span>
+            <Icon name="chevronDown" size={16} />
+          </button>
+          {미정펼침 && 미정묶음.map((group) => (
+            <div className="schedule-undated-group" key={group.id}>
+              <h3>{group.name} <small>{group.items.length}건</small></h3>
+              <ul>
+                {group.items.map((item) => (
+                  <li key={item.id}>
+                    <input
+                      type="checkbox"
+                      checked={false}
+                      aria-label={`${item.title} 완료 처리`}
+                      onChange={() => toggleDone(item.id)}
+                    />
+                    <button type="button" className="schedule-undated-title" onClick={() => setViewing(item)}>
+                      <b>{item.title}{item.작성자 && <span className="item-author"> · {item.작성자}</span>}</b>
+                      <small>{item.type}</small>
+                    </button>
+                    {날짜입력?.id === item.id ? (
+                      <span className="schedule-undated-date">
+                        <input
+                          type="date"
+                          aria-label={`${item.title} 날짜`}
+                          value={날짜입력.값}
+                          onChange={(event) => set날짜입력({ id: item.id, 값: event.target.value })}
+                        />
+                        <button
+                          type="button"
+                          className="primary small"
+                          disabled={!날짜입력.값}
+                          onClick={() => {
+                            날짜저장(item, 날짜입력.값);
+                            set날짜입력(null);
+                          }}
+                        >
+                          저장
+                        </button>
+                        <button type="button" className="outline small" onClick={() => set날짜입력(null)}>
+                          취소
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="outline small"
+                        onClick={() => set날짜입력({ id: item.id, 값: "" })}
+                      >
+                        날짜 정하기
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </section>
+      )}
       {modal && (
         <ScheduleFormModal
           plans={plans}
           close={() => setModal(false)}
           save={(item) => {
             // 주의: '새로 만든' 일정이라 전체 목록 저장이 아니라 추가 경로로 보냅니다.
-            //    `save()`(=persistSchedules)는 상태 '변경' 만 서버에 보내므로
-            //    새 항목은 그 길로 가면 서버에 안 남습니다.
+            //    `save()`(=persistSchedules)는 이미 있는 줄의 '변경' 만 서버에 보내므로
+            //    새 항목은 그 길로 가면 서버에 안 남습니다. 저장 결과 안내도 추가 경로가 합니다.
             추가(item);
             setModal(false);
-            notify("일정을 저장했습니다.");
           }}
         />
       )}
@@ -7476,18 +8230,13 @@ function SchedulePage({
           plans={plans}
           close={() => setEditing(null)}
           save={(item) => {
-            const 이전 = schedules.find((schedule) => schedule.id === item.id);
             save(
               schedules.map((schedule) =>
                 schedule.id === item.id ? item : schedule,
               ),
             );
             setEditing(null);
-            // 주의: 서버에는 상태만 보냅니다(`lib/tasks.ts`). 제목·날짜·메모는 새로고침하면 돌아갑니다.
-            const 상태만 = !!이전 && JSON.stringify({ ...item, state: 이전.state }) === JSON.stringify(이전);
-            notify(!API켜짐() || 상태만
-              ? "일정을 수정했습니다."
-              : "상태 말고 고친 내용은 이 화면에만 반영했습니다. 새로고침하면 사라집니다.");
+            notify("일정을 수정했습니다.");
           }}
         />
       )}
@@ -7496,6 +8245,22 @@ function SchedulePage({
           item={viewing}
           plan={plans.find((plan) => plan.id === viewing.planId)}
           close={() => setViewing(null)}
+          remove={
+            점검일정인가(viewing) || viewing.지출일연동
+              ? undefined
+              : () => {
+                  const 대상 = viewing;
+                  void 확인({
+                    제목: "일정을 삭제할까요?",
+                    설명: `'${대상.title}' 일정을 삭제합니다.`,
+                    실행문구: "삭제",
+                  }).then((확인함) => {
+                    if (!확인함) return;
+                    setViewing(null);
+                    지우기(대상);
+                  });
+                }
+          }
           toggleComplete={() => {
             const updated: ScheduleItem = {
               ...viewing,
@@ -7507,7 +8272,7 @@ function SchedulePage({
                   : "완료",
             };
             // 주의: 상세 모달에서 눌러도 같은 규칙 — 서버 할일이면 체크박스까지 같이.
-            if (viewing.taskId && viewing.planId) {
+            if (viewing.taskId && viewing.planId && viewing.planId !== "other") {
               할일동기화(viewing.planId, viewing.taskId, updated.state === "완료");
             } else {
               save(
@@ -7543,7 +8308,7 @@ function ScheduleFormModal({
   const [draft, setDraft] = useState<ScheduleItem>(
     item || {
       id: `s-${Date.now()}`,
-      planId: plans[0]?.id || "",
+      planId: plans[0]?.id || "other",
       title: "",
       date: 오늘날짜(),
       type: "사전 확인",
@@ -7551,13 +8316,22 @@ function ScheduleFormModal({
       memo: "",
     },
   );
+  // 주의: 규정 점검이 다시 쓰는 값은 고쳐도 사라지므로 잠급니다. 계획을 옮기는 API 는 없어 수정 때 잠급니다.
+  const 지출일줄 = !!item?.지출일연동;
+  const 잠김 = 지출일줄 || (!!item && 점검일정인가(item));
   return (
     <div className="modal-backdrop schedule-modal-backdrop">
       <section className="schedule-create-modal">
         <header>
           <div>
             <h2>{item ? "일정 수정" : "일정 추가"}</h2>
-            <p>일정 정보와 메모를 관리할 수 있습니다.</p>
+            <p>
+              {지출일줄
+                ? "예상 지출일 일정입니다. 날짜는 지출 계획에서 바꿀 수 있습니다."
+                : 잠김
+                ? "규정 점검이 만든 일정이라 날짜와 상태만 바꿀 수 있습니다."
+                : "일정 정보와 메모를 관리할 수 있습니다."}
+            </p>
           </div>
           <button onClick={close}>×</button>
         </header>
@@ -7569,6 +8343,8 @@ function ScheduleFormModal({
                 일정 제목
                 <input
                   value={draft.title}
+                  disabled={잠김}
+                  maxLength={300}
                   onChange={(e) =>
                     setDraft({ ...draft, title: e.target.value })
                   }
@@ -7579,6 +8355,7 @@ function ScheduleFormModal({
                 일정 유형
                 <select
                   value={draft.type}
+                  disabled={잠김}
                   onChange={(e) =>
                     setDraft({
                       ...draft,
@@ -7605,6 +8382,7 @@ function ScheduleFormModal({
                 관련 지출 계획
                 <select
                   value={draft.planId}
+                  disabled={!!item}
                   onChange={(e) =>
                     setDraft({ ...draft, planId: e.target.value })
                   }
@@ -7614,11 +8392,7 @@ function ScheduleFormModal({
                       {plan.name}
                     </option>
                   ))}
-                  {/* 주의: `plan_tasks.plan_id` 는 NULL 을 허용하지만 그런 행을 만드는 API
-                      경로가 없습니다 — 추가 라우트가 `/api/plans/{plan_id}/tasks` 라
-                      plan_id 가 '필수' 입니다. 그래서 이걸 고르면 서버에 안 남습니다.
-                      조용히 사라지게 두지 않고 라벨로 말합니다. */}
-                  <option value="other">기타 (이 브라우저에만 저장)</option>
+                  <option value="other">기타 (지출 계획과 무관한 일정)</option>
                 </select>
               </label>
             </div>
@@ -7632,10 +8406,12 @@ function ScheduleFormModal({
                   <input
                     type="date"
                     value={draft.date}
+                    disabled={지출일줄}
                     onChange={(e) =>
                       setDraft({ ...draft, date: e.target.value })
                     }
                   />
+                  {!지출일줄 && <small>비워 두면 「날짜 미정」으로 모입니다.</small>}
                 </label>
                 <label>
                   상태
@@ -7662,6 +8438,7 @@ function ScheduleFormModal({
               메모
               <textarea
                 maxLength={500}
+                disabled={잠김}
                 value={draft.memo || ""}
                 onChange={(e) => setDraft({ ...draft, memo: e.target.value })}
                 placeholder="추가로 기록할 내용을 입력하세요."
@@ -7691,12 +8468,14 @@ function ScheduleDetailModal({
   item,
   plan,
   close,
+  remove,
   toggleComplete,
   edit,
 }: {
   item: ScheduleItem;
   plan?: ExpensePlan;
   close: () => void;
+  remove?: () => void;
   toggleComplete: () => void;
   edit: () => void;
 }) {
@@ -7754,6 +8533,11 @@ function ScheduleDetailModal({
           </span>
         </label>
         <footer>
+          {remove && (
+            <button className="outline danger" onClick={remove}>
+              삭제
+            </button>
+          )}
           <button className="outline" onClick={close}>
             닫기
           </button>
@@ -7849,7 +8633,245 @@ function RecommendModal({
   );
 }
 
-function MyPage({ notify }: { notify: (message: string) => void }) {
+/**
+ * 마이페이지 「팀」 카드. 팀이면 기업 프로필·지출 계획·점검 결과·일정·첨부를 함께 씁니다.
+ *
+ * 들어가거나 나가면 보이는 데이터가 통째로 바뀌므로 새로고침합니다. 로그인하지 않았으면(401·403) 그리지 않습니다.
+ */
+function 팀카드({
+  notify,
+  확인,
+  계획수,
+}: {
+  notify: (message: string) => void;
+  확인: (요청: 확인요청) => Promise<boolean>;
+  계획수: number;
+}) {
+  const [상태, set상태] = useState<"조회중" | "표시" | "숨김" | "실패">("조회중");
+  const [팀, set팀] = useState<서버팀 | null>(null);
+  const [입력, set입력] = useState<"만들기" | "코드" | null>(null);
+  const 계정팀이름 = use팀이름();
+  const [팀이름입력, set팀이름입력] = useState("");
+  const [코드입력, set코드입력] = useState("");
+  const [처리중, set처리중] = useState(false);
+  const [오류, set오류] = useState("");
+  const [보이는코드, set보이는코드] = useState<string | null>(null);
+
+  useEffect(() => {
+    let 살아있음 = true;
+    if (!API켜짐()) {
+      set상태("숨김");
+      return;
+    }
+    팀조회()
+      .then((r) => {
+        if (!살아있음) return;
+        set팀(r.팀);
+        set상태("표시");
+      })
+      .catch((e: unknown) => {
+        if (!살아있음) return;
+        const 코드 = (e as { status?: number } | null)?.status;
+        set상태(코드 === 401 || 코드 === 403 ? "숨김" : "실패");
+      });
+    return () => {
+      살아있음 = false;
+    };
+  }, []);
+
+  /** 서버 호출 하나를 감쌉니다. 실패 이유는 카드 안에 보여 줍니다. */
+  const 실행 = async (작업: () => Promise<void>) => {
+    set처리중(true);
+    set오류("");
+    try {
+      await 작업();
+    } catch (e) {
+      set오류(오류사유(e));
+    } finally {
+      set처리중(false);
+    }
+  };
+  const 만들기 = () =>
+    실행(async () => {
+      const r = await 팀만들기(팀이름입력.trim(), 선택사업());
+      set팀(r.팀);
+      set보이는코드(r.팀?.초대코드 ?? null);
+      set입력(null);
+    });
+  const 들어가기 = async () => {
+    const 예 = await 확인({
+      제목: "이 팀에 들어갈까요?",
+      설명: `팀에 들어가면 지금 내 계획 ${계획수}건은 팀을 나가기 전까지 보이지 않아요. 팀의 계획·일정·첨부를 함께 보게 됩니다.`,
+      실행문구: "들어가기",
+    });
+    if (!예) return;
+    await 실행(async () => {
+      const r = await 팀들어가기(코드입력.trim());
+      if (r.팀?.사업명) 사업저장(r.팀.사업명);
+      window.location.reload();
+    });
+  };
+  const 나가기 = async () => {
+    const 혼자인대표 = 팀?.내역할 === "대표";
+    const 예 = await 확인(
+      혼자인대표
+        ? { 제목: "팀을 닫을까요?", 설명: "지금까지의 계획과 일정은 이 계정에 그대로 남습니다.", 실행문구: "팀 닫기" }
+        : { 제목: "팀에서 나갈까요?", 설명: "팀의 계획은 더 이상 보이지 않고, 들어오기 전 내 계획이 다시 보입니다.", 실행문구: "나가기" },
+    );
+    if (!예) return;
+    await 실행(async () => {
+      await 팀나가기();
+      window.location.reload();
+    });
+  };
+  const 내보내기 = async (accountId: string, 이메일: string) => {
+    const 예 = await 확인({
+      제목: `${이메일}을(를) 내보낼까요?`,
+      설명: "이 사람은 더 이상 팀 데이터를 볼 수 없고, 들어오기 전 개인 데이터로 돌아갑니다. 지금 초대 코드도 함께 막히므로 다른 팀원을 초대하려면 새 코드를 만들어 주세요.",
+      실행문구: "내보내기",
+    });
+    if (!예) return;
+    await 실행(async () => {
+      const r = await 팀원내보내기(accountId);
+      set팀(r.팀);
+      set보이는코드(null);
+      notify("구성원을 내보냈습니다. 지금 초대 코드는 더 이상 쓸 수 없습니다.");
+    });
+  };
+  const 코드재발급 = async () => {
+    const 예 = await 확인({
+      제목: "새 초대 코드를 만들까요?",
+      설명: "지금 코드는 더 이상 쓸 수 없습니다.",
+      실행문구: "새 코드 만들기",
+    });
+    if (!예) return;
+    await 실행(async () => {
+      const r = await 초대코드재발급();
+      set팀(r.팀);
+      set보이는코드(r.팀?.초대코드 ?? null);
+    });
+  };
+  const 코드복사 = async () => {
+    try {
+      await navigator.clipboard.writeText(보이는코드 ?? "");
+      notify("초대 코드를 복사했습니다.");
+    } catch {
+      notify("복사하지 못했습니다. 코드를 직접 선택해 복사해 주세요.");
+    }
+  };
+
+  if (상태 === "숨김" || 상태 === "조회중") return null;
+  const 대표 = 팀?.내역할 === "대표";
+  const 다른구성원있음 = (팀?.구성원.length ?? 0) > 1;
+  const 만료일 = 팀?.초대코드_만료 ? new Date(팀.초대코드_만료) : null;
+  return (
+    <section className="card team-card">
+      <header className="card-head">
+        <div>
+          <h2>{팀 ? `팀 · ${팀.팀이름}` : "팀"}</h2>
+          <p>
+            {팀
+              ? `${팀.사업명} · 구성원이 지출 계획·점검 결과·일정·첨부를 함께 봅니다.`
+              : "팀원과 지출 계획·점검 결과·일정·첨부를 함께 보려면 팀을 만들거나 초대 코드를 입력하세요."}
+          </p>
+        </div>
+      </header>
+      {상태 === "실패" && <p className="section-copy">팀 정보를 불러오지 못했습니다. 새로고침해 주세요.</p>}
+      {상태 === "표시" && !팀 && (
+        <div className="team-actions">
+          {입력 === null && (
+            <>
+              <button
+                className="outline"
+                onClick={() => {
+                  set팀이름입력(계정팀이름);
+                  set입력("만들기");
+                }}
+              >
+                팀 만들기
+              </button>
+              <button className="outline" onClick={() => set입력("코드")}>초대 코드 입력</button>
+            </>
+          )}
+          {입력 === "만들기" && (
+            <div className="team-form">
+              <label>
+                팀 이름
+                <input value={팀이름입력} maxLength={40} autoFocus onChange={(e) => set팀이름입력(e.target.value)} />
+              </label>
+              <button className="primary" disabled={!팀이름입력.trim() || 처리중} onClick={() => void 만들기()}>만들기</button>
+              <button className="outline" disabled={처리중} onClick={() => set입력(null)}>취소</button>
+            </div>
+          )}
+          {입력 === "코드" && (
+            <div className="team-form">
+              <label>
+                초대 코드
+                <input value={코드입력} maxLength={20} autoFocus placeholder="예: ABCD-2345" onChange={(e) => set코드입력(e.target.value)} />
+              </label>
+              <button className="primary" disabled={!코드입력.trim() || 처리중} onClick={() => void 들어가기()}>들어가기</button>
+              <button className="outline" disabled={처리중} onClick={() => set입력(null)}>취소</button>
+            </div>
+          )}
+        </div>
+      )}
+      {팀 && (
+        <>
+          <ul className="team-members">
+            {팀.구성원.map((사람) => (
+              <li key={사람.account_id}>
+                <span>
+                  {사람.이메일}
+                  {사람.나 && <em>나</em>}
+                  {사람.대표 && <em>대표</em>}
+                </span>
+                {대표 && !사람.나 && (
+                  <button className="outline small" disabled={처리중} onClick={() => void 내보내기(사람.account_id, 사람.이메일)}>
+                    내보내기
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+          {대표 && (
+            <div className="team-code">
+              {보이는코드 ? (
+                <>
+                  <b>{보이는코드}</b>
+                  <button className="outline small" onClick={() => void 코드복사()}>복사</button>
+                  <small>이 화면을 벗어나면 다시 볼 수 없습니다. 팀원에게 지금 전달해 주세요.</small>
+                </>
+              ) : (
+                <small>
+                  초대 코드는 만들 때만 볼 수 있습니다.
+                  {만료일 && (만료일.getTime() > Date.now() ? ` 지금 코드는 ${만료일.toLocaleDateString("ko-KR")}까지 쓸 수 있습니다.` : " 지금 코드는 쓸 수 없습니다. 초대하려면 새 코드를 만들어 주세요.")}
+                </small>
+              )}
+              <button className="outline small" disabled={처리중} onClick={() => void 코드재발급()}>새 코드 만들기</button>
+            </div>
+          )}
+          <div className="team-actions">
+            <button className="outline small" disabled={처리중 || (대표 && 다른구성원있음)} onClick={() => void 나가기()}>
+              {대표 ? "팀 닫기" : "팀 나가기"}
+            </button>
+            {대표 && 다른구성원있음 && <small>다른 구성원을 먼저 내보내야 팀을 닫을 수 있습니다.</small>}
+          </div>
+        </>
+      )}
+      {오류 && <p className="file-replace-notice" role="alert"><span>ⓘ</span>{오류}</p>}
+    </section>
+  );
+}
+
+function MyPage({
+  notify,
+  확인,
+  계획수,
+}: {
+  notify: (message: string) => void;
+  확인: (요청: 확인요청) => Promise<boolean>;
+  계획수: number;
+}) {
   const [editingProfile, setEditingProfile] = useState(false);
   // 주의: 이메일은 '로그인한 사람' 의 것이어야 합니다 — 예전엔 여기 한 줄이 하드코딩되어 있어서
   //    어느 계정으로 들어와도 team@startup.kr 이 보였습니다.
@@ -7884,6 +8906,7 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
   /** 서버가 읽고 있는 파일 이름 — 이 동안 `L3읽는중` 창을 띄웁니다. */
   const [기준읽는중, set기준읽는중] = useState<string | null>(null);
   const [기준실패, set기준실패] = useState<L3실패 | null>(null);
+  const [기준확인, set기준확인] = useState<L3확인 | null>(null);
   const 지금기준파일 = 방금등록?.파일명 ?? 기준문서.파일명;
 
   /**
@@ -7905,6 +8928,8 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
     set기준읽는중(null);
     if (결과.종류 === "실패") {
       set기준실패(결과.실패);
+    } else if (결과.종류 === "확인") {
+      set기준확인(결과.확인);
     } else if (결과.종류 === "완료") {
       const r = 결과.결과;
       const 사실 = L3등록사실(r.조_건수, r.파싱품질, r.추출방식);
@@ -8019,9 +9044,19 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
           <Info label="선정 사업" value={profile.program} />
           <Info label="주관기관" value={profile.host} />
           <Info label="사업 중복 수혜 여부" value={profile.duplicateBenefit} />
-          <Info label="적용 기준" value="사업 공통 규정 + 기관 세부기준" />
+          <Info
+            label="적용 기준"
+            value={
+              지금기준파일
+                ? "사업 공통 규정 + 기관 세부기준"
+                : 기준문서.조회실패
+                  ? "기관 세부기준을 확인하지 못했습니다"
+                  : "사업 공통 규정"
+            }
+          />
         </dl>
       </section>
+      <팀카드 notify={notify} 확인={확인} 계획수={계획수} />
       <section className="my-business-heading">
         <div>
           <h2>사업 정보</h2>
@@ -8080,7 +9115,7 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
           </article>
         ))}
       </section>
-      <section className="card rule-library">
+      <section className="card rule-library" id="institution-criteria">
         <header className="card-head">
           <div>
             <h2>주관기관 세부 안내</h2>
@@ -8118,7 +9153,7 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
             <span className="institution-badge">사용자 등록</span>
           )}
           <div>
-            <b>{지금기준파일 ?? "등록된 기준 문서가 없습니다"}</b>
+            <b>{지금기준파일 ?? (기준문서.조회실패 ? "기준 문서를 불러오지 못했습니다" : "등록된 기준 문서가 없습니다")}</b>
             {/* 주의: 2026-11-03 — 여기 「2026.03.02 등록」이 하드코딩되어 있어서 어떤 문서든
                 같은 날짜로 보였습니다. 서버 `등록일` 을 쓰고, 문서가 없으면 판정이 무엇을 쓰는지 밝힙니다. */}
             <small>
@@ -8129,10 +9164,35 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
                     ? 기준문서.등록일
                       ? `${기준문서.등록일.replace(/-/g, ".")} 등록`
                       : "등록됨"
-                    : "기관 세부기준 없이 공통 관리 기준만으로 판정합니다")}
+                    : 기준문서.조회실패
+                      ? "새로고침해 주세요. 문서가 없다는 뜻은 아닙니다."
+                      : "기관 세부기준 없이 공통 관리 기준만으로 판정합니다")}
             </small>
           </div>
         </article>
+        {기준문서.확인대기목록.map((문서) => (
+          <article key={문서.doc_id} className="institution-file-failed">
+            <span className="institution-badge warn">확인 필요</span>
+            <div>
+              <b>{문서.원본파일명}</b>
+              <small>{문서.검토이유 ?? "세부기준 문서가 맞는지 확인이 필요합니다."} 고르기 전까지 판정에 쓰지 않습니다.</small>
+              <button
+                className="outline small institution-review-button"
+                onClick={() =>
+                  set기준확인({
+                    doc_id: 문서.doc_id,
+                    파일명: 문서.원본파일명,
+                    조_건수: 문서.조_건수,
+                    이유: 문서.검토이유 ?? null,
+                    적용중: 지금기준파일 ?? null,
+                  })
+                }
+              >
+                확인하기
+              </button>
+            </div>
+          </article>
+        ))}
         {/* 주의: 파싱에 실패한(fail) 문서는 '숨기지 않습니다' — 숨기면 사용자가 올린 파일이
             왜 판정에 적용되지 않는지 알 수 없습니다(2026-09-07). */}
         {기준문서.처리중목록.map((문서) => (
@@ -8211,6 +9271,30 @@ function MyPage({ notify }: { notify: (message: string) => void }) {
         </div>
       )}
       {기준읽는중 && <L3읽는중 파일명={기준읽는중} 문구="" />}
+      {기준확인 && (
+        <L3확인창
+          확인={기준확인}
+          닫기={() => {
+            set기준확인(null);
+            set기준재조회((n) => n + 1);
+          }}
+          적용={(r) => {
+            set기준확인(null);
+            set방금등록({
+              파일명: r.적용중_문서 ?? 기준확인.파일명,
+              안내: r.파싱품질 === "warn" ? L3등록사실(r.조_건수, r.파싱품질, r.추출방식) : null,
+              ocr: r.추출방식 === "ocr",
+            });
+            notify("이 문서로 판정합니다.");
+            set기준재조회((n) => n + 1);
+          }}
+          거절={() => {
+            set기준확인(null);
+            notify("이 문서는 판정에 쓰지 않습니다.");
+            set기준재조회((n) => n + 1);
+          }}
+        />
+      )}
       {기준실패 && (
         <L3실패창
           실패={기준실패}

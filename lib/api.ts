@@ -3,7 +3,9 @@
 // 화면이 부르는 함수는 전부 여기 있습니다. 주소를 아는 곳은 config.ts 하나입니다.
 
 import { GET, POST, PATCH, PUT, DELETE, 인증헤더, 응답처리 } from "./http";
-import type {
+import type { 서버팀,
+  서버첨부,
+  판정피드백,
   계획목록응답,
   계획상세 as 계획상세형,   // 아래 같은 이름의 '함수' 와 겹쳐서 별칭으로 받습니다
   할일,
@@ -75,6 +77,17 @@ export const 계획추가 = (입력: {
   확정비목?: string; 질문원문?: string; 정규화?: unknown;
 }) => POST("/api/plans", 입력) as Promise<계획상세형>;
 
+/**
+ * 예상 지출일을 바꿉니다. `일정이동` 이 true 면 완료 안 된 연결 일정도 같은 일수만큼 옮깁니다.
+ * 주의: 판정은 바뀌지 않습니다. 판정 경로가 집행예정일을 읽지 않습니다.
+ */
+export const 계획수정 = (planId: number | string, 입력: {
+  집행예정일?: string | null;
+  일정이동?: boolean;
+  실제지출일?: string;
+  실제지출액?: number;
+}) => PATCH(`/api/plans/${planId}`, 입력) as Promise<계획상세형>;
+
 /* ── 할 일 ──────────────────────────────────── */
 
 export const 할일추가 = (planId: number | string, 입력: {
@@ -83,16 +96,84 @@ export const 할일추가 = (planId: number | string, 입력: {
   //    적어 두면 「집행」 일정이 조용히 「결제후」로 접혀 나갑니다.
   구분?: "결제전" | "결제후" | "집행";
   due_date?: string;
-  유형?: "기타" | "계약" | "비교견적";
+  유형?: 할일["유형"];
+  상태?: 할일["상태"];
 }) => POST(`/api/plans/${planId}/tasks`, 입력) as Promise<할일>;
+
+/** 지출계획에 묶이지 않은 일정을 만듭니다. */
+export const 일정추가 = (입력: {
+  항목: string; 설명?: string;
+  구분?: 할일["구분"];
+  due_date?: string;
+  유형?: 할일["유형"];
+  상태?: 할일["상태"];
+}) => POST("/api/tasks", 입력) as Promise<할일>;
+
+/**
+ * 집행 일정 화면의 수정. 계획 없는 일정도 같은 경로를 씁니다. 보낸 값만 바뀝니다.
+ * 주의: `due_date: null` 은 날짜를 비웁니다(「날짜 미정」으로 옮겨 갑니다).
+ */
+export const 일정수정 = (taskId: number | string, 입력: {
+  항목?: string; 설명?: string | null;
+  구분?: 할일["구분"];
+  due_date?: string | null;
+  유형?: 할일["유형"];
+  상태?: 할일["상태"];
+}) => PATCH(`/api/tasks/${taskId}`, 입력) as Promise<할일>;
+
+/** 지출 계획에 파일 하나를 저장합니다. taskId 를 주면 그 증빙 항목에 묶입니다. */
+export async function 첨부업로드(planId: string, 파일: File, taskId?: string): Promise<서버첨부> {
+  const fd = new FormData();
+  fd.append("파일", 파일);
+  if (taskId) fd.append("task_id", taskId);
+  const { apiBase } = await import("./config");
+  const res = await fetch(`${apiBase()}/api/plans/${planId}/attachments`, {
+    method: "POST",
+    headers: await 인증헤더(),
+    body: fd,
+    signal: AbortSignal.timeout(60_000),
+  });
+  return 응답처리(res) as Promise<서버첨부>;
+}
+
+export async function 첨부파일받기(planId: string, attachmentId: string): Promise<Blob> {
+  const { apiBase } = await import("./config");
+  const res = await fetch(`${apiBase()}/api/plans/${planId}/attachments/${attachmentId}`, {
+    headers: await 인증헤더(),
+  });
+  if (!res.ok) await 응답처리(res);
+  return res.blob();
+}
+
+export const 첨부삭제 = (planId: string, attachmentId: string) =>
+  DELETE(`/api/plans/${planId}/attachments/${attachmentId}`) as Promise<{ 삭제: boolean }>;
+
+/* ── 팀 ── 기업 데이터를 함께 쓰는 계정 묶음. 조회만 팀이 없을 때 `팀: null` 입니다. */
+type 팀응답 = { 팀: 서버팀 | null };
+export const 팀조회 = () => GET("/api/team") as Promise<팀응답>;
+export const 팀만들기 = (팀이름: string, 사업명: string) =>
+  POST("/api/team", { 팀이름, 사업명 }) as Promise<팀응답>;
+export const 초대코드재발급 = () => POST("/api/team/invite-code", {}) as Promise<팀응답>;
+export const 팀들어가기 = (초대코드: string) => POST("/api/team/join", { 초대코드 }) as Promise<팀응답>;
+export const 팀나가기 = () => POST("/api/team/leave", {}) as Promise<팀응답>;
+export const 팀원내보내기 = (accountId: string) =>
+  DELETE(`/api/team/members/${accountId}`) as Promise<팀응답>;
+
+/** 판정 결과의 「맞았어요 / 틀렸어요」. 같은 판정에 다시 보내면 바뀝니다. */
+export const 피드백저장 = (decisionId: number, 입력: 판정피드백) =>
+  PUT(`/api/decisions/${decisionId}/feedback`, 입력) as Promise<판정피드백>;
+
+/** 사용자가 만든 일정만 지워집니다. 규정 점검이 만든 일정은 서버가 거절합니다(409). */
+export const 일정삭제 = (taskId: number | string) =>
+  DELETE(`/api/tasks/${taskId}`) as Promise<{ 삭제: boolean; task_id: number }>;
 
 export const 할일수정 = (
   planId: number | string,
   taskId: number | string,
   입력: {
-    상태?: "준비필요" | "집행예정" | "완료";
+    상태?: 할일["상태"];
     due_date?: string;
-    유형?: "기타" | "계약" | "비교견적";
+    유형?: 할일["유형"];
   },
 ) => PATCH(`/api/plans/${planId}/tasks/${taskId}`, 입력) as Promise<할일>;
 
@@ -191,6 +272,12 @@ export async function 규정처리기다리기(
 }
 
 /** 서버가 아직 읽고 있는 상태인가. 서버 계약상 '파싱중' 도 올 수 있습니다(`server/models.py::L3업로드응답`). */
+/** 확인을 기다리는 문서를 세부기준으로 씁니다. 이 문서가 판정 기준이 되고 이전 문서는 내려갑니다. */
+export const 규정적용 = (docId: string) => POST(`/api/l3/${docId}/confirm`, {}) as Promise<L3처리결과>;
+
+/** 확인을 기다리는 문서를 쓰지 않습니다. 판정 기준은 그대로입니다. */
+export const 규정거절 = (docId: string) => POST(`/api/l3/${docId}/reject`, {}) as Promise<L3처리결과>;
+
 export const L3처리중 = (상태: string) => 상태 === "파싱대기" || 상태 === "파싱중";
 
 /* ── 서버 살았나 ─────────────────────────────── */

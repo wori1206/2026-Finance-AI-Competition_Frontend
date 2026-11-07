@@ -3,7 +3,7 @@
 // 서버 응답 → 화면이 쓰는 타입으로 번역합니다.
 // 주의: 화면 코드(checkumait-app.tsx)를 안 고치려고 여기서 흡수합니다.
 
-import type { ExpensePlan, PlanStatus, ScheduleItem, ChecklistItem, RuleItem } from "./types";
+import type { 기준문서정보, ExpensePlan, PlanStatus, ScheduleItem, ChecklistItem, RuleItem } from "./types";
 import type { 계획요약, 계획상세, 할일, 판정값, L3현재문서, 사용자답변항목, 부가세구분, 분류값, 용어풀이항목, 코드판정값 } from "./server-types";
 import { 초안읽기 } from "./inquiry-store";
 
@@ -129,13 +129,13 @@ function 할일을체크로(t: 할일): ChecklistItem {
  */
 export function L3등록사실(
   조_건수: number | null | undefined,
-  파싱품질: "pending" | "pass" | "warn" | "fail" | null | undefined,
+  파싱품질: "pending" | "pass" | "warn" | "fail" | "review" | null | undefined,
   추출방식?: string | null,
 ): string {
   if (파싱품질 === "fail") {
-    return "파싱에 실패했습니다 — 조·항을 읽지 못했습니다. 판정에는 반영되지 않습니다.";
+    return "문서를 읽지 못했습니다. 판정에는 반영되지 않습니다.";
   }
-  if (!조_건수) return "파싱이 진행 중입니다. 완료되면 판정에 반영됩니다.";
+  if (!조_건수) return "문서를 읽는 중입니다. 끝나면 판정에 반영됩니다.";
   if (추출방식 === "ocr") {
     return `스캔본을 OCR 로 읽어 ${조_건수}개 항목을 등록했습니다. 금액·조번호를 잘못 읽었을 수 있어 이 문서를 근거로 한 '가능'은 '조건부'로 안내합니다.`;
   }
@@ -159,6 +159,10 @@ export type L3현재문서요약 = {
   실패목록: L3현재문서[];
   /** 서버가 아직 읽고 있는 문서들(`pending`). 다 읽어야 판정에 쓰이므로 「적용 중」에 두지 않습니다. */
   처리중목록: L3현재문서[];
+  /** 다 읽었지만 세부기준이 맞는지 사용자가 골라야 하는 문서(`review`). 고르기 전에는 판정에 쓰지 않습니다. */
+  확인대기목록: L3현재문서[];
+  /** 서버에서 목록을 읽지 못했는가. 문서가 없는 것과 구분합니다. */
+  조회실패: boolean;
 };
 
 /**
@@ -183,6 +187,8 @@ export function L3현재문서요약짓기(목록: L3현재문서[]): L3현재�
     ocr: 대표?.추출방식 === "ocr",
     실패목록,
     처리중목록,
+    확인대기목록: 목록.filter((d) => d.파싱품질 === "review"),
+    조회실패: false,
   };
 }
 
@@ -300,6 +306,18 @@ export function 인용정리(인용들: Record<string, unknown>[]): RuleItem[] {
       description: g.조각들.join("\n"),
     };
   });
+}
+
+/** 서버 `기준문서` → 화면 값. 모양이 다르면 없는 것으로 보고 안내를 그리지 않습니다. */
+export function 기준문서정리(값: unknown): 기준문서정보 | null {
+  if (!값 || typeof 값 !== "object") return null;
+  const v = 값 as Record<string, unknown>;
+  if (v.상태 !== "없음" && v.상태 !== "적용" && v.상태 !== "읽기실패" && v.상태 !== "확인대기") return null;
+  return {
+    상태: v.상태,
+    문서명: typeof v.문서명 === "string" ? v.문서명 : null,
+    대기문서명: typeof v.대기문서명 === "string" ? v.대기문서명 : null,
+  };
 }
 
 /** 서버 `사용자답변[]` → 화면에 낼 질문과 답. 모양이 맞지 않는 항목은 버립니다. */
@@ -429,6 +447,11 @@ export function 요약을계획으로(s: 계획요약): ExpensePlan {
     aiChecks: [],
     evidence: [],
     rules: [],
+    단계요약: s.단계요약,
+    현재단계: s.현재단계 ?? null,
+    actualDate: s.실제지출일 ?? undefined,
+    actualAmount: s.실제지출액 ?? undefined,
+    executionStatus: s.실제지출일 ? "결제 완료" : undefined,
   };
 }
 
@@ -450,7 +473,8 @@ export function 상세를계획으로(d: 계획상세): ExpensePlan {
     aiSummary:
       (typeof 상세?.요약 === "string" ? 상세.요약 : "") || 판정설명(d.판정),
     // 주의: 결제전이 없으면 「집행」까지 포함해 보여줍니다 — 빈 화면보다 낫습니다
-    aiChecks: (결제전.length ? 결제전 : 할일들).map(할일을체크로),
+    // 주의: 집행 줄은 일정 탭의 줄이고 확인 항목이 아닙니다.
+    aiChecks: (결제전.length ? 결제전 : 할일들.filter((t) => t.구분 !== "집행")).map(할일을체크로),
     evidence: 결제후.map(할일을체크로),
     rules: 인용정리(인용들),
     /**
@@ -476,12 +500,19 @@ export function 상세를계획으로(d: 계획상세): ExpensePlan {
     공통사항: 문장목록정리(상세?.공통사항),
     용어풀이: 용어풀이정리(상세?.용어풀이),
     문의처: typeof 상세?.문의처 === "string" ? 상세.문의처 : null,
+    기준문서: 기준문서정리(상세?.기준문서),
+    latestDecisionId: d.latest_decision_id ?? null,
+    내피드백: d.내피드백 ?? null,
+    팀평가: d.팀평가 ?? [],
   };
 }
 
 const 유형표: Record<string, ScheduleItem["type"]> = {
   계약: "계약",
   비교견적: "비교견적",
+  사전승인: "사전승인",
+  사전확인: "사전 확인",
+  증빙: "증빙",
   기타: "기타",
 };
 
@@ -502,7 +533,11 @@ export function 할일을일정으로(t: 할일): ScheduleItem {
   return {
     id: String(t.task_id),
     taskId: String(t.task_id),      // 주의: 상세 체크박스와 이어지는 키
-    planId: t.plan_id === null ? "" : String(t.plan_id),
+    // 주의: 계획 없는 일정은 일정 입력 창의 「기타」 값("other")과 같게 맞춥니다.
+    planId: t.plan_id === null ? "other" : String(t.plan_id),
+    출처: t.출처,
+    지출일연동: !!t.집행예정일_연동,
+    작성자: t.작성자 ?? null,
     title: t.항목,
     date: t.due_date || "",
     type: t.구분 === "집행" ? "집행" : (유형표[t.유형] ?? "기타"),

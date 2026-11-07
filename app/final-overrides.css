@@ -175,24 +175,33 @@ body .app-shell .expense-v5 .ai-before-checks>header button.outline:focus-visibl
   grid-column:3!important;
   grid-row:1!important;
 }
-.expense-v5 .expense-v5-evidence-item>.expense-v5-uploaded-file{
+.expense-v5 .expense-v5-evidence-item>.expense-v5-uploaded-files{
   grid-column:2!important;
   grid-row:1!important;
+  display:grid;
+  gap:6px;
+  min-width:0;
+  margin:0;
+  padding:0;
+  list-style:none;
+}
+.expense-v5 .expense-v5-uploaded-files>.expense-v5-uploaded-file{
   width:100%!important;
-  height:40px!important;
+  min-height:40px!important;
+  height:auto!important;
   margin:0!important;
   padding:8px 10px!important;
   background:#fafbfa!important;
   border-color:#e0e5e2!important;
 }
-.expense-v5 .expense-v5-evidence-item>.expense-v5-uploaded-file>span{
+.expense-v5 .expense-v5-uploaded-files>.expense-v5-uploaded-file>span{
   min-width:0!important;
   display:flex!important;
   align-items:center!important;
   gap:8px!important;
   white-space:nowrap!important;
 }
-.expense-v5 .expense-v5-evidence-item>.expense-v5-uploaded-file>span>b{
+.expense-v5 .expense-v5-uploaded-files>.expense-v5-uploaded-file>span>b{
   min-width:0!important;
   flex:1 1 auto!important;
   display:block!important;
@@ -201,7 +210,7 @@ body .app-shell .expense-v5 .ai-before-checks>header button.outline:focus-visibl
   text-overflow:ellipsis!important;
   white-space:nowrap!important;
 }
-.expense-v5 .expense-v5-evidence-item>.expense-v5-uploaded-file>span>small{
+.expense-v5 .expense-v5-uploaded-files>.expense-v5-uploaded-file>span>small{
   flex:0 0 auto!important;
   display:block!important;
   margin:0!important;
@@ -211,12 +220,12 @@ body .app-shell .expense-v5 .ai-before-checks>header button.outline:focus-visibl
 @media(max-width:1180px){
   .expense-v5 .expense-v5-evidence-item{height:auto!important;grid-template-columns:minmax(0,1fr) 112px!important}
   .expense-v5 .expense-v5-evidence-item>.expense-v5-upload{grid-column:2!important}
-  .expense-v5 .expense-v5-evidence-item>.expense-v5-uploaded-file{grid-column:1 / -1!important;grid-row:2!important}
+  .expense-v5 .expense-v5-evidence-item>.expense-v5-uploaded-files{grid-column:1 / -1!important;grid-row:2!important}
 }
 @media(max-width:680px){
   .expense-v5 .expense-v5-evidence-item{height:auto!important;grid-template-columns:1fr!important;padding:12px 16px!important}
   .expense-v5 .expense-v5-evidence-item>label:first-child{grid-column:1!important;grid-row:1!important}
-  .expense-v5 .expense-v5-evidence-item>.expense-v5-uploaded-file{grid-column:1!important;grid-row:2!important}
+  .expense-v5 .expense-v5-evidence-item>.expense-v5-uploaded-files{grid-column:1!important;grid-row:2!important}
   .expense-v5 .expense-v5-evidence-item>.expense-v5-upload{width:100%!important;justify-self:stretch!important;grid-column:1!important;grid-row:3!important}
 }
 
@@ -1332,3 +1341,126 @@ input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-ou
 .regulation-table{margin:6px 0;overflow-x:auto}
 .regulation-table table{width:100%;border-collapse:collapse;font-size:12px;line-height:1.6;color:var(--sub)}
 .regulation-table td{padding:5px 8px;border:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}
+
+/* 집행 일정: 기한 지난 일정 · 날짜 미정 묶음 */
+.schedule-overdue{margin-bottom:15px;border:1px solid var(--danger-border);border-radius:7px;background:var(--red-soft)}
+.schedule-overdue>header{padding:14px 18px 10px}
+.schedule-overdue h2{margin:0;color:var(--red);font-size:15px;font-weight:800}
+.schedule-overdue p{margin:4px 0 0;color:var(--sub);font-size:12px}
+.schedule-overdue ul{margin:0;padding:0;list-style:none}
+.schedule-overdue li{display:grid;grid-template-columns:18px minmax(0,1fr);align-items:center;gap:10px;padding:8px 18px;border-top:1px solid var(--danger-border)}
+.schedule-overdue li input{width:15px;height:15px;accent-color:var(--brand)}
+.schedule-overdue li>button{min-width:0;display:grid;grid-template-columns:54px minmax(0,1fr) auto;align-items:center;gap:12px;padding:0;border:0;background:none;text-align:left}
+.schedule-overdue time{color:var(--red);font-size:13px;font-weight:700}
+.schedule-overdue li span{min-width:0}
+.schedule-overdue li b,.schedule-overdue li small{display:block;overflow-wrap:anywhere}
+.schedule-overdue li b{font-size:13px}
+.schedule-overdue li small{margin-top:2px;color:var(--sub);font-size:11px}
+.schedule-overdue em{color:var(--red);font-size:12px;font-style:normal;font-weight:700;white-space:nowrap}
+.schedule-v2-list-view time .past-date,.upcoming-plan-item time .past-date{display:block;margin-top:2px}
+.upcoming-plan-meta .past-date{display:block;margin-top:2px}
+.schedule-undated{margin-top:18px;overflow:hidden;border:1px solid var(--line);border-radius:7px;background:#fff}
+.schedule-undated-head{width:100%;min-height:58px;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 18px;border:0;background:#fff;text-align:left}
+.schedule-undated-head b,.schedule-undated-head small{display:block}
+.schedule-undated-head b{font-size:14px}
+.schedule-undated-head small{margin-top:3px;color:var(--sub);font-size:12px}
+.schedule-undated-head[aria-expanded="true"] svg{transform:rotate(180deg)}
+.schedule-undated-group{padding:12px 18px;border-top:1px solid var(--line)}
+.schedule-undated-group h3{margin:0 0 6px;font-size:13px;font-weight:750}
+.schedule-undated-group h3 small{color:var(--sub);font-size:12px;font-weight:500}
+.schedule-undated-group ul{margin:0;padding:0;list-style:none}
+.schedule-undated-group li{min-height:48px;display:grid;grid-template-columns:18px minmax(0,1fr) auto;align-items:center;gap:10px;padding:6px 0;border-top:1px solid #f1f3f2}
+.schedule-undated-group li>input{width:15px;height:15px;accent-color:var(--brand)}
+.schedule-undated-title{min-width:0;padding:0;border:0;background:none;text-align:left}
+.schedule-undated-title b,.schedule-undated-title small{display:block;overflow-wrap:anywhere}
+.schedule-undated-title b{font-size:13px;font-weight:600}
+.schedule-undated-title small{margin-top:2px;color:var(--sub);font-size:11px}
+.schedule-undated-date{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:6px}
+.schedule-undated-date input{height:32px;padding:0 8px;border:1px solid var(--line);border-radius:5px;font-size:12px}
+.home-overdue-line{width:100%;display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:10px 12px;border:1px solid var(--danger-border);border-radius:6px;background:var(--red-soft);color:var(--red);font-size:13px;text-align:left}
+.home-overdue-line b{flex:1;font-weight:750}
+.home-overdue-line span{font-size:12px;font-weight:600}
+@media(max-width:620px){
+  .schedule-overdue li>button{grid-template-columns:46px minmax(0,1fr)}
+  .schedule-overdue em{grid-column:2}
+  .schedule-undated-group li{grid-template-columns:18px minmax(0,1fr)}
+  .schedule-undated-group li>button.outline,.schedule-undated-date{grid-column:2;justify-self:start;justify-content:flex-start}
+}
+
+/* 예상 지출일 변경: 연결된 일정 미리 보기 */
+.move-schedule-list{list-style:none;margin:16px 0 0;padding:0;border-top:1px solid #eef0ee;text-align:left}
+.move-schedule-list li{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid #eef0ee;font-size:12px;color:#39413d}
+.move-schedule-list li span{min-width:0;overflow-wrap:anywhere}
+.move-schedule-list li b{flex:none;font-weight:650;color:#16231e}
+.move-schedule-list li.more{justify-content:center;color:#6f7773}
+@media (max-width:620px){.recheck-required-modal>footer{flex-wrap:wrap}.recheck-required-modal>footer button{flex:1 1 auto}}
+
+/* 지출 건별 진행 단계 */
+.expense-stage-bar{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;list-style:none;margin:0 0 14px;padding:0}
+.expense-stage-bar button{display:flex;flex-direction:column;align-items:flex-start;gap:3px;width:100%;height:100%;padding:10px 12px;border:1px solid #e2e5e3;border-radius:8px;background:#fff;text-align:left;cursor:pointer}
+.expense-stage-bar b{font-size:12px;font-weight:700;color:#16231e}
+.expense-stage-bar small{font-size:11px;color:#6f7773}
+.expense-stage-bar .stage-완료 button{background:#f0f8f4;border-color:#bfe0cf}
+.expense-stage-bar .stage-완료 small{color:#1f7a4d}
+.expense-stage-bar .stage-항목없음 button{background:#fafbfa}
+.expense-stage-bar .stage-항목없음 b,.expense-stage-bar .stage-항목없음 small{color:#9aa19d}
+.expense-stage-bar .current button{border-color:#16231e;box-shadow:inset 0 0 0 1px #16231e}
+.title-cell .plan-current-stage{display:block;margin-top:2px;font-size:11px;font-weight:500;color:#6f7773}
+@media (max-width:620px){.expense-stage-bar{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+.institution-review-button{display:block;margin-top:8px}
+.item-author{font-weight:400;font-size:12px;color:#66716c}
+.team-card{display:grid;gap:14px}
+.team-card .section-copy{margin:0}
+.team-actions{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap}
+.team-actions small,.team-code small{color:#66716c;font-size:12px;line-height:1.5}
+.team-form{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;width:100%}
+.team-form label{display:grid;gap:6px;flex:1 1 220px;font-size:13px;font-weight:600}
+.team-form input,.onboarding-invite input{height:40px;width:100%;padding:0 12px;border:1px solid #d7dcd9;border-radius:6px;background:#fff;font:inherit;font-weight:400}
+.team-members{display:grid;gap:0;margin:0;padding:0;list-style:none;border-top:1px solid #e8ebe9}
+.team-members li{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:10px 2px;border-bottom:1px solid #e8ebe9;font-size:14px}
+.team-members li>span{min-width:0;overflow-wrap:anywhere}
+.team-members em{margin-left:6px;padding:1px 7px;border-radius:10px;background:#eef1ef;color:#4a5550;font-size:11px;font-style:normal}
+.team-code{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap}
+.team-code b{font-size:18px;letter-spacing:.06em}
+.team-code small{flex:1 1 220px}
+.onboarding-invite{display:grid;gap:8px;margin-top:14px}
+.onboarding-invite label{display:grid;gap:6px;font-size:13px;font-weight:600}
+.onboarding-invite small{color:#66716c;font-size:12px}
+.onboarding-invite .text-button{justify-self:start;padding:0;border:0;background:none;color:inherit;font-size:13px;text-decoration:underline;cursor:pointer}
+.result-feedback-team{display:grid;gap:6px;margin:0;padding:0 0 10px;list-style:none;border-bottom:1px solid #e8ebe9;font-size:13px}
+.result-feedback-team small{display:block;color:#66716c}
+.criteria-basis{display:flex;align-items:center;justify-content:space-between;gap:8px 12px;flex-wrap:wrap;margin-bottom:12px;padding:9px 12px;border-radius:6px;background:#f4f6f5;color:#4a5550;font-size:13px;line-height:1.5}
+.criteria-basis>span{min-width:0;overflow-wrap:anywhere}
+.criteria-basis.is-notice{background:#fff6e5;color:#7a5200}
+.result-feedback{display:grid;gap:10px;padding:16px 20px;border:1px solid #dfe4e1;border-radius:8px;background:#fff}
+.result-feedback-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.result-feedback-head>b{font-size:14px}
+.result-feedback-head>div{display:flex;gap:8px}
+.result-feedback-head button{min-height:36px;padding:0 14px;border:1px solid #d5dbd8;border-radius:7px;background:#fff;color:#39413d;font-size:13px;font-weight:650;cursor:pointer}
+.result-feedback-head button.is-selected{border-color:#08725b;background:#eaf5f1;color:#08725b}
+.result-feedback-head button.is-selected.is-wrong{border-color:#b9472f;background:#fdf1ee;color:#a33c26}
+.result-feedback-head button:disabled{opacity:.6;cursor:default}
+.result-feedback-form{display:grid;gap:12px;padding-top:12px;border-top:1px solid #e7e9e8}
+.result-feedback-form fieldset{display:flex;flex-wrap:wrap;gap:8px 16px;margin:0;padding:0;border:0}
+.result-feedback-form legend{margin-bottom:8px;padding:0;font-size:13px;font-weight:650}
+.result-feedback-form fieldset label{display:inline-flex;align-items:center;gap:6px;font-size:13px}
+.result-feedback-comment{display:grid;gap:6px;font-size:12px;color:#5d6460}
+.result-feedback-comment textarea{width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid #d5dbd8;border-radius:7px;font:inherit;font-size:13px;color:#2c332f;resize:vertical}
+.result-feedback-form footer{display:flex;justify-content:flex-end;gap:8px}
+.result-feedback-saved{margin:0;color:#4e5652;font-size:13px;line-height:1.5;overflow-wrap:anywhere}
+.result-feedback>small{color:#727975;font-size:11px}
+
+.attachment-name{min-width:0;display:flex;align-items:center;gap:8px}
+.attachment-name>b{min-width:0;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.attachment-name>small{flex:0 0 auto}
+.attachment-failed .attachment-name{flex-wrap:wrap}
+.attachment-failed .attachment-name>small{flex:1 1 100%;color:#b3412b;white-space:normal!important}
+.attachment-retry{width:auto!important;min-width:max-content;padding:0 8px;color:#08725b;font-size:12px;font-weight:650}
+.expense-v5-file-row li{display:flex;align-items:center;gap:9px}
+.expense-v5-file-row li>.attachment-name{flex:1 1 auto}
+.edit-file-box li{display:flex;align-items:center;gap:9px}
+.edit-file-box li>.attachment-name{flex:1 1 auto}
+.expense-v5-uploaded-file{display:flex;align-items:center;gap:8px}
+.expense-v5-uploaded-file>.attachment-name{flex:1 1 auto}
+.expense-v5 .expense-v5-evidence-item{height:auto!important;min-height:64px}

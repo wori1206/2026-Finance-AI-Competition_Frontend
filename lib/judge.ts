@@ -10,9 +10,9 @@
 
 import { 계획상세 } from "./api";
 import { 판정SSE } from "./sse";
-import { 상세를계획으로, 판정을상태로, 판정설명, 시각표기, 인용정리, 사용자답변정리, 분류정리, 문장목록정리, 용어풀이정리, 코드판정정리, 정규화저장값, 부가세확정, 부가세질문id } from "./adapt";
+import { 상세를계획으로, 판정을상태로, 판정설명, 시각표기, 인용정리, 기준문서정리, 사용자답변정리, 분류정리, 문장목록정리, 용어풀이정리, 코드판정정리, 정규화저장값, 부가세확정, 부가세질문id } from "./adapt";
 import { 초안보관 } from "./inquiry-store";
-import type { ChecklistItem, RuleItem } from "./types";
+import type { 기준문서정보, ChecklistItem, RuleItem } from "./types";
 import type { ExpensePlan } from "./types";
 import type { 판정값, 답변항목, 사용자답변항목, 부가세구분, 분류값, 코드판정값, 용어풀이항목 } from "./server-types";
 
@@ -137,7 +137,9 @@ export async function 판정실행(
   let 공통사항: string[] = [];
   let 용어풀이: 용어풀이항목[] = [];
   let 문의처: string | null = null;
+  let 기준문서: 기준문서정보 | null = null;
   let 저장됨 = false;
+  let 저장된판정: number | null = null;
   let 서버오류: string | null = null;
 
   /**
@@ -243,9 +245,11 @@ export async function 판정실행(
           공통사항 = 문장목록정리(v["공통사항"]);
           용어풀이 = 용어풀이정리(v["용어풀이"]);
           문의처 = 문자(v["문의처"]) || null;
+          기준문서 = 기준문서정리(v["기준문서"]);
           break;
         case "저장":
           저장됨 = v["저장"] === true;
+          저장된판정 = typeof v["decision_id"] === "number" ? v["decision_id"] : null;
           break;
         case "오류":
           // 주의: normalize/judge 는 실패를 HTTP 500 이 아니라 '오류 이벤트' 로 보냅니다.
@@ -313,6 +317,10 @@ export async function 판정실행(
     rules: 스트림값만 ? 인용 : 바탕.rules.length ? 바탕.rules : 인용,
     evidence: 스트림값만 ? [] : 바탕.evidence,
     저장안됨,
+    // 주의: 새 판정이면 이전 판정의 평가를 잇지 않습니다. 다시 읽기에 실패하면 바탕이 옛 판정이라 비워 둡니다.
+    latestDecisionId: 저장안됨 ? null : (저장된판정 ?? 바탕.latestDecisionId ?? null),
+    내피드백: !저장안됨 && 저장된판정 === 바탕.latestDecisionId ? (바탕.내피드백 ?? null) : null,
+    팀평가: !저장안됨 && 저장된판정 === 바탕.latestDecisionId ? (바탕.팀평가 ?? []) : [],
     // 주의: 스트림으로 온 초안이 '먼저' 입니다. mock 서버는 판정을 저장하지 않아
     //    상세를 다시 읽어도 판정상세가 비어 있습니다.
     문의초안: 최종초안,
@@ -331,6 +339,8 @@ export async function 판정실행(
     공통사항,
     용어풀이,
     문의처,
+    // 스트림이 이번 판정의 값입니다. 바탕에 남은 값은 이전 판정이라 이번 값이 없을 때만 씁니다.
+    기준문서: 기준문서 ?? (스트림값만 ? null : (바탕.기준문서 ?? null)),
     nextAction: 스트림값만
       ? (해야할일[0]?.label ?? "")
       : 바탕.nextAction || (해야할일[0]?.label ?? ""),

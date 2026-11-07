@@ -34,8 +34,10 @@ export type L3현재문서 = {
   시행일: string | null;
   /** 등록한 날(YYYY-MM-DD). */
   등록일?: string | null;
-  파싱품질: "pending" | "pass" | "warn" | "fail" | null;
+  파싱품질: "pending" | "pass" | "warn" | "fail" | "review" | null;
   조_건수: number;
+  /** `파싱품질="review"` 일 때 왜 확인이 필요한지. 사용자에게 보여 줄 문장입니다. */
+  검토이유?: string | null;
   /** 텍스트를 얻은 방식. `"ocr"` 이면 스캔본을 OCR 로 읽은 문서입니다(금액·조번호 오인식 가능). */
   추출방식?: string | null;
 };
@@ -50,12 +52,14 @@ export type L3처리결과 = {
   doc_id: string;
   파일명: string;
   확장자: string;
-  상태: "파싱대기" | "완료" | "실패" | (string & {});
+  /** `확인필요`: 다 읽었지만 세부기준이 맞는지 사용자가 골라야 합니다. `적용안함`: 쓰지 않기로 했습니다. */
+  상태: "파싱대기" | "완료" | "실패" | "확인필요" | "적용안함" | (string & {});
   조_건수: number | null;
   /** 상위 규정을 찾지 못한 참조 목록. */
   미해결참조: Record<string, unknown>[];
   메시지: string | null;
-  파싱품질: "pending" | "pass" | "warn" | "fail" | null;
+  파싱품질: "pending" | "pass" | "warn" | "fail" | "review" | null;
+  검토이유?: string | null;
   /** `상태="실패"` 일 때만. 스캔본·보호문서·조문없음·중단 등. 안내 문구는 `메시지` 에 있습니다. */
   실패사유?: string | null;
   /** 이 기관이 지금 판정에 쓰는 기준 문서 이름. `null` 이면 공통 관리 기준만으로 판정합니다. */
@@ -75,6 +79,18 @@ export type 계획요약 = {
   updated_at: string | null;
   사업명: string | null;
   상태: "draft" | "judged";
+  실제지출일?: string | null;
+  실제지출액?: number | null;
+  단계요약?: 단계항목[];
+  현재단계?: string | null;
+};
+
+/** 지출 건의 진행 단계 한 칸. 서버가 할일에서 계산합니다. */
+export type 단계항목 = {
+  단계: string;
+  상태: "완료" | "진행중" | "시작전" | "항목없음";
+  완료: number;
+  전체: number;
 };
 
 export type 계획통계 = {
@@ -104,10 +120,14 @@ export type 할일 = {
   항목: string;
   설명: string | null;
   due_date: string | null;
-  유형: "기타" | "계약" | "비교견적";
+  유형: "기타" | "계약" | "비교견적" | "사전승인" | "사전확인" | "증빙";
   날짜_사용자수정: boolean;
   상태: "준비필요" | "집행예정" | "완료";
   계획제목?: string | null;
+  /** true 면 이 일정의 날짜는 계획의 예상 지출일과 같습니다. 계획 수정으로만 바뀝니다. */
+  집행예정일_연동?: boolean;
+  /** 다른 구성원이 만든 일정이면 그 사람 이메일 앞부분. */
+  작성자?: string | null;
 };
 
 export type 인용 = {
@@ -136,6 +156,33 @@ export type 판정상세 = {
   [k: string]: unknown;
 } | null;
 
+export type 서버첨부 = {
+  attachment_id: string;
+  원본파일명: string;
+  크기: number;
+  task_id: number | null;
+  created_at: string | null;
+  /** 다른 구성원이 올렸으면 그 사람 이메일 앞부분. */
+  작성자?: string | null;
+};
+
+/** `GET /api/team` 의 팀. `server/models.py::팀정보` 와 1:1 대응. */
+export type 서버팀 = {
+  팀이름: string;
+  사업명: string;
+  내역할: "대표" | "구성원";
+  구성원: { account_id: string; 이메일: string; 나: boolean; 대표: boolean }[];
+  /** 만들거나 재발급한 응답에만 있습니다. 서버가 해시만 저장해 다시 볼 수 없습니다. */
+  초대코드?: string | null;
+  초대코드_만료?: string | null;
+};
+
+export type 판정피드백 = {
+  평가: "맞음" | "틀림";
+  이유: "판정이 다름" | "근거가 다름" | "기타" | null;
+  의견: string | null;
+};
+
 export type 계획상세 = 계획요약 & {
   질문원문: string | null;
   용도: string | null;
@@ -148,6 +195,13 @@ export type 계획상세 = 계획요약 & {
   created_at: string | null;
   /** 판정 전에 답한 내용. 옛 판정에는 없습니다. */
   사용자답변?: unknown;
+  /** 판정이 어떤 기준 문서로 점검했는가. 값 형식은 `기준문서정리()` 가 확인합니다. */
+  기준문서?: unknown;
+  /** 지금 계정이 최신 판정에 남긴 평가. 재점검하면 새 판정이라 비어 있습니다. */
+  내피드백?: 판정피드백 | null;
+  /** 같은 판정에 다른 구성원이 남긴 평가. */
+  팀평가?: (판정피드백 & { 작성자: string })[];
+  첨부?: 서버첨부[];
 };
 
 export type 할일목록응답 = { 건수: number; 항목: 할일[] };

@@ -89,6 +89,16 @@ export type 계정등록결과 = {
  * 주의: 이메일은 보내지 않습니다. 서버가 토큰에서 읽습니다. 등록이 안 된 계정은 다른 API 가
  *    전부 403 이라 기준 문서 업로드도 막힙니다. 이미 등록된 계정은 서버가 현재 기관을 돌려줍니다.
  */
+/** 새 가입자가 초대 코드로 등록합니다 — `POST /api/accounts/join`. 기관과 사업은 팀의 것을 씁니다. */
+export async function 초대코드등록(초대코드: string) {
+  return (await POST("/api/accounts/join", { 초대코드 })) as {
+    기관명: string;
+    slug: string;
+    팀이름: string;
+    사업명: string;
+  };
+}
+
 export async function 계정등록(slug: string): Promise<계정등록결과> {
   return (await POST("/api/accounts", { slug })) as 계정등록결과;
 }

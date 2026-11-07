@@ -1,4 +1,6 @@
 import type { 부가세구분, 분류값, 코드판정값, 용어풀이항목 } from "./server-types";
+import type { 판정피드백 } from "./server-types";
+import type { 단계항목 } from "./server-types";
 
 // 주의: 「점검 중」은 서버 값이 아니라 판정이 도는 동안 화면에서만 씌우는 값입니다(`CheckumaitApp` 의 `화면계획`).
 export type PlanStatus = "점검 전" | "점검 중" | "재점검 필요" | "특이사항 없음" | "확인 필요" | "위험";
@@ -23,6 +25,9 @@ export type ExpensePlan = {
   amount: number;
   actualAmount?: number;
   actualDate?: string;
+  /** 진행 단계. 서버 계획에만 있습니다. */
+  단계요약?: 단계항목[];
+  현재단계?: string | null;
   executionStatus?: "결제 완료";
   plannedDate: string;
   category: string;
@@ -68,6 +73,14 @@ export type ExpensePlan = {
   용어풀이?: 용어풀이항목[];
   /** 물어볼 곳을 조사까지 붙인 말(「멘토기관 담당자에게」, 「주관기관에」). 옛 경로 판정은 비어 있고, 그때는 「주관기관에」를 씁니다. */
   문의처?: string | null;
+  /** 이 판정이 어떤 기준 문서로 점검했는가. 옛 판정이면 없습니다. */
+  기준문서?: 기준문서정보 | null;
+  /** 서버에 저장된 최신 판정 번호. 평가를 저장할 때만 쓰고 화면에 내지 않습니다. */
+  latestDecisionId?: number | null;
+  /** 지금 계정이 최신 판정에 남긴 「맞았어요 / 틀렸어요」. */
+  내피드백?: 판정피드백 | null;
+  /** 같은 판정에 다른 구성원이 남긴 평가. */
+  팀평가?: (판정피드백 & { 작성자: string })[];
   /**
    * 주의: 방금 받은 판정을 서버가 '저장하지 않았을 때' true. 새로고침하면 이전 판정이
    *    다시 보이므로 화면에서 그 사실을 알립니다. 서버에서 다시 읽은 계획에는 없습니다.
@@ -106,6 +119,8 @@ export type ExpensePlan = {
 
 export type ScheduleItem = {
   id: string;
+  /** 다른 구성원이 만든 일정이면 그 사람 이메일 앞부분. */
+  작성자?: string | null;
   planId: string;
   /**
    * 주의: 이 일정이 '어느 할일에서 나왔는가' (서버 task_id).
@@ -113,6 +128,10 @@ export type ScheduleItem = {
    *    사용자가 직접 만든 일정에는 없습니다.
    */
   taskId?: string;
+  /** 서버 행의 출처. "ai" 는 규정 점검이 만든 일정이라 날짜와 상태만 바꿀 수 있습니다. */
+  출처?: "ai" | "user";
+  /** 계획의 예상 지출일과 같은 줄입니다. 날짜는 지출 계획에서만 바뀌고 지울 수 없습니다. */
+  지출일연동?: boolean;
   title: string;
   date: string;
   type: "사전승인" | "사전 확인" | "비교견적" | "계약" | "집행" | "증빙" | "기타";
@@ -129,3 +148,13 @@ export type AppRoute =
   | { page: "ai-chat" }
   | { page: "schedule" }
   | { page: "rules" };
+
+/**
+ * 판정 때 쓴 기관 세부기준. `문서명` 은 실제로 판정에 쓴 문서이고, `대기문서명` 은 올렸지만 쓰지 않은 문서입니다.
+ * 안내용이며 판정 값을 바꾸지 않습니다.
+ */
+export type 기준문서정보 = {
+  상태: "없음" | "적용" | "읽기실패" | "확인대기";
+  문서명: string | null;
+  대기문서명?: string | null;
+};
