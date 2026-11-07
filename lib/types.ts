@@ -1,4 +1,4 @@
-import type { 부가세구분, 분류값, 코드판정값, 용어풀이항목 } from "./server-types";
+import type { 부가세구분, 분류값, 코드판정값, 용어풀이항목, 확인한조건항목 } from "./server-types";
 import type { 판정피드백 } from "./server-types";
 import type { 단계항목 } from "./server-types";
 
@@ -70,6 +70,8 @@ export type ExpensePlan = {
   금지조건?: string[];
   해당시조건?: string[];
   공통사항?: string[];
+  /** 선택 칸에 답한 것과, 그 답으로 해당하지 않는다고 본 금지 기준. 결과 화면 「확인한 내용」에 그립니다. */
+  확인한조건?: 확인한조건항목[];
   용어풀이?: 용어풀이항목[];
   /** 물어볼 곳을 조사까지 붙인 말(「멘토기관 담당자에게」, 「주관기관에」). 옛 경로 판정은 비어 있고, 그때는 「주관기관에」를 씁니다. */
   문의처?: string | null;

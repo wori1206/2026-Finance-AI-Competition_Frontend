@@ -8,7 +8,7 @@ import type { 기준문서정보,
   PlanStatus,
   ScheduleItem,
 } from "../lib/types";
-import type { 서버팀, 비목후보, 답변항목, 확인질문, 사용자답변항목, 판정피드백, 부가세구분, 분류값, 추가입력칸, 용어풀이항목, 코드판정값 } from "../lib/server-types";
+import type { 서버팀, 비목후보, 답변항목, 확인질문, 사용자답변항목, 판정피드백, 부가세구분, 분류값, 추가입력칸, 용어풀이항목, 코드판정값, 확인한조건항목 } from "../lib/server-types";
 import { API켜짐 } from "../lib/config";
 import { 판정실행 } from "../lib/judge";
 import { 정규화하기 } from "../lib/normalize";
@@ -5504,7 +5504,7 @@ function 추가입력칸목록({
     <section className="question extra-inputs">
       <header className="confirm-question-text">
         <b>아는 값만 채워 주세요</b>
-        <p>비워 두면 그 한도는 비교하지 않고, 결과에 무엇을 더 알려 주시면 되는지 안내해요.</p>
+        <p>비워 두면 그 기준은 확인하지 않고, 결과에 무엇을 더 알려 주시면 되는지 안내해요.</p>
       </header>
       <div className="field-grid">
         {칸들.map((칸) => (
@@ -5533,14 +5533,32 @@ function 추가입력칸목록({
   );
 }
 
-/** 결과 화면의 「확인한 내용」. 답한 내용이 없는 판정(옛 계획·재점검)에는 그리지 않습니다. */
-function 확인한내용({ 항목 }: { 항목?: 사용자답변항목[] }) {
-  if (!항목?.length) return null;
+/**
+ * 결과 화면의 「확인한 내용」. 답한 내용이 없는 판정(옛 계획·재점검)에는 그리지 않습니다.
+ * `조건` 은 질문 화면 선택 칸(거래 상대 등)의 답입니다. 「해당 없음」이면 그 답으로 빠진 「안 되는 경우」 문장을 아래에 둡니다.
+ * 주의: 답은 증빙이 아니라서 판정은 조건부로 남습니다. 문장을 지우지 않고 여기로 옮겨 보여 주는 이유입니다.
+ */
+function 확인한내용({ 항목, 조건 }: { 항목?: 사용자답변항목[]; 조건?: 확인한조건항목[] }) {
+  if (!항목?.length && !조건?.length) return null;
   return (
     <section className="ai-confirmed">
       <b>확인한 내용</b>
       <ul>
-        {항목.map((a, index) => (
+        {(조건 ?? []).map((c, index) => (
+          <li key={`조건-${index}`}>
+            <span>{c.항목}</span>
+            <strong>{c.답}</strong>
+            {c.문장.length > 0 && (
+              <small>
+                답하신 대로면 아래 경우에 해당하지 않아요. 증빙으로 확인되기 전이라 판정은 조건부예요.
+                {c.문장.map((s) => (
+                  <span key={s}>· {s}</span>
+                ))}
+              </small>
+            )}
+          </li>
+        ))}
+        {(항목 ?? []).map((a, index) => (
           <li key={index}>
             <span>{a.질문문}</span>
             <strong>{답표기(a.답)}</strong>
@@ -6383,7 +6401,7 @@ function PlanDetail({
             <결과문장목록 제목="이런 경우에는 안 돼요" 항목={plan.금지조건} />
             <결과접는목록 제목="해당할 때만 필요해요" 항목={plan.해당시조건} 펼침={!plan.조건?.length && !plan.기한조건?.length} />
             <결과접는목록 제목="사업 전체 공통 사항" 항목={plan.공통사항} 펼침={false} />
-            <확인한내용 항목={plan.사용자답변} />
+            <확인한내용 항목={plan.사용자답변} 조건={plan.확인한조건} />
             <div className="ai-explanation">
               <Icon name="spark" size={20} />
               <div>

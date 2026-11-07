@@ -4,7 +4,7 @@
 // 주의: 화면 코드(checkumait-app.tsx)를 안 고치려고 여기서 흡수합니다.
 
 import type { 기준문서정보, ExpensePlan, PlanStatus, ScheduleItem, ChecklistItem, RuleItem } from "./types";
-import type { 계획요약, 계획상세, 할일, 판정값, L3현재문서, 사용자답변항목, 부가세구분, 분류값, 용어풀이항목, 코드판정값 } from "./server-types";
+import type { 계획요약, 계획상세, 할일, 판정값, L3현재문서, 사용자답변항목, 부가세구분, 분류값, 용어풀이항목, 코드판정값, 확인한조건항목 } from "./server-types";
 import { 초안읽기 } from "./inquiry-store";
 
 /**
@@ -74,12 +74,14 @@ export function 판정제목(판정: 판정값 | undefined, 비목: string): str
  * 주의: 물어볼 곳은 자금마다 다릅니다(창업활동자금은 멘토기관 담당자). 서버가 준 `문의처` 를 그대로 씁니다.
  * 주의: 금지 칸이 남아 있으면 채워서 되는 일이 아닙니다. 「채우면 집행할 수 있다」를 쓰지 않습니다.
  */
-export type 조건칸상태값 = "금지" | "보임" | "공통만" | "없음";
+export type 조건칸상태값 = "금지" | "보임" | "답변만" | "공통만" | "없음";
 
-/** 판정 화면에 바로 보이는 조건 칸이 무엇인지. 공통 사항은 접혀 있어 「아래 항목」이라고 말할 수 없습니다. */
-export function 조건칸상태(p: { 조건?: string[]; 기한조건?: string[]; 금지조건?: string[]; 해당시조건?: string[]; 공통사항?: string[] }): 조건칸상태값 {
+/** 판정 화면에 바로 보이는 조건 칸이 무엇인지. 공통 사항은 접혀 있어 「아래 항목」이라고 말할 수 없습니다.
+ *  「답변만」= 남은 것이 선택 칸에 「해당 없음」이라고 답한 금지뿐입니다. 답은 진술이라 조건부지만, 채울 조건은 없습니다. */
+export function 조건칸상태(p: { 조건?: string[]; 기한조건?: string[]; 금지조건?: string[]; 해당시조건?: string[]; 공통사항?: string[]; 확인한조건?: 확인한조건항목[] }): 조건칸상태값 {
   if (p.금지조건?.length) return "금지";
   if (p.조건?.length || p.기한조건?.length || p.해당시조건?.length) return "보임";
+  if (p.확인한조건?.some((x) => x.문장.length)) return "답변만";
   return p.공통사항?.length ? "공통만" : "없음";
 }
 
@@ -87,6 +89,7 @@ export function 행동문구(판정: 판정값 | undefined, 온톨로지경로 =
   switch (판정) {
     case "조건부":
       if (칸상태 === "금지") return "아래 안 되는 경우에 해당하지 않는지 먼저 확인한 뒤 집행하세요.";
+      if (온톨로지경로 && 칸상태 === "답변만") return "아래 「확인한 내용」에 답하신 대로인지 확인한 뒤 집행하세요.";
       if (온톨로지경로 && 칸상태 === "공통만") return "아래 「사업 전체 공통 사항」을 펼쳐 확인한 뒤 집행하세요.";
       if (온톨로지경로 && 칸상태 === "없음") return `집행 전에 ${문의처 || "주관기관에"} 확인하세요.`;
       return 온톨로지경로 ? "아래 항목을 확인한 뒤 집행하세요." : "아래 조건을 채우면 집행할 수 있습니다.";
@@ -332,6 +335,18 @@ export function 사용자답변정리(값: unknown): 사용자답변항목[] {
   });
 }
 
+/** 서버 `확인한조건[]` → 「확인한 내용」에 낼 선택 칸 답. 항목 · 답이 없으면 버립니다. */
+export function 확인한조건정리(값: unknown): 확인한조건항목[] {
+  if (!Array.isArray(값)) return [];
+  return 값.flatMap((항목): 확인한조건항목[] => {
+    if (typeof 항목 !== "object" || 항목 === null) return [];
+    const o = 항목 as Record<string, unknown>;
+    const 이름 = typeof o["항목"] === "string" ? o["항목"].trim() : "";
+    const 답 = typeof o["답"] === "string" ? o["답"].trim() : "";
+    return 이름 && 답 ? [{ 항목: 이름, 답, 문장: 문장목록정리(o["문장"]) }] : [];
+  });
+}
+
 /** 서버 값 「모름」은 사용자가 누른 버튼 그대로 「모르겠어요」로 보여 줍니다. */
 export function 답표기(답: string): string {
   return 답 === "모름" ? "모르겠어요" : 답;
@@ -498,6 +513,7 @@ export function 상세를계획으로(d: 계획상세): ExpensePlan {
     금지조건: 문장목록정리(상세?.금지조건),
     해당시조건: 문장목록정리(상세?.해당시조건),
     공통사항: 문장목록정리(상세?.공통사항),
+    확인한조건: 확인한조건정리(상세?.확인한조건),
     용어풀이: 용어풀이정리(상세?.용어풀이),
     문의처: typeof 상세?.문의처 === "string" ? 상세.문의처 : null,
     기준문서: 기준문서정리(상세?.기준문서),

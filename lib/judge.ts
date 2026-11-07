@@ -10,11 +10,11 @@
 
 import { 계획상세 } from "./api";
 import { 판정SSE } from "./sse";
-import { 상세를계획으로, 판정을상태로, 판정설명, 시각표기, 인용정리, 기준문서정리, 사용자답변정리, 분류정리, 문장목록정리, 용어풀이정리, 코드판정정리, 정규화저장값, 부가세확정, 부가세질문id } from "./adapt";
+import { 상세를계획으로, 판정을상태로, 판정설명, 시각표기, 인용정리, 기준문서정리, 사용자답변정리, 분류정리, 문장목록정리, 용어풀이정리, 코드판정정리, 정규화저장값, 부가세확정, 부가세질문id, 확인한조건정리 } from "./adapt";
 import { 초안보관 } from "./inquiry-store";
 import type { 기준문서정보, ChecklistItem, RuleItem } from "./types";
 import type { ExpensePlan } from "./types";
-import type { 판정값, 답변항목, 사용자답변항목, 부가세구분, 분류값, 코드판정값, 용어풀이항목 } from "./server-types";
+import type { 판정값, 답변항목, 사용자답변항목, 부가세구분, 분류값, 코드판정값, 용어풀이항목, 확인한조건항목 } from "./server-types";
 
 export type Mock판정 = "가능" | "조건부" | "불가" | "판단불가";
 
@@ -135,6 +135,7 @@ export async function 판정실행(
   let 금지조건: string[] = [];
   let 해당시조건: string[] = [];
   let 공통사항: string[] = [];
+  let 확인한조건: 확인한조건항목[] = [];
   let 용어풀이: 용어풀이항목[] = [];
   let 문의처: string | null = null;
   let 기준문서: 기준문서정보 | null = null;
@@ -243,6 +244,7 @@ export async function 판정실행(
           금지조건 = 문장목록정리(v["금지조건"]);
           해당시조건 = 문장목록정리(v["해당시조건"]);
           공통사항 = 문장목록정리(v["공통사항"]);
+          확인한조건 = 확인한조건정리(v["확인한조건"]);
           용어풀이 = 용어풀이정리(v["용어풀이"]);
           문의처 = 문자(v["문의처"]) || null;
           기준문서 = 기준문서정리(v["기준문서"]);
@@ -337,6 +339,7 @@ export async function 판정실행(
     금지조건,
     해당시조건,
     공통사항,
+    확인한조건,
     용어풀이,
     문의처,
     // 스트림이 이번 판정의 값입니다. 바탕에 남은 값은 이전 판정이라 이번 값이 없을 때만 씁니다.

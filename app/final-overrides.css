@@ -1230,6 +1230,9 @@ pre.ai-inquiry-text{
 .ai-confirmed li{display:flex;align-items:baseline;justify-content:space-between;gap:16px;font-size:13px;line-height:1.55;color:var(--sub)}
 .ai-confirmed li>span{min-width:0}
 .ai-confirmed li>strong{flex:none;font-weight:600;color:var(--text)}
+/* 선택 칸 답 아래, 그 답으로 빠진 「안 되는 경우」 문장. 한 줄을 다 쓴다 */
+.ai-confirmed li{flex-wrap:wrap}
+.ai-confirmed li>small{flex-basis:100%;display:grid;gap:2px;font-size:12px;line-height:1.5;color:var(--sub)}
 .ai-confirmed-fold>summary{display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;list-style:none}
 .ai-confirmed-fold>summary::-webkit-details-marker{display:none}
 .ai-confirmed-fold>summary>b{font-size:13px}
