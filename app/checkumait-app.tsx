@@ -5217,6 +5217,26 @@ function 결과문장목록({ 제목, 항목 }: { 제목: string; 항목?: strin
   );
 }
 
+/** 해당할 때만 필요한 조건. 첫 화면을 채우지 않게 접어 두고, 다른 조건이 없으면 펼쳐 둡니다. */
+function 결과접는목록({ 제목, 항목, 펼침 }: { 제목: string; 항목?: string[]; 펼침: boolean }) {
+  if (!항목?.length) return null;
+  return (
+    <details className="ai-confirmed ai-confirmed-fold" open={펼침}>
+      <summary>
+        <b>{제목}</b>
+        <Icon name="arrow" size={13} />
+      </summary>
+      <ul>
+        {항목.map((문장, index) => (
+          <li key={index}>
+            <span>{문장}</span>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
 /** 결과 화면의 어려운 말 풀이. 비어 있으면 그리지 않습니다. */
 function 결과용어풀이({ 항목 }: { 항목?: 용어풀이항목[] }) {
   if (!항목?.length) return null;
@@ -5511,8 +5531,9 @@ function PlanDetail({
   };
   // 이번 판정의 분류를 먼저 쓰고, 새로고침 뒤에는 계획에 저장해 둔 세목으로 같은 모양을 만듭니다.
   // 주의: 수정 창에서 화면에만 고친 비목이면 그 값을 그대로 보여 줍니다. 옛 세목을 붙이면 고친 비목과 어긋납니다.
-  // 「확인할 조건」에 이미 있는 문장은 결제 전 확인에 다시 적지 않습니다
-  const 결제전항목 = plan.aiChecks.filter((item) => !plan.조건?.includes(item.label));
+  // 「확인할 조건」 묶음에 이미 있는 문장은 결제 전 확인에 다시 적지 않습니다
+  const 조건문장 = [...(plan.조건 ?? []), ...(plan.금지조건 ?? []), ...(plan.해당시조건 ?? [])];
+  const 결제전항목 = plan.aiChecks.filter((item) => !조건문장.includes(item.label));
   const 표시분류 = plan.화면만수정
     ? plan.category
     : plan.분류?.표시문 ?? (plan.확정세목 ? `${plan.category} > ${plan.확정세목}` : plan.category);
@@ -5696,16 +5717,16 @@ function PlanDetail({
                           : "추가 확인이 필요합니다."
                       }`}
                 </h3>
-                {행동문구(plan.판정) && (
+                {행동문구(plan.판정, Boolean(plan.분류)) && (
                   <p className="ai-verdict-action">
                     <b>
                       {plan.코드판정?.종류 === "부가세기준미정" && 부가세_고를수있음(plan.부가세구분)
                         ? "부가세 포함 여부를 고르면 다시 판정합니다. 모르면 주관기관에 확인하세요."
-                        : 행동문구(plan.판정)}
+                        : 행동문구(plan.판정, Boolean(plan.분류))}
                     </b>
                   </p>
                 )}
-                {(!plan.판정 || 결제전항목.length > 0 || (plan.조건?.length ?? 0) > 0) && (
+                {(!plan.판정 || 결제전항목.length > 0 || 조건문장.length > 0) && (
                   <p>
                     {plan.status === "점검 전" && !plan.판정
                       ? "AI 점검을 실행하면 규정 근거와 확인할 항목이 여기에 표시됩니다."
@@ -5718,6 +5739,8 @@ function PlanDetail({
               <코드판정카드 판정={plan.코드판정} 부가세={plan.부가세구분} 다시점검={() => setRecheckQuestions(true)} />
             )}
             <결과문장목록 제목="확인할 조건" 항목={plan.조건} />
+            <결과문장목록 제목="이런 경우에는 안 돼요" 항목={plan.금지조건} />
+            <결과접는목록 제목="해당할 때만 필요해요" 항목={plan.해당시조건} 펼침={!plan.조건?.length} />
             <확인한내용 항목={plan.사용자답변} />
             <div className="ai-explanation">
               <Icon name="spark" size={20} />

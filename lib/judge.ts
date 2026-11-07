@@ -131,6 +131,8 @@ export async function 판정실행(
   let 근거경로: string[] = [];
   let 코드판정: 코드판정값 | null = null;
   let 조건: string[] = [];
+  let 금지조건: string[] = [];
+  let 해당시조건: string[] = [];
   let 용어풀이: 용어풀이항목[] = [];
   let 저장됨 = false;
   let 서버오류: string | null = null;
@@ -230,6 +232,8 @@ export async function 판정실행(
           근거경로 = 문장목록정리(v["근거경로"]);
           코드판정 = 코드판정정리(v["코드판정"]);
           조건 = 문장목록정리(v["조건"]);
+          금지조건 = 문장목록정리(v["금지조건"]);
+          해당시조건 = 문장목록정리(v["해당시조건"]);
           용어풀이 = 용어풀이정리(v["용어풀이"]);
           break;
         case "저장":
@@ -313,6 +317,8 @@ export async function 판정실행(
     근거경로,
     코드판정,
     조건,
+    금지조건,
+    해당시조건,
     용어풀이,
     nextAction: 스트림값만
       ? (해야할일[0]?.label ?? "")

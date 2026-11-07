@@ -1221,6 +1221,11 @@ pre.ai-inquiry-text{
 .ai-confirmed li{display:flex;align-items:baseline;justify-content:space-between;gap:16px;font-size:13px;line-height:1.55;color:var(--sub)}
 .ai-confirmed li>span{min-width:0}
 .ai-confirmed li>strong{flex:none;font-weight:600;color:var(--text)}
+.ai-confirmed-fold>summary{display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;list-style:none}
+.ai-confirmed-fold>summary::-webkit-details-marker{display:none}
+.ai-confirmed-fold>summary>b{font-size:13px}
+.ai-confirmed-fold>summary>svg{flex:none;color:var(--sub);transform:rotate(90deg);transition:transform .15s ease}
+.ai-confirmed-fold[open]>summary>svg{transform:rotate(-90deg)}
 
 /* 분류 확인 문구. 판정 기준을 알리는 문장이라 `.auto-check-note` 안에서 글자를 조금 키웁니다. */
 .classification-note{margin:0 0 14px}
