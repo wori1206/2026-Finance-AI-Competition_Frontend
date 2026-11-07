@@ -5571,7 +5571,9 @@ function 확인질문카드({
   onChange: (값: string) => void;
 }) {
   const 근거 = 질문.근거;
-  const 이질문풀이 = (풀이 ?? []).filter((t) => 질문.질문문.includes(t.용어));
+  // 서버는 띄어쓰기가 달라도 같은 용어로 봅니다(「사전 심의」 = 「사전심의」). 여기서도 공백을 빼고 맞춥니다.
+  const 붙인질문 = 질문.질문문.replace(/\s+/g, "");
+  const 이질문풀이 = (풀이 ?? []).filter((t) => 붙인질문.includes(t.용어.replace(/\s+/g, "")));
   return (
     <div className="question confirm-question">
       <div className="confirm-question-text">
