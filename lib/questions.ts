@@ -25,7 +25,8 @@ export type 질문입력 = {
   조사답변?: 조사답변[];
 };
 
-export type 조사후보 = { id: string; 유형: string; 내용: string; 상태: string; 출처: { 제목: string; url: string; 발췌?: string }[] };
+/** `질문` 은 서버가 검사한 화면용 확인 문장(없으면 옛 서버), `질문종류`=기본 이면 유형 이름만 든 기본 문장입니다. 판정에는 `내용`(발췌)만 갑니다. */
+export type 조사후보 = { id: string; 유형: string; 내용: string; 질문?: string; 질문종류?: string; 상태: string; 출처: { 제목: string; url: string; 발췌?: string }[] };
 export type 조사답변 = { id: string; 답: "맞아요" | "아니에요" | "모르겠어요"; 정정?: string };
 export type 조사결과 = { 상태?: string; 확인한정보?: (조사후보 & { 답?: string; 정정?: string })[]; 업체이용조건?: 조사후보[]; 미확인?: 조사후보[]; 부족정보?: string[]; 사용자확인?: { 항목: string; 질문: string }[] };
 

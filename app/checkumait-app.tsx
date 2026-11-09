@@ -3959,25 +3959,63 @@ const 조사유형이름: Record<string, string> = {
 };
 const 유형표기 = (유형: string) => 조사유형이름[유형] ?? "공개 정보";
 
-/** 검색으로 찾은 후보 한 건. 사이트 이름 · 원문 발췌 · 유형을 보이고, 확인 버튼은 `children` 으로 받습니다. */
+/** 페이지 발췌를 화면용 글로 바꿉니다. 마크다운 기호만 지우고 글자는 바꾸지 않습니다(서버의 발췌 값은 그대로 둡니다). */
+function 발췌글(글: string): string {
+  return 글
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .split(/\r?\n/)
+    .map((줄) => 줄.replace(/^\s*(?:#{1,6}|[-*+>]|\d+\.)\s+/, "").replace(/[*_`|~]+/g, " ").replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+/**
+ * 검색으로 찾은 후보 한 건. 서버가 다듬은 확인 문장(`질문`)을 크게 보이고, 출처 사이트와 원문 발췌는 「출처 보기」로 엽니다.
+ * 주의: `질문` 은 화면 표시용이고 판정에는 발췌와 답만 갑니다. 기본 문장(`질문종류`=기본)이거나 옛 서버라 `질문` 이 없으면
+ *    발췌를 바로 보여 줍니다 — 무엇을 확인하는지 알 수 있어야 답할 수 있습니다.
+ */
 function 조사카드({ 항목, children }: { 항목: 조사후보 & { 답?: string; 정정?: string }; children?: React.ReactNode }) {
+  const [출처열림, set출처열림] = useState(false);
+  const 출처id = useId();
   const 출처들 = (항목.출처 ?? []).filter((c) => /^https?:\/\//i.test(c.url));
-  const 인용 = 출처들.find((c) => c.발췌)?.발췌 || 항목.내용;
+  const 인용 = 발췌글(출처들.find((c) => c.발췌)?.발췌 || 항목.내용 || "");
+  const 질문 = 항목.질문?.trim();
+  const 발췌바로 = !질문 || 항목.질문종류 === "기본";
+  const 사이트 = (
+    <span className="research-sites">
+      {출처들.map((c, i) => (
+        <a key={i} className="research-source" href={c.url} target="_blank" rel="noopener noreferrer">
+          <span className="research-favicon" aria-hidden="true">{사이트이름(c).slice(0, 1).toUpperCase()}</span>
+          {사이트이름(c)}
+          <span className="sr-only"> (새 창에서 열기)</span>
+        </a>
+      ))}
+      {!출처들.length && <span className="research-source is-missing">출처 주소 없음</span>}
+    </span>
+  );
   return (
     <article className="research-card">
-      <header>
-        <span className="research-kind">{유형표기(항목.유형)}</span>
-        {출처들.map((c, i) => (
-          <a key={i} className="research-source" href={c.url} target="_blank" rel="noopener noreferrer">
-            <span className="research-favicon" aria-hidden="true">{사이트이름(c).slice(0, 1).toUpperCase()}</span>
-            {사이트이름(c)}
-            <span className="sr-only"> (새 창에서 열기)</span>
-          </a>
-        ))}
-        {!출처들.length && <span className="research-source is-missing">출처 주소 없음</span>}
-      </header>
-      <blockquote>{인용}</blockquote>
-      {항목.내용 && 항목.내용 !== 인용 && <p>{항목.내용}</p>}
+      <span className="research-kind">{유형표기(항목.유형)}</span>
+      {질문 && <p className="research-question">{질문}</p>}
+      {발췌바로 ? (
+        <>
+          {사이트}
+          {인용 && <blockquote>{인용}</blockquote>}
+        </>
+      ) : (
+        <>
+          <button type="button" className="research-source-toggle" aria-expanded={출처열림} aria-controls={출처id} onClick={() => set출처열림((v) => !v)}>
+            {출처열림 ? "출처 접기" : "출처 보기"}
+            <Icon name="chevronDown" size={13} />
+          </button>
+          {출처열림 && (
+            <div id={출처id} className="research-source-body">
+              {사이트}
+              {인용 && <blockquote>{인용}</blockquote>}
+            </div>
+          )}
+        </>
+      )}
       {children}
     </article>
   );
@@ -4068,17 +4106,27 @@ function 직접확인안내({ 항목들, 결과화면 = false }: { 항목들: { 
   return <section className="research-settings"><b>직접 확인할 사항</b><p>{결과화면 ? "공개 정보만으로는 알 수 없는 내용이에요. 집행 전에 직접 확인해 주세요." : "공개 정보만으로는 알 수 없는 내용이에요. 다음 규정 질문에서 해당 내용을 물으면 답해 주세요."}</p><ul>{항목들.map((v, i) => <li key={`${v.항목}-${i}`}>{v.질문}</li>)}</ul></section>;
 }
 
+/** 검색창 글을 서버 값으로 나눕니다. 첫 http(s) 주소는 `판매URL`, 나머지 낱말은 `공개검색어` 입니다. */
+function 검색입력나누기(글: string): { 공개검색어?: string; 판매URL?: string } {
+  const 낱말 = 글.trim().split(/\s+/).filter(Boolean);
+  const 위치 = 낱말.findIndex((w) => /^https?:\/\/\S+$/i.test(w));
+  const 나머지 = 낱말.filter((_, i) => i !== 위치).join(" ");
+  return { 공개검색어: 나머지 || undefined, 판매URL: 위치 >= 0 ? 낱말[위치] : undefined };
+}
+
+/** 눌러서 채워 보는 검색 예시. 서버로 보내는 값은 사용자가 「검색」을 눌렀을 때의 검색창 글뿐입니다. */
+const 검색예시 = ["ChatGPT Plus", "아두이노 우노 R3", "노션 플러스"];
+
 /**
- * 공개 정보 검색 칸. 켜면 검색창이 열리고, 검색 중에는 서버가 보내는 작업을 바로 아래에 차례로 보여 줍니다.
- * 주의: 외부 검색 서비스에는 이 칸의 검색어와 판매 주소만 쓰입니다(서버 `web_research._검색어`). 다른 값을 보낸다고 쓰지 않습니다.
+ * 공개 정보 검색 칸. 켜면 검색창 하나가 열리고, 제품명이든 판매 페이지 주소든 여기에 적습니다.
+ * 검색 중에는 서버가 보내는 작업을 바로 아래에 차례로 보여 줍니다.
+ * 주의: 외부 검색 서비스에는 이 검색창의 글(검색어와 주소)만 쓰입니다(서버 `web_research`). 다른 값을 보낸다고 쓰지 않습니다.
  */
 function 공개검색설정({
   사용,
   설정,
   검색어,
   검색어변경,
-  url,
-  url변경,
   검색하기,
   검색막힘 = false,
   검색중 = false,
@@ -4089,10 +4137,9 @@ function 공개검색설정({
 }: {
   사용: boolean;
   설정: (v: boolean) => void;
+  /** 검색창의 글 그대로. 보낼 때 `검색입력나누기` 로 나눕니다. */
   검색어: string;
   검색어변경: (v: string) => void;
-  url: string;
-  url변경: (v: string) => void;
   /** 검색 버튼 · Enter. 없으면 버튼을 그리지 않습니다. */
   검색하기?: () => void;
   /** 검색어 밖의 이유(비목 미선택 등)로 아직 보낼 수 없을 때 */
@@ -4105,13 +4152,15 @@ function 공개검색설정({
 }) {
   const id = useId();
   const 검색가능 = !!검색하기 && !검색중 && !검색막힘 && !!검색어.trim();
+  const 나눔 = 검색입력나누기(검색어);
+  const 읽을사이트 = 나눔.판매URL ? 사이트이름({ 제목: "", url: 나눔.판매URL }) : "";
   return (
     <section className={`research-search ${사용 ? "is-on" : ""}`} aria-labelledby={`${id}-title`}>
       <header>
-        <span className="research-search-icon" aria-hidden="true"><Icon name="search" size={18} /></span>
+        <span className="research-search-icon" aria-hidden="true"><Icon name="sparkSolid" size={16} /></span>
         <div>
           <h3 id={`${id}-title`}>AI 공개 정보 검색 <em>선택</em></h3>
-          <p>AI가 웹에서 제품·판매처·가격·결제 방법 같은 공개 정보를 찾아 출처와 함께 보여 드려요.</p>
+          <p>제품·판매처·가격·결제 방법 같은 공개 정보를 AI가 찾아 출처와 함께 보여 드려요.</p>
         </div>
         <label className="research-switch">
           <input
@@ -4128,15 +4177,17 @@ function 공개검색설정({
       {사용 && (
         <>
           <div className={`research-search-box ${검색중 ? "is-busy" : ""}`}>
-            <Icon name="search" size={18} />
+            <span className="research-search-spark" aria-hidden="true">
+              {검색중 ? <span className="work-log-spinner" /> : <Icon name="sparkSolid" size={16} />}
+            </span>
             <input
               type="search"
-              maxLength={120}
+              maxLength={2400}
               value={검색어}
               readOnly={검색중}
-              aria-label="공개 검색어"
+              aria-label="검색할 제품명이나 판매 페이지 주소"
               aria-describedby={`${id}-help`}
-              placeholder="예: 아두이노 우노 R3 공식 판매처"
+              placeholder="제품명이나 판매 페이지 주소를 입력하세요"
               onChange={(e) => 검색어변경(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.nativeEvent.isComposing && 검색가능) {
@@ -4146,26 +4197,32 @@ function 공개검색설정({
               }}
             />
             {검색하기 && (
-              <button type="button" className="primary" disabled={!검색가능} onClick={검색하기}>
-                {검색중 ? "검색 중" : "검색"}
+              <button type="button" className="research-search-go" disabled={!검색가능} onClick={검색하기} aria-label={검색중 ? "검색 중" : "검색"}>
+                {검색중 ? "검색 중" : <><Icon name="search" size={15} />검색</>}
               </button>
             )}
           </div>
-          <ul id={`${id}-help`} className="research-search-help">
-            <li>찾는 것: 제품·서비스 성격, 판매처, 가격, 결제·증빙 안내 같은 공개 정보</li>
-            <li>외부 검색에는 이 칸의 검색어와 아래 주소만 쓰여요. 이름·연락처·계약 내용 같은 개인 정보는 적지 마세요.</li>
-          </ul>
-          <label className="research-url">
-            공식 판매 페이지 주소 (선택)
-            <input type="url" maxLength={2048} value={url} readOnly={검색중} onChange={(e) => url변경(e.target.value)} placeholder="https://" />
-          </label>
+          {!검색중 && !오류 && !검색어.trim() && (
+            <div className="research-examples" aria-label="검색 예시">
+              {검색예시.map((예) => (
+                <button type="button" key={예} onClick={() => 검색어변경(예)}>{예}</button>
+              ))}
+            </div>
+          )}
+          {읽을사이트 && !검색중 && (
+            <p className="research-url-note">
+              <Icon name="paperclip" size={13} />
+              {나눔.공개검색어 ? `「${나눔.공개검색어}」 검색과 함께 ${읽을사이트} 페이지도 읽어요.` : `검색 없이 ${읽을사이트} 페이지만 읽어요.`}
+            </p>
+          )}
+          <p id={`${id}-help`} className="research-search-help">검색창에 적은 글만 외부 검색에 쓰여요. 이름·연락처 같은 개인 정보는 적지 마세요.</p>
           {(검색중 || !!오류) && (
             <작업로그
               className="research-stream"
               항목들={진행}
               진행중={검색중}
               시작={시작}
-              기본문장={`「${검색어.trim()}」 검색을 준비하고 있어요.`}
+              기본문장="검색을 준비하고 있어요."
               실패={오류}
               펼침기본
             />
@@ -4464,7 +4521,6 @@ function PlanRecheckQuestionsModal({
   const [검색시작, set검색시작] = useState(false);
   const [웹조사, set웹조사] = useState(false);
   const [공개검색어, set공개검색어] = useState("");
-  const [판매URL, set판매URL] = useState("");
   const [진행항목들, set진행항목들] = useState<진행항목[]>([]);
   const 진행Ref = useRef<진행항목[]>([]);
   const [조사답, set조사답] = useState<Record<string, 조사답변>>({});
@@ -4500,7 +4556,7 @@ function PlanRecheckQuestionsModal({
       금액: n ? (typeof n.금액 === "number" ? n.금액 : null) : (상세 ? 상세.금액 ?? 0 : plan.amount),
       용도: n ? (typeof n.용도 === "string" ? n.용도 : "") : (상세 ? 상세.용도 ?? "" : plan.purpose),
       질문원문: n ? [n.질문원문, n.질문, n._원문].find((v): v is string => typeof v === "string" && !!v) : (상세?.질문원문 ?? undefined),
-      웹조사, 공개검색어: 웹조사 ? 공개검색어.trim() : undefined, 판매URL: 웹조사 ? 판매URL.trim() || undefined : undefined,
+      웹조사, ...(웹조사 ? 검색입력나누기(공개검색어) : {}),
       ...(규정요청 ? { 조사ID: 조사확인ID, 조사답변: Object.values(조사답) } : {}),
       }, (항목) => { if (살아있음) { 진행Ref.current = 진행추가(진행Ref.current, 항목); set진행항목들(진행Ref.current); } });
     }).then((결과) => {
@@ -4562,8 +4618,6 @@ function PlanRecheckQuestionsModal({
               설정={set웹조사}
               검색어={공개검색어}
               검색어변경={set공개검색어}
-              url={판매URL}
-              url변경={set판매URL}
               검색하기={확인시작}
               검색막힘={!category}
               검색중={검색중}
@@ -4576,7 +4630,7 @@ function PlanRecheckQuestionsModal({
           {조사오류 && !웹조사 && <p role="alert">{조사오류}</p>}
           {받는중 && !검색중 && <작업로그 항목들={진행항목들} 진행중 시작={진행시작} 기본문장="확인할 내용을 준비하고 있어요." 펼침기본 />}
           {지금결과?.상태 === "조사확인" && !!진행항목들.length && <작업로그 className="research-stream" 항목들={진행항목들} 진행중={false} 시작={진행시작} 기본문장="공개 정보 검색을 마쳤어요." 끝문장="공개 정보 검색을 마쳤어요." />}
-          {지금결과?.상태 === "조사확인" && !!지금결과.조사후보?.length && <조사확인 후보={지금결과.조사후보} 답={조사답} 검색어={공개검색어.trim()} 변경={(v) => set조사답((이전) => ({ ...이전, [v.id]: v }))} />}
+          {지금결과?.상태 === "조사확인" && !!지금결과.조사후보?.length && <조사확인 후보={지금결과.조사후보} 답={조사답} 검색어={검색입력나누기(공개검색어).공개검색어} 변경={(v) => set조사답((이전) => ({ ...이전, [v.id]: v }))} />}
           {지금결과?.상태 === "조사확인" && !지금결과.조사후보?.length && <p>확인된 공개 정보가 없어요. 입력한 내용으로 계속 점검할 수 있어요.</p>}
           {지금결과?.상태 === "조사확인" && !!지금결과.부족정보?.length && <p>더 확인이 필요한 공개 정보: {지금결과.부족정보.map(유형표기).join(" · ")}</p>}
           {지금결과?.상태 === "조사확인" && <직접확인안내 항목들={지금결과.사용자확인 ?? []} />}
@@ -5358,7 +5412,6 @@ function NewPlanPage({
   const [questionsLoading, setQuestionsLoading] = useState(false);
   const [웹조사, set웹조사] = useState(false);
   const [공개검색어, set공개검색어] = useState("");
-  const [판매URL, set판매URL] = useState("");
   const [진행항목들, set진행항목들] = useState<진행항목[]>([]);
   const 진행Ref = useRef<진행항목[]>([]);
   const [진행시작, set진행시작] = useState<number>();
@@ -5389,7 +5442,7 @@ function NewPlanPage({
   const [칸값, set칸값] = useState<Record<string, string>>({});
   const [서버풀이, set서버풀이] = useState<용어풀이항목[]>([]);
   // 지금 들고 있는 질문이 어떤 비목으로 받은 것인지 둡니다. 품목·목적·금액을 고치면 질문 자체가 비워집니다.
-  const 질문키 = `${category}|${feeSubtype}|${선택분류?.표시문 ?? ""}|${웹조사}|${공개검색어}|${판매URL}`;
+  const 질문키 = `${category}|${feeSubtype}|${선택분류?.표시문 ?? ""}|${웹조사}|${공개검색어}`;
   const [받은질문키, set받은질문키] = useState<string | null>(null);
   const [저장중, set저장중] = useState(false);
   const [연동오류, set연동오류] = useState<string | null>(null);
@@ -5715,7 +5768,7 @@ function NewPlanPage({
       용도: 서버정규화 ? (typeof 서버정규화.용도 === "string" ? 서버정규화.용도 : "") : purpose,
       질문원문: typeof 질문원문 === "string" && 질문원문 ? 질문원문 : undefined,
       조사ID: 받은질문키 && 받은질문키 !== 질문키 ? undefined : 정규화조사ID,
-      웹조사, 공개검색어: 웹조사 ? 공개검색어.trim() : undefined, 판매URL: 웹조사 ? 판매URL.trim() || undefined : undefined,
+      웹조사, ...(웹조사 ? 검색입력나누기(공개검색어) : {}),
       ...(조사확인단계 ? { 조사ID, 조사답변: Object.values(조사답) } : {}),
     }, (항목) => { if (살아있음) { 진행Ref.current = 진행추가(진행Ref.current, 항목); set진행항목들(진행Ref.current); } }).then((r) => {
       if (!살아있음) return;
@@ -6025,8 +6078,6 @@ function NewPlanPage({
                 설정={set웹조사}
                 검색어={공개검색어}
                 검색어변경={set공개검색어}
-                url={판매URL}
-                url변경={set판매URL}
                 검색하기={둘째단계다음}
                 검색막힘={둘째단계막힘}
                 검색중={검색중}
@@ -6052,7 +6103,7 @@ function NewPlanPage({
                   : `${category} 규정에서 확인할 사항입니다.`}
             </p>
             {조사확인단계 && !!진행항목들.length && <작업로그 className="research-stream" 항목들={진행항목들} 진행중={false} 시작={진행시작} 기본문장="공개 정보 검색을 마쳤어요." 끝문장="공개 정보 검색을 마쳤어요." />}
-            {조사확인단계 && !!조사후보들.length && <조사확인 후보={조사후보들} 답={조사답} 검색어={공개검색어.trim()} 변경={(v) => set조사답((이전) => ({ ...이전, [v.id]: v }))} />}
+            {조사확인단계 && !!조사후보들.length && <조사확인 후보={조사후보들} 답={조사답} 검색어={검색입력나누기(공개검색어).공개검색어} 변경={(v) => set조사답((이전) => ({ ...이전, [v.id]: v }))} />}
             {조사확인단계 && !조사후보들.length && <p>확인된 공개 정보가 없어요. 입력한 내용으로 계속 점검할 수 있어요.</p>}
             {조사확인단계 && !!부족정보들.length && <p>더 확인이 필요한 공개 정보: {부족정보들.map(유형표기).join(" · ")}</p>}
             {조사확인단계 && <직접확인안내 항목들={직접확인들} />}
