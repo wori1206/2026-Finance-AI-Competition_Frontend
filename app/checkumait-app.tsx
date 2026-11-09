@@ -4110,7 +4110,8 @@ function 직접확인안내({ 항목들, 결과화면 = false }: { 항목들: { 
 function 검색입력나누기(글: string): { 공개검색어?: string; 판매URL?: string } {
   const 낱말 = 글.trim().split(/\s+/).filter(Boolean);
   const 위치 = 낱말.findIndex((w) => /^https?:\/\/\S+$/i.test(w));
-  const 나머지 = 낱말.filter((_, i) => i !== 위치).join(" ");
+  // 주소가 여럿이면 첫 주소만 읽고, 나머지 주소는 검색어에 넣지 않습니다(서버가 주소가 섞인 검색어를 받지 않음).
+  const 나머지 = 낱말.filter((w) => !/^https?:\/\//i.test(w)).join(" ");
   return { 공개검색어: 나머지 || undefined, 판매URL: 위치 >= 0 ? 낱말[위치] : undefined };
 }
 
