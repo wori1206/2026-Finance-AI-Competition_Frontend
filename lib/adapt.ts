@@ -4,7 +4,7 @@
 // 주의: 화면 코드(checkumait-app.tsx)를 안 고치려고 여기서 흡수합니다.
 
 import type { 기준문서정보, ExpensePlan, PlanStatus, ScheduleItem, ChecklistItem, RuleItem } from "./types";
-import type { 계획요약, 계획상세, 할일, 판정값, L3현재문서, 사용자답변항목 } from "./server-types";
+import type { 계획요약, 계획상세, 할일, 판정값, L3현재문서, 사용자답변항목, 부가세구분, 분류값, 용어풀이항목, 코드판정값, 확인한조건항목 } from "./server-types";
 import { 초안읽기 } from "./inquiry-store";
 
 /**
@@ -69,13 +69,35 @@ export function 판정제목(판정: 판정값 | undefined, 비목: string): str
 /**
  * '그래서 무엇을 해야 하는가'. 배지에도 요약에도 안 들어 있는 정보입니다.
  * 조건부는 사용자가 처리하고, 판단불가는 기관에 물어야 합니다 — 정반대입니다.
+ * 주의: 온톨로지 경로의 조건부에는 채울 조건만 있는 것이 아닙니다(해당하면 안 되는 경우, 해당할 때만 필요한 것).
+ *   그래서 「채우면 집행할 수 있다」고 쓰지 않습니다. 옛 경로 문구는 그대로입니다.
+ * 주의: 물어볼 곳은 자금마다 다릅니다(창업활동자금은 멘토기관 담당자). 서버가 준 `문의처` 를 그대로 씁니다.
+ * 주의: 금지 칸이 남아 있으면 채워서 되는 일이 아닙니다. 「채우면 집행할 수 있다」를 쓰지 않습니다.
  */
-export function 행동문구(판정: 판정값 | undefined): string | null {
+export type 조건칸상태값 = "해당" | "금지" | "보임" | "답변만" | "공통만" | "없음";
+
+/** 판정 화면에 바로 보이는 조건 칸이 무엇인지. 공통 사항은 접혀 있어 「아래 항목」이라고 말할 수 없습니다.
+ *  「답변만」= 남은 것이 선택 칸에 「해당 없음」이라고 답한 금지뿐입니다. 답은 진술이라 조건부지만, 채울 조건은 없습니다.
+ *  「해당」= 선택 칸 답대로면 예외 없는 금지에 해당합니다. 「해당하지 않는지 확인」이라고 쓰면 사용자의 답과 어긋납니다. */
+export function 조건칸상태(p: { 조건?: string[]; 기한조건?: string[]; 금지조건?: string[]; 해당시조건?: string[]; 공통사항?: string[]; 확인한조건?: 확인한조건항목[] }): 조건칸상태값 {
+  if (p.금지조건?.length && p.확인한조건?.some((x) => x.해당문장.length)) return "해당";
+  if (p.금지조건?.length) return "금지";
+  if (p.조건?.length || p.기한조건?.length || p.해당시조건?.length) return "보임";
+  if (p.확인한조건?.some((x) => x.문장.length)) return "답변만";
+  return p.공통사항?.length ? "공통만" : "없음";
+}
+
+export function 행동문구(판정: 판정값 | undefined, 온톨로지경로 = false, 문의처: string | null | undefined = null, 칸상태: 조건칸상태값 = "보임"): string | null {
   switch (판정) {
     case "조건부":
-      return "아래 조건을 채우면 집행할 수 있습니다.";
+      if (칸상태 === "해당") return `답하신 대로면 아래 안 되는 경우에 해당해요. 집행하기 전에 ${문의처 || "주관기관에"} 확인하세요.`;
+      if (칸상태 === "금지") return "아래 안 되는 경우에 해당하지 않는지 먼저 확인한 뒤 집행하세요.";
+      if (온톨로지경로 && 칸상태 === "답변만") return "아래 「확인한 내용」에 답하신 대로인지 확인한 뒤 집행하세요.";
+      if (온톨로지경로 && 칸상태 === "공통만") return "아래 「사업 전체 공통 사항」을 펼쳐 확인한 뒤 집행하세요.";
+      if (온톨로지경로 && 칸상태 === "없음") return `집행 전에 ${문의처 || "주관기관에"} 확인하세요.`;
+      return 온톨로지경로 ? "아래 항목을 확인한 뒤 집행하세요." : "아래 조건을 채우면 집행할 수 있습니다.";
     case "판단불가":
-      return "규정만으로는 결론이 나지 않습니다. 집행 전에 주관기관에 확인하세요.";
+      return `규정만으로는 결론이 나지 않습니다. 집행 전에 ${문의처 || "주관기관에"} 확인하세요.`;
     case "불가":
       return "이대로 집행하면 환수 대상이 될 수 있습니다. 반드시 먼저 확인하세요.";
     default:
@@ -147,7 +169,19 @@ export type L3현재문서요약 = {
   확인대기목록: L3현재문서[];
   /** 서버에서 목록을 읽지 못했는가. 문서가 없는 것과 구분합니다. */
   조회실패: boolean;
+  /** 대표 파일의 조문 연결(서버가 연결을 쓸 때만). `null` 이면 연결 화면을 보이지 않습니다. */
+  연결문서?: L3현재문서 | null;
 };
+
+/** 마이페이지 「조문 연결」 줄에 쓰는 셈. 확인 전 조 수 · 옛 판 문구가 있는 조 수. */
+export function 조문연결셈(문서: L3현재문서) {
+  const 목록 = 문서.연결 ?? [];
+  return {
+    전체: 목록.length,
+    확인전: 목록.filter((x) => x.상태 !== "확인").length,
+    옛판: 목록.filter((x) => x.옛판문구.length > 0).length,
+  };
+}
 
 /**
  * `GET /api/l3/current` 응답(여러 건 가능) → 화면 요약 한 개.
@@ -173,6 +207,7 @@ export function L3현재문서요약짓기(목록: L3현재문서[]): L3현재�
     처리중목록,
     확인대기목록: 목록.filter((d) => d.파싱품질 === "review"),
     조회실패: false,
+    연결문서: 대표 && 대표.연결 ? 대표 : null,
   };
 }
 
@@ -244,6 +279,7 @@ export function 항추출(본문: string, 항호: string): string {
  *    「제38조 외주용역비」가 항호만 다른 두 건으로 와서, 조 전체(10개 항) 원문이 그대로
  *    두 번 표시됐습니다 — 실제로 해당하는 건 ③·④항뿐이었습니다. 항호를 합쳐 제목에 붙이고,
  *    본문은 `항추출()`로 해당 항만 남깁니다(원문에 없는 문장은 만들지 않습니다).
+ *    쪽으로 표시하는 문서는 같은 「14쪽」에 소제목이 둘일 수 있어 조제목까지 같아야 합칩니다.
  */
 export function 인용정리(인용들: Record<string, unknown>[]): RuleItem[] {
   const 문자 = (c: Record<string, unknown>, k: string) =>
@@ -259,7 +295,7 @@ export function 인용정리(인용들: Record<string, unknown>[]): RuleItem[] {
     const doc_id = 문자(c, "doc_id");
     const 조번호 = 문자(c, "조번호");
     const 항호 = 문자(c, "항호");
-    const key = `${doc_id}::${조번호}`;
+    const key = `${doc_id}::${조번호}::${문자(c, "조제목")}`;
     if (!그룹.has(key)) {
       그룹.set(key, {
         조번호,
@@ -279,7 +315,8 @@ export function 인용정리(인용들: Record<string, unknown>[]): RuleItem[] {
 
   return 순서.map((key) => {
     const g = 그룹.get(key)!;
-    const 항호결합 = g.항호들.join("");
+    // 항 기호(①②)는 이어 쓰고, 별지 칸 이름(지급수수료 유의사항)은 사이를 띄웁니다
+    const 항호결합 = g.항호들.join(g.항호들.every((h) => h.length <= 2) ? "" : " · ");
     return {
       title:
         [g.조번호, g.조제목].filter(Boolean).join(" ") +
@@ -314,9 +351,113 @@ export function 사용자답변정리(값: unknown): 사용자답변항목[] {
   });
 }
 
+/** 서버 `확인한조건[]` → 「확인한 내용」에 낼 선택 칸 답. 항목 · 답이 없으면 버립니다. */
+export function 확인한조건정리(값: unknown): 확인한조건항목[] {
+  if (!Array.isArray(값)) return [];
+  return 값.flatMap((항목): 확인한조건항목[] => {
+    if (typeof 항목 !== "object" || 항목 === null) return [];
+    const o = 항목 as Record<string, unknown>;
+    const 이름 = typeof o["항목"] === "string" ? o["항목"].trim() : "";
+    const 답 = typeof o["답"] === "string" ? o["답"].trim() : "";
+    return 이름 && 답 ? [{ 항목: 이름, 답, 문장: 문장목록정리(o["문장"]), 해당문장: 문장목록정리(o["해당문장"]) }] : [];
+  });
+}
+
 /** 서버 값 「모름」은 사용자가 누른 버튼 그대로 「모르겠어요」로 보여 줍니다. */
 export function 답표기(답: string): string {
   return 답 === "모름" ? "모르겠어요" : 답;
+}
+
+/** 말 끝 받침에 맞는 조사 「로」·「으로」. ㄹ 받침과 받침 없는 말은 「로」입니다. 세목은 받침으로 끝나기도 합니다(시험·인증). */
+export function 로조사(말: string): string {
+  const 끝 = 말.trim().charCodeAt(말.trim().length - 1);
+  if (!(끝 >= 0xac00 && 끝 <= 0xd7a3)) return "로";
+  const 받침 = (끝 - 0xac00) % 28;
+  return 받침 === 0 || 받침 === 8 ? "로" : "으로";
+}
+
+/** 서버 `분류` · `분류후보[]` 한 건. 비목·표시문이 없으면 버립니다. */
+export function 분류정리(값: unknown): 분류값 | null {
+  if (typeof 값 !== "object" || 값 === null) return null;
+  const o = 값 as Record<string, unknown>;
+  const 비목 = typeof o["비목"] === "string" ? o["비목"].trim() : "";
+  const 표시문 = typeof o["표시문"] === "string" ? o["표시문"].trim() : "";
+  if (!비목 || !표시문) return null;
+  const 세목 = typeof o["세목"] === "string" && o["세목"].trim() ? o["세목"].trim() : null;
+  return { 비목, 세목, 표시문 };
+}
+
+/** 서버 `조건` · `근거경로`. 글자가 있는 항목만 남깁니다. */
+export function 문장목록정리(값: unknown): string[] {
+  if (!Array.isArray(값)) return [];
+  return 값.flatMap((v) => (typeof v === "string" && v.trim() ? [v.trim()] : []));
+}
+
+/** 서버 `용어풀이`. 용어와 풀이가 다 있는 것만 남깁니다. */
+export function 용어풀이정리(값: unknown): 용어풀이항목[] {
+  if (!Array.isArray(값)) return [];
+  return 값.flatMap((항목): 용어풀이항목[] => {
+    if (typeof 항목 !== "object" || 항목 === null) return [];
+    const o = 항목 as Record<string, unknown>;
+    const 용어 = typeof o["용어"] === "string" ? o["용어"].trim() : "";
+    const 풀이 = typeof o["풀이"] === "string" ? o["풀이"].trim() : "";
+    return 용어 && 풀이 ? [{ 용어, 풀이 }] : [];
+  });
+}
+
+/** 서버 `코드판정`. 모르는 `종류` 는 그릴 문구가 없으므로 없는 것으로 봅니다. */
+export function 코드판정정리(값: unknown): 코드판정값 | null {
+  if (typeof 값 !== "object" || 값 === null) return null;
+  const o = 값 as Record<string, unknown>;
+  const 글 = (k: string) => (typeof o[k] === "string" && (o[k] as string).trim() ? (o[k] as string).trim() : null);
+  const 종류 = o["종류"];
+  if (종류 !== "금지" && 종류 !== "한도초과" && 종류 !== "부가세기준미정") return null;
+  return { 종류, 비교값: 글("비교값"), 한도: 글("한도"), 발췌: 글("발췌") };
+}
+
+const 부가세값인가 = (v: unknown): v is 부가세구분 => v === "포함" || v === "공급가액" || v === "모름";
+
+/** 코드가 만든 부가세 확인 질문의 id. `question_generate.py::_새경로_준비` 가 정합니다. */
+export const 부가세질문id = "VAT";
+
+/**
+ * 입력의 부가세 구분에 부가세 확인 질문의 답을 더한 값.
+ * 주의: 서버 `question_generate.py::_부가세_값` 과 같은 표입니다. 서버가 판정에 쓰는 값과 화면에 적는 값이 어긋나지 않게 합니다.
+ */
+export function 부가세확정(입력: 부가세구분 | undefined, 답: unknown): 부가세구분 | undefined {
+  if (입력 === "포함" || 입력 === "공급가액") return 입력;
+  return 답 === "예" ? "포함" : 답 === "아니오" ? "공급가액" : 입력;
+}
+
+/** 금액 옆에 붙이는 말. 모르는 계획에는 아무 말도 붙이지 않습니다. */
+export function 부가세표기(값: 부가세구분 | undefined): string {
+  return 값 === "포함"
+    ? " (부가세 포함)"
+    : 값 === "공급가액"
+      ? " (공급가액, 부가세 별도)"
+      : 값 === "모름"
+        ? " (부가세 포함 여부 모름)"
+        : "";
+}
+
+/**
+ * 계획의 `정규화` 에 저장해 둔 온톨로지 경로 값. 계획 생성 API 에 따로 받는 칸이 없어 여기에 둡니다.
+ * 주의: 옛 경로 계획에는 이 키들이 없어 전부 undefined 입니다.
+ */
+export function 정규화저장값(정규화: Record<string, unknown> | null | undefined): {
+  부가세구분?: 부가세구분;
+  확정세목?: string;
+  수치?: Record<string, unknown>;
+} {
+  const 수치 = 정규화?.["수치"];
+  const 수치표 = typeof 수치 === "object" && 수치 !== null ? (수치 as Record<string, unknown>) : undefined;
+  const 부가세 = 수치표?.["부가세구분"];
+  const 세목 = 정규화?.["확정세목"];
+  return {
+    부가세구분: 부가세값인가(부가세) ? 부가세 : undefined,
+    확정세목: typeof 세목 === "string" && 세목 ? 세목 : undefined,
+    수치: 수치표,
+  };
 }
 
 /** 목록 한 줄 → ExpensePlan (상세 필드는 비어 있습니다) */
@@ -379,6 +520,19 @@ export function 상세를계획으로(d: 계획상세): ExpensePlan {
       (typeof 상세?.문의초안 === "string" ? 상세.문의초안 : null) ??
       (d.판정 === "판단불가" ? 초안읽기(d.plan_id) : null),
     사용자답변: 사용자답변정리(d.사용자답변),
+    ...정규화저장값(d.정규화),
+    분류: 분류정리(상세?.분류),
+    근거경로: 문장목록정리(상세?.근거경로),
+    코드판정: 코드판정정리(상세?.코드판정),
+    조건: 문장목록정리(상세?.조건),
+    기한조건: 문장목록정리(상세?.기한조건),
+    금지조건: 문장목록정리(상세?.금지조건),
+    해당시조건: 문장목록정리(상세?.해당시조건),
+    공통사항: 문장목록정리(상세?.공통사항),
+    확인한조건: 확인한조건정리(상세?.확인한조건),
+    조사: 상세?.조사 ?? null,
+    용어풀이: 용어풀이정리(상세?.용어풀이),
+    문의처: typeof 상세?.문의처 === "string" ? 상세.문의처 : null,
     기준문서: 기준문서정리(상세?.기준문서),
     latestDecisionId: d.latest_decision_id ?? null,
     내피드백: d.내피드백 ?? null,

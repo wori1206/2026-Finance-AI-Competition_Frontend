@@ -361,7 +361,7 @@ body .app-shell .expense-v5 .ai-before-checks>header button.outline:focus-visibl
 .my-business-heading p{margin:6px 0 0;color:#707874;font-size:12px}
 .my-business-heading button{height:34px;padding-inline:13px}
 .my-page .rules-overview{align-items:center;gap:24px}
-.business-period-grid{display:grid;grid-template-columns:repeat(3,minmax(120px,1fr));gap:0;margin:0}
+.business-period-grid{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:0;margin:0}
 .business-period-grid>div{min-width:140px;padding:3px 18px;border-left:1px solid #e5e8e6}
 .business-period-grid dt{color:#737b77;font-size:10px}
 .business-period-grid dd{margin:6px 0 0;color:#222725;font-size:13px;font-weight:700;white-space:nowrap}
@@ -652,7 +652,6 @@ body .app-shell .schedule-v2 .schedule-v2-calendar .schedule-v2-grid>div>button.
 .onboarding-landing .demo-result-card h3{margin-top:11px;font-size:17px}
 .onboarding-landing .demo-result-card ul{gap:7px;margin-top:12px;padding-top:12px}
 .onboarding-login-form>button{margin-top:8px}
-.vat-included{margin-left:5px;color:#707975;font-size:10.5px;font-weight:650}
 
 /* One-plan AI recheck questions. */
 .plan-recheck-modal{width:min(620px,calc(100vw - 36px));max-height:min(760px,calc(100vh - 40px));overflow:auto;border:1px solid #dfe5e2;border-radius:10px;background:#fff;box-shadow:0 22px 60px rgba(22,35,30,.18)}
@@ -1205,6 +1204,9 @@ pre.ai-inquiry-text{
   background:transparent;color:inherit;opacity:.6;font-size:14px;line-height:1;cursor:pointer;
 }
 .data-source-banner>button:hover{opacity:1;background:rgba(0,0,0,.05)}
+.data-source-banner.profile-ratio-warning{margin:14px 0 0}
+.data-source-banner.profile-ratio-warning.in-modal{margin:0 24px 16px}
+@media(max-width:540px){.data-source-banner.profile-ratio-warning.in-modal{margin:0 18px 14px}}
 @media(max-width:800px){.data-source-banner{margin:0 16px}}
 
 /* 새 지출 계획 3단계 확인 질문. `.question` 의 테두리·버튼 모양을 그대로 쓰고 세로로만 쌓습니다. */
@@ -1231,6 +1233,32 @@ pre.ai-inquiry-text{
 .ai-confirmed li{display:flex;align-items:baseline;justify-content:space-between;gap:16px;font-size:13px;line-height:1.55;color:var(--sub)}
 .ai-confirmed li>span{min-width:0}
 .ai-confirmed li>strong{flex:none;font-weight:600;color:var(--text)}
+/* 선택 칸 답 아래, 그 답으로 빠진 「안 되는 경우」 문장. 한 줄을 다 쓴다 */
+.ai-confirmed li{flex-wrap:wrap}
+.ai-confirmed li>small{flex-basis:100%;display:grid;gap:2px;font-size:12px;line-height:1.5;color:var(--sub)}
+.ai-confirmed-fold>summary{display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;list-style:none}
+.ai-confirmed-fold>summary::-webkit-details-marker{display:none}
+.ai-confirmed-fold>summary>b{font-size:13px}
+.ai-confirmed-fold>summary>svg{flex:none;color:var(--sub);transform:rotate(90deg);transition:transform .15s ease}
+.ai-confirmed-fold[open]>summary>svg{transform:rotate(-90deg)}
+
+/* 분류 확인 문구. 판정 기준을 알리는 문장이라 `.auto-check-note` 안에서 글자를 조금 키웁니다. */
+.classification-note{margin:0 0 14px}
+.classification-note b{font-size:14px}
+
+/* 3단계 숫자·선택 칸. `.question` 테두리를 쓰고 세로로만 쌓습니다. */
+.question.extra-inputs{flex-direction:column;align-items:stretch;gap:12px}
+.question.extra-inputs>.field-grid{display:grid;gap:12px}
+.confirm-question-text .confirm-question-term strong{font-weight:600;color:var(--text)}
+
+/* 결과 화면 코드 판정. 카드는 `.ai-confirmed`, 원문 칸은 `.confirm-question-source` 와 같은 모양입니다. */
+.ai-code-verdict{display:grid;gap:9px}
+.ai-code-verdict>p{margin:0;font-size:14px;font-weight:600;line-height:1.6;color:var(--text);overflow-wrap:anywhere}
+.ai-code-excerpt{padding:10px 12px;border-radius:5px;background:var(--soft)}
+.ai-code-excerpt small{display:block;font-size:12px;font-weight:600;color:var(--text)}
+.ai-code-excerpt p{margin:5px 0 0;font-size:12px;line-height:1.7;color:var(--sub);white-space:pre-wrap;overflow-wrap:anywhere}
+.ai-code-verdict>button{justify-self:start}
+.ai-term-list li{justify-content:flex-start}
 
 /* 폰 너비: workspace.css 의 max-width:800 규칙은 globals.css 맨 위 @import 로 먼저 읽혀서 globals.css 의 일반 규칙에 진다.
    그래서 폰에서도 사이드바 여백 236px 이 남아 본문이 154px 로 줄었다. 진 선언을 여기서 다시 적고, 같은 이유로 깨진 폰 화면을 함께 고친다.
@@ -1314,6 +1342,11 @@ input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-ou
 .recovery-message.success{background:var(--brand-soft);color:var(--color-brand)}
 .recovery-message.error{background:var(--color-danger-field-ring);color:var(--color-danger)}
 @media(max-width:560px){.recovery-page{padding-top:36px}.recovery-card{padding:20px}}
+
+/* 규정 원문의 표 (복원 문서) */
+.regulation-table{margin:6px 0;overflow-x:auto}
+.regulation-table table{width:100%;border-collapse:collapse;font-size:12px;line-height:1.6;color:var(--sub)}
+.regulation-table td{padding:5px 8px;border:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}
 
 /* 집행 일정: 기한 지난 일정 · 날짜 미정 묶음 */
 .schedule-overdue{margin-bottom:15px;border:1px solid var(--danger-border);border-radius:7px;background:var(--red-soft)}
@@ -1437,3 +1470,17 @@ input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-ou
 .expense-v5-uploaded-file{display:flex;align-items:center;gap:8px}
 .expense-v5-uploaded-file>.attachment-name{flex:1 1 auto}
 .expense-v5 .expense-v5-evidence-item{height:auto!important;min-height:64px}
+.research-progress { text-align: left; max-height: 240px; overflow-y: auto; padding: 12px 0 12px 22px; font-size: 14px; line-height: 1.55; }
+.research-progress li { margin: 8px 0; }
+.research-progress li > span { color: #6453cc; font-weight: 700; margin-right: 6px; }
+.research-progress details, .research-candidates details { margin-top: 5px; font-size: 13px; }
+.research-progress a, .research-candidates a { color: #5445bd; overflow-wrap: anywhere; }
+.research-settings { border: 1px solid #e1def0; border-radius: 12px; padding: 16px; margin: 18px 0; text-align: left; }
+.research-settings legend { font-weight: 700; padding: 0 5px; }
+.research-settings p { font-size: 13px; line-height: 1.5; }
+.research-settings label, .research-candidates label { display: block; margin-top: 10px; font-size: 14px; }
+.research-settings input:not([type="checkbox"]), .research-candidates input { display: block; width: 100%; border: 1px solid #d5d2e3; border-radius: 8px; padding: 9px; margin-top: 5px; }
+.research-candidates article { padding: 14px; margin: 12px 0; border: 1px solid #e1def0; border-radius: 12px; text-align: left; }
+.research-candidates p { margin: 6px 0; }
+.research-candidates button { border: 1px solid #d5d2e3; border-radius: 8px; background: white; padding: 8px 10px; margin: 6px 6px 0 0; }
+.research-candidates button[aria-pressed="true"] { border-color: #6453cc; color: #5445bd; background: #f1efff; }
