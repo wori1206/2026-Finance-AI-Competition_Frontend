@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps } from "react";
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps } from "react";
 import { INITIAL_PLANS } from "../lib/mock-data";
 import { planService } from "../lib/plan-service";
 import type { 기준문서정보,
@@ -1431,6 +1431,8 @@ export default function CheckumaitApp() {
     작업Ref.current = 바꾸기(작업Ref.current);
     set작업들(작업Ref.current);
   };
+  // 계획 id → 마지막 판정의 작업 내역. 결과 화면의 「작업 내역 보기」가 읽습니다. 서버에 저장하지 않습니다.
+  const [판정기록들, set판정기록들] = useState<Record<string, 판정기록>>({});
   const 점검중인가 = (id: string) => 작업Ref.current.some((j) => j.계획.id === id && !j.결과);
   /** 계획을 넣거나 바꿉니다. 화면에만 씌운 「점검 중」은 저장하지 않습니다. */
   const 계획반영 = (계획: ExpensePlan) => {
@@ -1452,9 +1454,13 @@ export default function CheckumaitApp() {
     작업바꾸기((이전) => [...이전, { ...입력, 키, 최소화: false }]);
     return true;
   };
-  const 판정끝 = (키: number, 판정된계획?: ExpensePlan, 오류?: string) => {
+  const 판정끝 = (키: number, 판정된계획?: ExpensePlan, 오류?: string, 기록?: 판정기록) => {
     const 작업 = 작업Ref.current.find((j) => j.키 === 키);
     if (!작업) return;
+    if (기록) {
+      const 남길값 = { ...기록, 오류 };
+      set판정기록들((이전) => ({ ...이전, [작업.계획.id]: 남길값, ...(판정된계획 ? { [판정된계획.id]: 남길값 } : {}) }));
+    }
     // 점검 중에 지운 계획을 결과로 되살리지 않습니다.
     if (판정된계획 && 계획Ref.current.some((p) => p.id === 판정된계획.id)) 계획반영(판정된계획);
     // 판정이 할일을 만들거나 지우므로 일정도 다시 읽습니다. 안 그러면 새로고침 전까지 옛 목록이 보입니다.
@@ -1475,6 +1481,14 @@ export default function CheckumaitApp() {
     탭제목알림(오류 ? "점검 실패 · 써도돼요" : "점검 완료 · 써도돼요");
   };
   const 도는작업있음 = 작업들.some((j) => !j.결과);
+  // 점검 화면이 페이지 자리를 차지하고 있는지. 이때 다른 페이지 내용은 숨깁니다(지우지 않아 입력값이 남습니다).
+  const 점검화면중 = 작업들.some((j) => !j.결과 && !j.최소화);
+  // 사이드바 · 뒤로 가기로 다른 화면에 가면 점검은 접어 두고 그 화면을 보여 줍니다. 끝나면 아래 알림으로 알립니다.
+  const 화면키 = route.page === "plan-detail" ? `plan-detail:${route.id}` : route.page;
+  useEffect(() => {
+    if (!작업Ref.current.some((j) => !j.결과 && !j.최소화)) return;
+    작업바꾸기((이전) => 이전.map((j) => (!j.결과 && !j.최소화 ? { ...j, 최소화: true, 접은적: true } : j)));
+  }, [화면키]);
   useEffect(() => {
     if (!도는작업있음) return;
     const 경고 = (event: BeforeUnloadEvent) => event.preventDefault();
@@ -1962,7 +1976,7 @@ export default function CheckumaitApp() {
           onClick={() => setMobileNav(false)}
         />
       )}
-      <main className="main-area">
+      <main className={`main-area ${점검화면중 ? "is-judging" : ""}`}>
         <header className="topbar">
           <div className="topbar-leading">
             <button
@@ -1989,6 +2003,70 @@ export default function CheckumaitApp() {
         {/* 주의: 지금 보이는 자료가 '서버 것이 아닐 때' 만 뜹니다. 정상이면 아무것도
             안 그립니다 — 잘 되는 날 배너가 있으면 그게 더 나쁩니다. */}
         <DataSourceBanner />
+        {/* 판정 중인 작업. 펼친 작업은 페이지 자리에 그려지고(`.judge-run`), 접은 작업과 끝난 작업은 오른쪽 아래 알림입니다. */}
+        {작업들.map((작업, 순번) =>
+          작업.결과 ? (
+            <aside
+              key={작업.키}
+              className={`judge-pill ${작업.결과.오류 || 작업.결과.저장안됨 ? "failed" : "done"}`}
+              role="status"
+              style={{ bottom: 20 + 파일높이 * 순번 }}
+            >
+              <Icon name={작업.결과.오류 || 작업.결과.저장안됨 ? "alert" : "check"} size={18} />
+              <span>
+                <b>{작업.계획.name}</b>
+                <small title={작업.결과.오류}>
+                  {작업.결과.오류
+                    ? `점검 실패 · ${작업.결과.오류}`
+                    : 작업.결과.저장안됨
+                      ? "결과가 저장되지 않았어요. 다시 점검해 주세요."
+                      : "AI 점검이 끝났어요."}
+                </small>
+              </span>
+              <button
+                onClick={() => {
+                  작업바꾸기((이전) => 이전.filter((j) => j.키 !== 작업.키));
+                  go({ page: "plan-detail", id: 작업.계획.id });
+                }}
+              >
+                {작업.결과.오류 ? "계획 보기" : "결과 보기"}
+              </button>
+              <button
+                aria-label="알림 닫기"
+                onClick={() => 작업바꾸기((이전) => 이전.filter((j) => j.키 !== 작업.키))}
+              >
+                ×
+              </button>
+            </aside>
+          ) : (
+            <AiCheckingOverlay
+              key={작업.키}
+              count={작업.count}
+              planId={작업.planId}
+              제목={작업.제목}
+              대체입력={작업.대체입력}
+              답변={작업.답변}
+              질문세트={작업.질문세트}
+              추가입력값={작업.추가입력값}
+              확정세목={작업.확정세목}
+              부가세구분={작업.부가세구분}
+              조사ID={작업.조사ID}
+              조사답변={작업.조사답변}
+              이전진행={작업.이전진행}
+              이름={작업.계획.name}
+              순번={순번}
+              최소화={작업.최소화}
+              접기={() => {
+                작업바꾸기((이전) => 이전.map((j) => (j.키 === 작업.키 ? { ...j, 최소화: true, 접은적: true } : j)));
+                // 작성 화면은 이미 제출이 끝났으므로 남아 있으면 같은 내용을 또 낼 수 있습니다.
+                if (route.page === "plan-new") go({ page: "plans" });
+              }}
+              펼치기={() => 작업바꾸기((이전) => 이전.map((j) => (j.키 === 작업.키 ? { ...j, 최소화: false } : j)))}
+              onComplete={(판정된계획, 기록) => 판정끝(작업.키, 판정된계획, undefined, 기록)}
+              onFail={(메시지, 기록) => 판정끝(작업.키, undefined, 메시지, 기록)}
+            />
+          ),
+        )}
         {route.page === "home" && (
           <HomePage plans={화면계획} schedules={schedules} go={go} 자료받음={자료받음} 일정실패={일정실패} />
         )}
@@ -2037,6 +2115,7 @@ export default function CheckumaitApp() {
         {route.page === "plan-detail" && (
           <PlanDetail
             plan={화면계획.find((plan) => plan.id === route.id)}
+            작업내역={판정기록들[route.id]}
             allPlans={화면계획}
             판정시작={판정시작}
             update={계획반영}
@@ -2099,69 +2178,6 @@ export default function CheckumaitApp() {
       )}
       {profileOpen && (
         <ProfileModal close={() => setProfileOpen(false)} />
-      )}
-      {작업들.map((작업, 순번) =>
-        작업.결과 ? (
-          <aside
-            key={작업.키}
-            className={`judge-pill ${작업.결과.오류 || 작업.결과.저장안됨 ? "failed" : "done"}`}
-            role="status"
-            style={{ bottom: 20 + 파일높이 * 순번 }}
-          >
-            <Icon name={작업.결과.오류 || 작업.결과.저장안됨 ? "alert" : "check"} size={18} />
-            <span>
-              <b>{작업.계획.name}</b>
-              <small title={작업.결과.오류}>
-                {작업.결과.오류
-                  ? `점검 실패 · ${작업.결과.오류}`
-                  : 작업.결과.저장안됨
-                    ? "결과가 저장되지 않았어요. 다시 점검해 주세요."
-                    : "AI 점검이 끝났어요."}
-              </small>
-            </span>
-            <button
-              onClick={() => {
-                작업바꾸기((이전) => 이전.filter((j) => j.키 !== 작업.키));
-                go({ page: "plan-detail", id: 작업.계획.id });
-              }}
-            >
-              {작업.결과.오류 ? "계획 보기" : "결과 보기"}
-            </button>
-            <button
-              aria-label="알림 닫기"
-              onClick={() => 작업바꾸기((이전) => 이전.filter((j) => j.키 !== 작업.키))}
-            >
-              ×
-            </button>
-          </aside>
-        ) : (
-          <AiCheckingOverlay
-            key={작업.키}
-            count={작업.count}
-            planId={작업.planId}
-            제목={작업.제목}
-            대체입력={작업.대체입력}
-            답변={작업.답변}
-            질문세트={작업.질문세트}
-            추가입력값={작업.추가입력값}
-            확정세목={작업.확정세목}
-            부가세구분={작업.부가세구분}
-            조사ID={작업.조사ID}
-            조사답변={작업.조사답변}
-            이전진행={작업.이전진행}
-            이름={작업.계획.name}
-            순번={순번}
-            최소화={작업.최소화}
-            접기={() => {
-              작업바꾸기((이전) => 이전.map((j) => (j.키 === 작업.키 ? { ...j, 최소화: true, 접은적: true } : j)));
-              // 작성 화면은 이미 제출이 끝났으므로 남아 있으면 같은 내용을 또 낼 수 있습니다.
-              if (route.page === "plan-new") go({ page: "plans" });
-            }}
-            펼치기={() => 작업바꾸기((이전) => 이전.map((j) => (j.키 === 작업.키 ? { ...j, 최소화: false } : j)))}
-            onComplete={(판정된계획) => 판정끝(작업.키, 판정된계획)}
-            onFail={(메시지) => 판정끝(작업.키, undefined, 메시지)}
-          />
-        ),
       )}
       {확인대기 && (
         <ConfirmDialog
@@ -3784,27 +3800,277 @@ function 탭제목알림(제목: string) {
 /** 접은 판정 표시 한 줄의 높이. 여러 건이면 위로 쌓습니다. */
 const 파일높이 = 66;
 
-function 진행목록({ 항목들 }: { 항목들: 진행항목[] }) {
-  if (!항목들.length) return null;
-  return <ol className="research-progress" aria-live="polite">{항목들.map((항목) => <li key={항목.id}>
-    <span>{항목.상태}</span> {항목.문장}
-    {!!항목.출처.length && <details><summary>출처 보기</summary>{항목.출처.map((출처, i) => <p key={i}><a href={출처.url} target="_blank" rel="noopener noreferrer">{출처.제목}</a>{출처.발췌 && <> · {출처.발췌}</>}</p>)}</details>}
-  </li>)}</ol>;
+/** 서버 진행 상태 → 화면 글자. 서버가 보내는 값은 진행중 · 완료 · 실패 · 건너뜀입니다. */
+const 상태표기: Record<string, string> = { 진행중: "진행 중", 완료: "완료", 실패: "실패", 건너뜀: "건너뜀" };
+
+function 초표기(ms: number): string {
+  const 초 = Math.max(0, Math.floor(ms / 1000));
+  return 초 < 60 ? `${초}초` : `${Math.floor(초 / 60)}분 ${초 % 60}초`;
 }
 
+/** 켜져 있는 동안 1초마다 다시 그려 경과 시간을 올립니다. */
+function use지금(켜짐: boolean): number {
+  const [지금, set지금] = useState(() => Date.now());
+  useEffect(() => {
+    if (!켜짐) return;
+    const 타이머 = window.setInterval(() => set지금(Date.now()), 1000);
+    return () => window.clearInterval(타이머);
+  }, [켜짐]);
+  return 지금;
+}
+
+/** 가장 늦게 받은 작업. 한 줄 요약은 이 작업의 문장입니다. */
+function 최근항목(항목들: 진행항목[]): 진행항목 | null {
+  return 항목들.reduce<진행항목 | null>((a, b) => (!a || (b.갱신 ?? 0) >= (a.갱신 ?? 0) ? b : a), null);
+}
+
+/** 출처 사이트 이름. 서버는 `제목` 에 호스트 이름을 넣습니다. 없으면 주소에서 뽑습니다. */
+function 사이트이름(출처: { 제목: string; url: string }): string {
+  if (출처.제목 && 출처.제목 !== 출처.url) return 출처.제목;
+  try {
+    return new URL(출처.url).hostname.replace(/^www\./, "");
+  } catch {
+    return 출처.제목 || 출처.url;
+  }
+}
+
+/**
+ * 서버가 보낸 작업 이벤트를 한 줄 요약 + 펼치는 목록으로 보여 줍니다(판정 · 공개 검색 · 확인 질문 공통).
+ * 주의: 이벤트를 지어내지 않습니다. 받은 것이 없으면 `기본문장` 한 줄만 보입니다.
+ */
+function 작업로그({
+  항목들,
+  진행중,
+  시작,
+  끝,
+  기본문장,
+  끝문장,
+  실패,
+  펼침기본 = false,
+  className = "",
+  앞단계이름 = "앞 단계",
+  이번단계이름 = "이번 작업",
+}: {
+  항목들: 진행항목[];
+  진행중: boolean;
+  /** 이 작업을 시작한 시각(ms). 이보다 먼저 받은 항목(앞 단계 기록)에는 걸린 시간을 적지 않습니다. */
+  시작?: number;
+  /** 끝난 시각(ms). 없으면 마지막으로 받은 시각입니다. */
+  끝?: number;
+  /** 아직 받은 이벤트가 없을 때의 한 줄 */
+  기본문장: string;
+  /** 끝났을 때의 한 줄. 없으면 마지막으로 받은 문장 */
+  끝문장?: string;
+  /** 있으면 실패로 그립니다. 사용자에게 보이는 문장이어야 합니다. */
+  실패?: string;
+  펼침기본?: boolean;
+  className?: string;
+  /** `시작` 전에 받은 항목(예: 판정 전 공개 검색)과 이번 작업 항목을 나눠 보일 때의 소제목 */
+  앞단계이름?: string;
+  이번단계이름?: string;
+}) {
+  const [펼침, set펼침] = useState(펼침기본);
+  const 지금 = use지금(진행중);
+  const 목록id = useId();
+  const 목록Ref = useRef<HTMLOListElement>(null);
+  // 진행 중에는 새 작업이 보이도록 목록 끝으로 내립니다.
+  useEffect(() => {
+    if (진행중 && 펼침 && 목록Ref.current) 목록Ref.current.scrollTop = 목록Ref.current.scrollHeight;
+  }, [진행중, 펼침, 항목들]);
+  const 앞단계수 = 시작 ? 항목들.filter((v) => v.처음 !== undefined && v.처음 < 시작).length : 0;
+  const 나눔 = 앞단계수 > 0 && 앞단계수 < 항목들.length;
+  const 최근 = 최근항목(항목들);
+  const 한줄 = 실패 ?? (진행중 ? (최근?.문장 ?? 기본문장) : (끝문장 ?? 최근?.문장 ?? 기본문장));
+  const 마지막 = 끝 ?? Math.max(0, ...항목들.map((v) => v.갱신 ?? 0));
+  const 경과 = 시작 ? 초표기((진행중 ? 지금 : 마지막 || 시작) - 시작) : "";
+  const 걸린시간 = (v: 진행항목) => {
+    if (!v.처음 || (시작 && v.처음 < 시작)) return "";
+    const ms = (v.상태 === "진행중" && 진행중 ? 지금 : (v.갱신 ?? v.처음)) - v.처음;
+    return ms >= 1000 ? 초표기(ms) : "";
+  };
+  return (
+    <div className={`work-log ${진행중 ? "is-running" : 실패 ? "is-failed" : "is-done"} ${className}`}>
+      <p className="sr-only" aria-live={실패 ? "assertive" : "polite"}>{한줄}</p>
+      <button type="button" className="work-log-head" aria-expanded={펼침} aria-controls={목록id} onClick={() => set펼침((v) => !v)}>
+        <span className="work-log-mark" aria-hidden="true">
+          {진행중 ? <span className="work-log-spinner" /> : <Icon name={실패 ? "alert" : "check"} size={16} />}
+        </span>
+        <span className="work-log-line">{한줄}</span>
+        {경과 && <span className="work-log-time">{경과}</span>}
+        <span className="work-log-toggle">
+          {펼침 ? "접기" : 진행중 ? "자세히" : "작업 내역 보기"}
+          <Icon name="chevronDown" size={14} />
+        </span>
+      </button>
+      {펼침 && (
+        <ol id={목록id} ref={목록Ref} className="work-log-list">
+          {!항목들.length && <li className="is-empty">아직 받은 작업 내역이 없어요.</li>}
+          {항목들.flatMap((v, i) => {
+            const 소제목 = 나눔 && (i === 0 || i === 앞단계수)
+              ? [<li key={`구분-${i}`} className="work-log-divider" aria-hidden="true">{i === 0 ? 앞단계이름 : 이번단계이름}</li>]
+              : [];
+            // 끝난 기록에 남은 「진행중」은 끝나기 전에 멈춘 작업입니다. 계속 도는 것처럼 그리지 않습니다.
+            const 종류 = v.상태 in 상태표기 ? (v.상태 === "진행중" && !진행중 ? "멈춤" : v.상태) : 진행중 ? "진행중" : "멈춤";
+            const 시간 = 걸린시간(v);
+            return [...소제목, (
+              <li key={v.id} className={`is-${종류}`}>
+                <span className="work-log-icon" aria-hidden="true">
+                  {종류 === "진행중" ? <span className="work-log-spinner" /> : 종류 === "완료" ? <Icon name="check" size={14} /> : 종류 === "실패" ? <Icon name="alert" size={14} /> : <i />}
+                </span>
+                <span className="work-log-text">
+                  {v.문장}
+                  <span className="sr-only"> ({종류 === "멈춤" ? "끝나기 전에 멈춤" : 상태표기[종류]})</span>
+                  {!!v.출처.length && (
+                    <span className="work-log-sources">
+                      {v.출처.map((c, i) => (
+                        <a key={i} href={c.url} target="_blank" rel="noopener noreferrer">{사이트이름(c)}</a>
+                      ))}
+                    </span>
+                  )}
+                </span>
+                {시간 && <span className="work-log-time">{시간}</span>}
+              </li>
+            )];
+          })}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+/** 이벤트를 목록에 넣습니다. 같은 id 는 새 상태로 바꾸고, 받은 시각을 붙여 걸린 시간을 셉니다. */
 function 진행추가(이전: 진행항목[], 항목: 진행항목): 진행항목[] {
+  const 지금 = Date.now();
   const 위치 = 이전.findIndex((v) => v.id === 항목.id);
-  if (위치 < 0) return [...이전, 항목];
-  return 이전.map((v, i) => i === 위치 ? 항목 : v);
+  if (위치 < 0) return [...이전, { ...항목, 처음: 지금, 갱신: 지금 }];
+  return 이전.map((v, i) => (i === 위치 ? { ...항목, 처음: v.처음 ?? 지금, 갱신: 지금 } : v));
 }
 
-function 조사확인({ 후보, 답, 변경 }: { 후보: 조사후보[]; 답: Record<string, 조사답변>; 변경: (v: 조사답변) => void }) {
-  return <div className="research-candidates">{후보.map((항목) => <article key={항목.id}>
-    <strong>{항목.유형}</strong><p>{항목.내용}</p>
-    {!!항목.출처?.length && <details><summary>출처 보기</summary>{항목.출처.filter((c) => /^https?:\/\//i.test(c.url)).map((c, i) => <p key={i}><a href={c.url} target="_blank" rel="noopener noreferrer">{c.제목}</a>{c.발췌 && <> · {c.발췌}</>}</p>)}</details>}
-    <div role="group" aria-label={`${항목.내용} 확인`}>{(["맞아요", "아니에요", "모르겠어요"] as const).map((선택) => <button type="button" key={선택} aria-pressed={답[항목.id]?.답 === 선택} onClick={() => 변경({ id: 항목.id, 답: 선택, 정정: 선택 === "아니에요" ? 답[항목.id]?.정정 : undefined })}>{선택}</button>)}</div>
-    {답[항목.id]?.답 === "아니에요" && <label>직접 정정하기 (선택)<input maxLength={500} value={답[항목.id]?.정정 ?? ""} onChange={(e) => 변경({ id: 항목.id, 답: "아니에요", 정정: e.target.value })} /></label>}
-  </article>)}</div>;
+/** 공개 정보 유형(서버 `web_research.KINDS`) → 화면 이름. 모르는 값은 그대로 내보내지 않습니다. */
+const 조사유형이름: Record<string, string> = {
+  제품성격: "제품·서비스 성격",
+  판매자: "판매자 정보",
+  공개등록: "사업자 공개 등록",
+  결제안내: "결제 방법 안내",
+  통화: "결제 통화",
+  가격: "가격",
+  증빙안내: "증빙 발급 안내",
+  업체이용조건: "업체 이용 조건",
+};
+const 유형표기 = (유형: string) => 조사유형이름[유형] ?? "공개 정보";
+
+/** 페이지 발췌를 화면용 글로 바꿉니다. 마크다운 기호만 지우고 글자는 바꾸지 않습니다(서버의 발췌 값은 그대로 둡니다). */
+function 발췌글(글: string): string {
+  return 글
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .split(/\r?\n/)
+    .map((줄) => 줄.replace(/^\s*(?:#{1,6}|[-*+>]|\d+\.)\s+/, "").replace(/[*_`|~]+/g, " ").replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+/**
+ * 검색으로 찾은 후보 한 건. 서버가 다듬은 확인 문장(`질문`)을 크게 보이고, 출처 사이트와 원문 발췌는 「출처 보기」로 엽니다.
+ * 주의: `질문` 은 화면 표시용이고 판정에는 발췌와 답만 갑니다. 기본 문장(`질문종류`=기본)이거나 옛 서버라 `질문` 이 없으면
+ *    발췌를 바로 보여 줍니다 — 무엇을 확인하는지 알 수 있어야 답할 수 있습니다.
+ */
+function 조사카드({ 항목, children }: { 항목: 조사후보 & { 답?: string; 정정?: string }; children?: React.ReactNode }) {
+  const [출처열림, set출처열림] = useState(false);
+  const 출처id = useId();
+  const 출처들 = (항목.출처 ?? []).filter((c) => /^https?:\/\//i.test(c.url));
+  const 인용 = 발췌글(출처들.find((c) => c.발췌)?.발췌 || 항목.내용 || "");
+  const 질문 = 항목.질문?.trim();
+  const 발췌바로 = !질문 || 항목.질문종류 === "기본";
+  const 사이트 = (
+    <span className="research-sites">
+      {출처들.map((c, i) => (
+        <a key={i} className="research-source" href={c.url} target="_blank" rel="noopener noreferrer">
+          <span className="research-favicon" aria-hidden="true">{사이트이름(c).slice(0, 1).toUpperCase()}</span>
+          {사이트이름(c)}
+          <span className="sr-only"> (새 창에서 열기)</span>
+        </a>
+      ))}
+      {!출처들.length && <span className="research-source is-missing">출처 주소 없음</span>}
+    </span>
+  );
+  return (
+    <article className="research-card">
+      <span className="research-kind">{유형표기(항목.유형)}</span>
+      {질문 && <p className="research-question">{질문}</p>}
+      {발췌바로 ? (
+        <>
+          {사이트}
+          {인용 && <blockquote>{인용}</blockquote>}
+        </>
+      ) : (
+        <>
+          <button type="button" className="research-source-toggle" aria-expanded={출처열림} aria-controls={출처id} onClick={() => set출처열림((v) => !v)}>
+            {출처열림 ? "출처 접기" : "출처 보기"}
+            <Icon name="chevronDown" size={13} />
+          </button>
+          {출처열림 && (
+            <div id={출처id} className="research-source-body">
+              {사이트}
+              {인용 && <blockquote>{인용}</blockquote>}
+            </div>
+          )}
+        </>
+      )}
+      {children}
+    </article>
+  );
+}
+
+/** 공개 정보는 규정이 아니고 확인 전 정보라는 안내. 후보 목록과 결과 화면이 같이 씁니다. */
+function 조사안내({ 결과화면 = false }: { 결과화면?: boolean }) {
+  return (
+    <p className="research-notice">
+      <Icon name="alert" size={15} />
+      <span>
+        {결과화면
+          ? "웹에서 찾은 공개 정보예요. 규정이 아니며, 실제 거래와 같은지는 직접 확인한 답을 기준으로 봤어요."
+          : "웹에서 찾은 공개 정보예요. 규정이 아니고, 아직 사실로 확인된 내용도 아니에요. 실제로 사려는 것과 맞는지 골라 주세요."}
+      </span>
+    </p>
+  );
+}
+
+function 조사확인({ 후보, 답, 변경, 검색어 }: { 후보: 조사후보[]; 답: Record<string, 조사답변>; 변경: (v: 조사답변) => void; 검색어?: string }) {
+  const 답한수 = 후보.filter((c) => 답[c.id]).length;
+  return (
+    <section className="research-results">
+      <header className="research-results-head">
+        <span className="research-search-icon" aria-hidden="true"><Icon name="search" size={16} /></span>
+        <div>
+          <b>{검색어 ? `「${검색어}」 검색 결과 ${후보.length}건` : `검색 결과 ${후보.length}건`}</b>
+          <small>{답한수 === 후보.length ? "모두 확인했어요" : `${후보.length}건 중 ${답한수}건 확인`}</small>
+        </div>
+      </header>
+      <조사안내 />
+      {후보.map((항목) => (
+        <조사카드 key={항목.id} 항목={항목}>
+          <div className="research-answer" role="group" aria-label={`${유형표기(항목.유형)} 정보가 맞는지 확인`}>
+            {(["맞아요", "아니에요", "모르겠어요"] as const).map((선택) => (
+              <button
+                type="button"
+                key={선택}
+                aria-pressed={답[항목.id]?.답 === 선택}
+                onClick={() => 변경({ id: 항목.id, 답: 선택, 정정: 선택 === "아니에요" ? 답[항목.id]?.정정 : undefined })}
+              >
+                {선택}
+              </button>
+            ))}
+          </div>
+          {답[항목.id]?.답 === "아니에요" && (
+            <label className="research-correct">
+              실제 내용을 적어 주세요 (선택)
+              <input maxLength={500} value={답[항목.id]?.정정 ?? ""} onChange={(e) => 변경({ id: 항목.id, 답: "아니에요", 정정: e.target.value })} />
+            </label>
+          )}
+        </조사카드>
+      ))}
+    </section>
+  );
 }
 
 function 조사결과보기({ 결과 }: { 결과: import("../lib/questions").조사결과 | null | undefined }) {
@@ -3813,17 +4079,26 @@ function 조사결과보기({ 결과 }: { 결과: import("../lib/questions").조
   const 조건 = Array.isArray(결과.업체이용조건) ? 결과.업체이용조건 : [];
   const 미확인 = Array.isArray(결과.미확인) ? 결과.미확인.filter((v) => v.유형 !== "업체이용조건") : [];
   if (!정보.length && !조건.length && !미확인.length && !결과.부족정보?.length && !결과.사용자확인?.length) return null;
-  const 항목 = (v: 조사후보 & { 답?: string; 정정?: string }, i: number) => <article key={`${v.id}-${i}`}>
-    <strong>{v.유형}</strong><p>{v.내용}</p>
-    {v.답 && <p>답변: {v.답}</p>}{v.정정 && <p>직접 정정한 내용: {v.정정}</p>}
-    {!!v.출처?.length && <details><summary>출처 보기</summary>{v.출처.filter((c) => /^https?:\/\//i.test(c.url)).map((c, j) => <p key={j}><a href={c.url} target="_blank" rel="noopener noreferrer">{c.제목}</a>{c.발췌 && <> · {c.발췌}</>}</p>)}</details>}
-  </article>;
-  return <section className="research-candidates"><h3>검색해 확인한 정보</h3>{정보.map(항목)}
-    {!!미확인.length && <><h4>확인되지 않은 정보</h4>{미확인.map(항목)}</>}
-    {!!조건.length && <><h4>업체 이용 조건</h4><p>업체가 안내한 내용입니다.</p>{조건.map(항목)}</>}
-    {!!결과.부족정보?.length && <p>더 확인이 필요한 공개 정보: {결과.부족정보.join(" · ")}</p>}
-    <직접확인안내 항목들={결과.사용자확인 ?? []} 결과화면 />
-  </section>;
+  const 항목 = (v: 조사후보 & { 답?: string; 정정?: string }, i: number) => (
+    <조사카드 key={`${v.id}-${i}`} 항목={v}>
+      {v.답 && <p className="research-answered">내 확인: {v.답}</p>}
+      {v.정정 && <p className="research-answered">직접 적은 내용: {v.정정}</p>}
+    </조사카드>
+  );
+  return (
+    <section className="research-results">
+      <header className="research-results-head">
+        <span className="research-search-icon" aria-hidden="true"><Icon name="search" size={16} /></span>
+        <div><b>검색해 확인한 공개 정보</b></div>
+      </header>
+      <조사안내 결과화면 />
+      {정보.map(항목)}
+      {!!미확인.length && <><h4>확인되지 않은 정보</h4>{미확인.map(항목)}</>}
+      {!!조건.length && <><h4>업체 이용 조건</h4><p>업체가 안내한 내용입니다.</p>{조건.map(항목)}</>}
+      {!!결과.부족정보?.length && <p>더 확인이 필요한 공개 정보: {결과.부족정보.map(유형표기).join(" · ")}</p>}
+      <직접확인안내 항목들={결과.사용자확인 ?? []} 결과화면 />
+    </section>
+  );
 }
 
 function 직접확인안내({ 항목들, 결과화면 = false }: { 항목들: { 항목: string; 질문: string }[]; 결과화면?: boolean }) {
@@ -3831,12 +4106,137 @@ function 직접확인안내({ 항목들, 결과화면 = false }: { 항목들: { 
   return <section className="research-settings"><b>직접 확인할 사항</b><p>{결과화면 ? "공개 정보만으로는 알 수 없는 내용이에요. 집행 전에 직접 확인해 주세요." : "공개 정보만으로는 알 수 없는 내용이에요. 다음 규정 질문에서 해당 내용을 물으면 답해 주세요."}</p><ul>{항목들.map((v, i) => <li key={`${v.항목}-${i}`}>{v.질문}</li>)}</ul></section>;
 }
 
-function 공개검색설정({ 사용, 설정, 검색어, 검색어변경, url, url변경 }: { 사용: boolean; 설정: (v: boolean) => void; 검색어: string; 검색어변경: (v: string) => void; url: string; url변경: (v: string) => void }) {
-  return <fieldset className="research-settings"><legend>공개 정보 검색</legend>
-    <p>선택하면 아래에 직접 입력한 공개 검색어와 공식 판매 URL을 외부 검색 서비스에 전송합니다. 개인 정보나 계약 정보는 입력하지 마세요.</p>
-    <label><input type="checkbox" checked={사용} onChange={(e) => 설정(e.target.checked)} /> 공개 정보를 검색할게요</label>
-    {사용 && <><label>외부 검색에 사용할 공개 검색어<input maxLength={120} value={검색어} onChange={(e) => 검색어변경(e.target.value)} placeholder="서비스·판매처·확인할 주제" /></label><label>공식 판매 URL (선택)<input type="url" maxLength={2048} value={url} onChange={(e) => url변경(e.target.value)} placeholder="https://" /></label></>}
-  </fieldset>;
+/** 검색창 글을 서버 값으로 나눕니다. 첫 http(s) 주소는 `판매URL`, 나머지 낱말은 `공개검색어` 입니다. */
+function 검색입력나누기(글: string): { 공개검색어?: string; 판매URL?: string } {
+  const 낱말 = 글.trim().split(/\s+/).filter(Boolean);
+  const 위치 = 낱말.findIndex((w) => /^https?:\/\/\S+$/i.test(w));
+  // 주소가 여럿이면 첫 주소만 읽고, 나머지 주소는 검색어에 넣지 않습니다(서버가 주소가 섞인 검색어를 받지 않음).
+  const 나머지 = 낱말.filter((w) => !/^https?:\/\//i.test(w)).join(" ");
+  return { 공개검색어: 나머지 || undefined, 판매URL: 위치 >= 0 ? 낱말[위치] : undefined };
+}
+
+/** 눌러서 채워 보는 검색 예시. 서버로 보내는 값은 사용자가 「검색」을 눌렀을 때의 검색창 글뿐입니다. */
+const 검색예시 = ["ChatGPT Plus", "아두이노 우노 R3", "노션 플러스"];
+
+/**
+ * 공개 정보 검색 칸. 켜면 검색창 하나가 열리고, 제품명이든 판매 페이지 주소든 여기에 적습니다.
+ * 검색 중에는 서버가 보내는 작업을 바로 아래에 차례로 보여 줍니다.
+ * 주의: 외부 검색 서비스에는 이 검색창의 글(검색어와 주소)만 쓰입니다(서버 `web_research`). 다른 값을 보낸다고 쓰지 않습니다.
+ */
+function 공개검색설정({
+  사용,
+  설정,
+  검색어,
+  검색어변경,
+  검색하기,
+  검색막힘 = false,
+  검색중 = false,
+  진행 = [],
+  시작,
+  오류,
+  검색없이계속,
+}: {
+  사용: boolean;
+  설정: (v: boolean) => void;
+  /** 검색창의 글 그대로. 보낼 때 `검색입력나누기` 로 나눕니다. */
+  검색어: string;
+  검색어변경: (v: string) => void;
+  /** 검색 버튼 · Enter. 없으면 버튼을 그리지 않습니다. */
+  검색하기?: () => void;
+  /** 검색어 밖의 이유(비목 미선택 등)로 아직 보낼 수 없을 때 */
+  검색막힘?: boolean;
+  검색중?: boolean;
+  진행?: 진행항목[];
+  시작?: number;
+  오류?: string;
+  검색없이계속?: () => void;
+}) {
+  const id = useId();
+  const 검색가능 = !!검색하기 && !검색중 && !검색막힘 && !!검색어.trim();
+  const 나눔 = 검색입력나누기(검색어);
+  const 읽을사이트 = 나눔.판매URL ? 사이트이름({ 제목: "", url: 나눔.판매URL }) : "";
+  return (
+    <section className={`research-search ${사용 ? "is-on" : ""}`} aria-labelledby={`${id}-title`}>
+      <header>
+        <span className="research-search-icon" aria-hidden="true"><Icon name="sparkSolid" size={16} /></span>
+        <div>
+          <h3 id={`${id}-title`}>AI 공개 정보 검색 <em>선택</em></h3>
+          <p>제품·판매처·가격·결제 방법 같은 공개 정보를 AI가 찾아 출처와 함께 보여 드려요.</p>
+        </div>
+        <label className="research-switch">
+          <input
+            type="checkbox"
+            role="switch"
+            aria-label="AI 공개 정보 검색 사용"
+            checked={사용}
+            disabled={검색중}
+            onChange={(e) => 설정(e.target.checked)}
+          />
+          <span aria-hidden="true">{사용 ? "켜짐" : "꺼짐"}</span>
+        </label>
+      </header>
+      {사용 && (
+        <>
+          <div className={`research-search-box ${검색중 ? "is-busy" : ""}`}>
+            <span className="research-search-spark" aria-hidden="true">
+              {검색중 ? <span className="work-log-spinner" /> : <Icon name="sparkSolid" size={16} />}
+            </span>
+            <input
+              type="search"
+              maxLength={2400}
+              value={검색어}
+              readOnly={검색중}
+              aria-label="검색할 제품명이나 판매 페이지 주소"
+              aria-describedby={`${id}-help`}
+              placeholder="제품명이나 판매 페이지 주소를 입력하세요"
+              onChange={(e) => 검색어변경(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.nativeEvent.isComposing && 검색가능) {
+                  e.preventDefault();
+                  검색하기?.();
+                }
+              }}
+            />
+            {검색하기 && (
+              <button type="button" className="research-search-go" disabled={!검색가능} onClick={검색하기} aria-label={검색중 ? "검색 중" : "검색"}>
+                {검색중 ? "검색 중" : <><Icon name="search" size={15} />검색</>}
+              </button>
+            )}
+          </div>
+          {!검색중 && !오류 && !검색어.trim() && (
+            <div className="research-examples" aria-label="검색 예시">
+              {검색예시.map((예) => (
+                <button type="button" key={예} onClick={() => 검색어변경(예)}>{예}</button>
+              ))}
+            </div>
+          )}
+          {읽을사이트 && !검색중 && (
+            <p className="research-url-note">
+              <Icon name="paperclip" size={13} />
+              {나눔.공개검색어 ? `「${나눔.공개검색어}」 검색과 함께 ${읽을사이트} 페이지도 읽어요.` : `검색 없이 ${읽을사이트} 페이지만 읽어요.`}
+            </p>
+          )}
+          <p id={`${id}-help`} className="research-search-help">검색창에 적은 글만 외부 검색에 쓰여요. 이름·연락처 같은 개인 정보는 적지 마세요.</p>
+          {(검색중 || !!오류) && (
+            <작업로그
+              className="research-stream"
+              항목들={진행}
+              진행중={검색중}
+              시작={시작}
+              기본문장="검색을 준비하고 있어요."
+              실패={오류}
+              펼침기본
+            />
+          )}
+          {오류 && 검색없이계속 && (
+            <div className="research-error-actions">
+              <button type="button" className="outline" onClick={검색없이계속}>검색 없이 계속</button>
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
 }
 
 /** 페이지가 앱 최상단에 맡기는 판정 한 건. 페이지를 옮겨도 판정이 끊기지 않게 최상단이 들고 있습니다. */
@@ -3857,6 +4257,9 @@ type 판정시작입력 = {
   /** 창을 열어 둔 채 끝났을 때만 부릅니다. 접어 두었으면 사용자를 끌고 가지 않고 최상단이 알립니다. */
   끝남: (판정된계획?: ExpensePlan, 오류?: string) => void;
 };
+
+/** 판정 한 건에서 받은 작업 내역. 서버 이벤트를 받은 그대로 두고, 결과 화면에서 접어 보여 줍니다(새로고침하면 사라집니다). */
+type 판정기록 = { 항목들: 진행항목[]; 시작: number; 끝: number; 오류?: string };
 
 type 판정작업 = 판정시작입력 & {
   키: number;
@@ -3923,12 +4326,16 @@ function AiCheckingOverlay({
   조사ID?: string;
   조사답변?: 조사답변[];
   이전진행?: 진행항목[];
-  onComplete: (판정된계획?: ExpensePlan) => void;
-  onFail?: (메시지: string) => void;
+  /** 기록은 이번 판정에서 받은 작업 내역입니다. 결과 화면의 「작업 내역 보기」가 씁니다. */
+  onComplete: (판정된계획?: ExpensePlan, 기록?: 판정기록) => void;
+  onFail?: (메시지: string, 기록?: 판정기록) => void;
 }) {
   const [, setStage] = useState(0);
   const [설명, set설명] = useState("");
   const [진행항목들, set진행항목들] = useState<진행항목[]>(이전진행 ?? []);
+  const 진행Ref = useRef<진행항목[]>(이전진행 ?? []);
+  const [시작시각] = useState(() => Date.now());
+  const 기록 = (): 판정기록 => ({ 항목들: 진행Ref.current, 시작: 시작시각, 끝: Date.now() });
   const 진행중 = useRef<Promise<{ 계획: ExpensePlan }> | null>(null);
   // 주의: 마지막으로 「진행」 이벤트나 keep-alive 를 받은 시각을 기록합니다. 아래 타임아웃은 절대시간이
   //    아니라 '마지막 수신 이후 무응답 시간' 을 잽니다. 2026-09-04 에 GPU 콜드 기동
@@ -3944,7 +4351,7 @@ function AiCheckingOverlay({
     if (!planId || !API켜짐()) {
       const first = window.setTimeout(() => setStage(1), 900);
       const second = window.setTimeout(() => setStage(2), 1800);
-      const done = window.setTimeout(() => onComplete(), 2700);
+      const done = window.setTimeout(() => onComplete(undefined, 기록()), 2700);
       return () => {
         window.clearTimeout(first);
         window.clearTimeout(second);
@@ -3974,7 +4381,10 @@ function AiCheckingOverlay({
             set설명(문구);
             setStage((s) => Math.min(2, s + 1));
           },
-          작업: (항목) => set진행항목들((이전) => 진행추가(이전, 항목)),
+          작업: (항목) => {
+            진행Ref.current = 진행추가(진행Ref.current, 항목);
+            set진행항목들(진행Ref.current);
+          },
           // 주의: 서버는 진행 3개를 처음에 한꺼번에 보내고, 판정이 끝날 때까지는 12초마다
           //    keep-alive 만 보냅니다. 이걸로 다시 재지 않으면 서버 마감(180초) 안에 끝날
           //    판정도 150초에 「오래 걸립니다」로 끊고, 서버는 그 뒤에 저장합니다.
@@ -3995,21 +4405,21 @@ function AiCheckingOverlay({
       if (Date.now() - 진행시각.current < 무응답한도) return;
       window.clearInterval(시간초과);
       진행중.current = null;
-      onFail?.("점검이 예상보다 오래 걸립니다. 잠시 후 다시 시도해 주세요.");
+      onFail?.("점검이 예상보다 오래 걸립니다. 잠시 후 다시 시도해 주세요.", 기록());
     }, 5000);
 
     진행중.current
       .then((r) => {
         window.clearInterval(시간초과);
-        if (살아있음) onComplete(r.계획);
+        if (살아있음) onComplete(r.계획, 기록());
       })
       .catch((e: unknown) => {
         window.clearInterval(시간초과);
         if (!살아있음) return;
         진행중.current = null;          // 다음 시도는 새로 부를 수 있게
         const 메시지 = e instanceof Error ? e.message : "점검에 실패했습니다";
-        if (onFail) onFail(메시지);
-        else onComplete();
+        if (onFail) onFail(메시지, 기록());
+        else onComplete(undefined, 기록());
       });
 
     return () => {
@@ -4024,43 +4434,46 @@ function AiCheckingOverlay({
         <span className="ai-checking-spinner" aria-hidden="true" />
         <span>
           <b>{이름}</b>
-          <small>AI 점검 중 · 보통 1분 정도 걸려요</small>
+          <small>AI 점검 중 · {최근항목(진행항목들)?.문장 ?? "보통 1분 정도 걸려요"}</small>
         </span>
         <button onClick={펼치기}>열기</button>
       </aside>
     );
   }
+  // 주의: 팝업이 아니라 페이지 자체가 바뀝니다. 최상단이 이 화면을 `main` 안에 두고 다른 페이지 내용을 숨깁니다(`.main-area.is-judging`).
+  //    한 줄 요약은 서버가 보낸 마지막 작업 문장이고, 누르면 지금까지 받은 작업이 모두 펼쳐집니다.
   return (
-    <div className="ai-checking-backdrop">
-      <section className="ai-checking-modal" role="dialog" aria-modal="true" aria-labelledby="ai-checking-title">
-        <button className="ai-checking-close" onClick={접기} aria-label="창 닫기. 점검은 계속됩니다">×</button>
-        <span className="ai-checking-visual" aria-hidden="true">
-          <span className="ai-checking-spinner" />
-          <Icon name="sparkSolid" size={20} />
-          <i className="ai-check-spark ai-check-spark-one"><Icon name="sparkSolid" size={9} /></i>
-          <i className="ai-check-spark ai-check-spark-two"><Icon name="sparkSolid" size={7} /></i>
-        </span>
-        <h2 id="ai-checking-title">
+    <section className="page judge-run" aria-labelledby={`judge-run-title-${순번}`}>
+      <header className="judge-run-head">
+        <small>{이름}</small>
+        <h1 id={`judge-run-title-${순번}`}>
           {제목 ?? `AI가 지출 계획${count > 1 ? ` ${count}건을` : "을"} 점검하고 있어요`}
-        </h2>
-        <p>{설명 || "서버 응답을 기다리고 있어요."}</p>
-        <진행목록 항목들={진행항목들} />
-        {/* 주의: 첫 분기(`GPU기동중`)는 예전 GPU 콜드 기동 안내입니다. 현재 서버는 해당 문구를
-            보내지 않아 표시되지 않습니다.
-            주의: 2026-09-07(책임자 결정) — 실제 판정은 Qwen 경로에서 1건 약 60초다(판정 LLM 55~59초
-            실측). 「5초」는 mock 모드에서 쓰던 문구라 운영 서버와 맞지 않았다. */}
-        <small>
-          {GPU기동중
-            ? "AI 서버를 새로 켜는 중입니다. 몇 분 정도 걸릴 수 있어요."
-            : count > 1
-              ? "AI 판정은 한 건당 1분 정도 걸려요. 잠시만 기다려주세요."
-              : "AI 판정은 보통 1분 정도 걸려요. 잠시만 기다려주세요."}
-        </small>
-        <small className="ai-checking-background-note">
-          × 로 창을 닫아도 점검은 계속돼요. 탭을 닫거나 새로고침하면 결과가 저장되지 않을 수 있어요.
-        </small>
-      </section>
-    </div>
+        </h1>
+      </header>
+      <작업로그
+        className="judge-run-log"
+        앞단계이름="점검 전 확인"
+        이번단계이름="AI 점검"
+        항목들={진행항목들}
+        진행중
+        시작={시작시각}
+        기본문장={설명 || "서버 응답을 기다리고 있어요."}
+      />
+      {/* 주의: 2026-09-07(책임자 결정) — 실제 판정은 Qwen 경로에서 1건 약 60초다(판정 LLM 55~59초 실측).
+          `GPU기동중` 은 예전 GPU 콜드 기동 안내라 현재 서버에서는 나오지 않습니다. */}
+      <p className="judge-run-note">
+        {GPU기동중
+          ? "AI 서버를 새로 켜는 중입니다. 몇 분 정도 걸릴 수 있어요."
+          : count > 1
+            ? "AI 판정은 한 건당 1분 정도 걸려요. 끝나면 이 화면에 결과가 나와요."
+            : "AI 판정은 보통 1분 정도 걸려요. 끝나면 이 화면에 결과가 나와요."}
+        <br />
+        다른 화면으로 가도 점검은 계속돼요. 탭을 닫거나 새로고침하면 결과가 저장되지 않을 수 있어요.
+      </p>
+      <div className="judge-run-actions">
+        <button type="button" className="outline" onClick={접기}>점검은 두고 다른 화면 보기</button>
+      </div>
+    </section>
   );
 }
 
@@ -4109,14 +4522,17 @@ function PlanRecheckQuestionsModal({
   const [검색시작, set검색시작] = useState(false);
   const [웹조사, set웹조사] = useState(false);
   const [공개검색어, set공개검색어] = useState("");
-  const [판매URL, set판매URL] = useState("");
   const [진행항목들, set진행항목들] = useState<진행항목[]>([]);
   const 진행Ref = useRef<진행항목[]>([]);
   const [조사답, set조사답] = useState<Record<string, 조사답변>>({});
   const [조사오류, set조사오류] = useState("");
   const [규정요청, set규정요청] = useState(false);
   const [조사확인ID, set조사확인ID] = useState<string | undefined>();
+  const [진행시작, set진행시작] = useState<number>();
   const 받는중 = 서버모드 && 검색시작 && !!category && 받은?.키 !== 질문키;
+  // 공개 검색 중이면 검색 칸 안에서 작업을 보여 줍니다. 규정 질문을 다시 받는 중은 아래 일반 진행 표시입니다.
+  const 검색중 = 받는중 && 웹조사 && !규정요청;
+  const 확인시작 = () => { set조사오류(""); 진행Ref.current = []; set진행항목들([]); set진행시작(Date.now()); set검색시작(true); };
   const 지금결과 = 서버모드 && 받은?.키 === 질문키 ? 받은.결과 : null;
   const 서버질문 = 지금결과?.질문 ?? [];
   const 서버칸 = 지금결과?.추가입력 ?? [];
@@ -4141,7 +4557,7 @@ function PlanRecheckQuestionsModal({
       금액: n ? (typeof n.금액 === "number" ? n.금액 : null) : (상세 ? 상세.금액 ?? 0 : plan.amount),
       용도: n ? (typeof n.용도 === "string" ? n.용도 : "") : (상세 ? 상세.용도 ?? "" : plan.purpose),
       질문원문: n ? [n.질문원문, n.질문, n._원문].find((v): v is string => typeof v === "string" && !!v) : (상세?.질문원문 ?? undefined),
-      웹조사, 공개검색어: 웹조사 ? 공개검색어.trim() : undefined, 판매URL: 웹조사 ? 판매URL.trim() || undefined : undefined,
+      웹조사, ...(웹조사 ? 검색입력나누기(공개검색어) : {}),
       ...(규정요청 ? { 조사ID: 조사확인ID, 조사답변: Object.values(조사답) } : {}),
       }, (항목) => { if (살아있음) { 진행Ref.current = 진행추가(진행Ref.current, 항목); set진행항목들(진행Ref.current); } });
     }).then((결과) => {
@@ -4197,13 +4613,27 @@ function PlanRecheckQuestionsModal({
               onChange={(값) => { set선택비목(값); set검색시작(false); set규정요청(false); set받은(null); set조사답({}); }}
             />
           )}
-          {서버모드 && !검색시작 && <공개검색설정 사용={웹조사} 설정={set웹조사} 검색어={공개검색어} 검색어변경={set공개검색어} url={판매URL} url변경={set판매URL} />}
-          {조사오류 && <p role="alert">{조사오류}</p>}
-          {조사오류 && 웹조사 && <button type="button" className="outline" onClick={() => { set조사오류(""); set웹조사(false); set검색시작(true); }}>검색 없이 계속</button>}
-          {받는중 && <진행목록 항목들={진행항목들} />}
-          {지금결과?.상태 === "조사확인" && !!지금결과.조사후보?.length && <조사확인 후보={지금결과.조사후보} 답={조사답} 변경={(v) => set조사답((이전) => ({ ...이전, [v.id]: v }))} />}
+          {서버모드 && (!검색시작 || 검색중) && (
+            <공개검색설정
+              사용={웹조사}
+              설정={set웹조사}
+              검색어={공개검색어}
+              검색어변경={set공개검색어}
+              검색하기={확인시작}
+              검색막힘={!category}
+              검색중={검색중}
+              진행={진행항목들}
+              시작={진행시작}
+              오류={웹조사 && 조사오류 ? 조사오류 : undefined}
+              검색없이계속={() => { set조사오류(""); set웹조사(false); set검색시작(true); }}
+            />
+          )}
+          {조사오류 && !웹조사 && <p role="alert">{조사오류}</p>}
+          {받는중 && !검색중 && <작업로그 항목들={진행항목들} 진행중 시작={진행시작} 기본문장="확인할 내용을 준비하고 있어요." 펼침기본 />}
+          {지금결과?.상태 === "조사확인" && !!진행항목들.length && <작업로그 className="research-stream" 항목들={진행항목들} 진행중={false} 시작={진행시작} 기본문장="공개 정보 검색을 마쳤어요." 끝문장="공개 정보 검색을 마쳤어요." />}
+          {지금결과?.상태 === "조사확인" && !!지금결과.조사후보?.length && <조사확인 후보={지금결과.조사후보} 답={조사답} 검색어={검색입력나누기(공개검색어).공개검색어} 변경={(v) => set조사답((이전) => ({ ...이전, [v.id]: v }))} />}
           {지금결과?.상태 === "조사확인" && !지금결과.조사후보?.length && <p>확인된 공개 정보가 없어요. 입력한 내용으로 계속 점검할 수 있어요.</p>}
-          {지금결과?.상태 === "조사확인" && !!지금결과.부족정보?.length && <p>더 확인이 필요한 공개 정보: {지금결과.부족정보.join(" · ")}</p>}
+          {지금결과?.상태 === "조사확인" && !!지금결과.부족정보?.length && <p>더 확인이 필요한 공개 정보: {지금결과.부족정보.map(유형표기).join(" · ")}</p>}
           {지금결과?.상태 === "조사확인" && <직접확인안내 항목들={지금결과.사용자확인 ?? []} />}
           {서버모드 && (
             <추가입력칸목록 칸들={서버칸} 값들={칸값} onChange={(키, v) => set칸값((prev) => ({ ...prev, [키]: v }))} />
@@ -4228,7 +4658,7 @@ function PlanRecheckQuestionsModal({
             className="primary"
             disabled={!category || 받는중 || (웹조사 && !공개검색어.trim()) || 서버질문.some((q) => !답[답키(q)]) || (지금결과?.상태 === "조사확인" && !!지금결과.조사후보?.some((c) => !조사답[c.id]))}
             onClick={() => {
-              if (서버모드 && !검색시작) { set조사오류(""); 진행Ref.current = []; set진행항목들([]); set검색시작(true); return; }
+              if (서버모드 && !검색시작) { 확인시작(); return; }
               if (지금결과?.상태 === "조사확인") {
                 set조사확인ID(지금결과.조사ID);
                 set받은(null);
@@ -4983,9 +5413,9 @@ function NewPlanPage({
   const [questionsLoading, setQuestionsLoading] = useState(false);
   const [웹조사, set웹조사] = useState(false);
   const [공개검색어, set공개검색어] = useState("");
-  const [판매URL, set판매URL] = useState("");
   const [진행항목들, set진행항목들] = useState<진행항목[]>([]);
   const 진행Ref = useRef<진행항목[]>([]);
+  const [진행시작, set진행시작] = useState<number>();
   const [조사오류, set조사오류] = useState("");
   const [조사ID, set조사ID] = useState<string | undefined>();
   const [조사후보들, set조사후보들] = useState<조사후보[]>([]);
@@ -5013,7 +5443,7 @@ function NewPlanPage({
   const [칸값, set칸값] = useState<Record<string, string>>({});
   const [서버풀이, set서버풀이] = useState<용어풀이항목[]>([]);
   // 지금 들고 있는 질문이 어떤 비목으로 받은 것인지 둡니다. 품목·목적·금액을 고치면 질문 자체가 비워집니다.
-  const 질문키 = `${category}|${feeSubtype}|${선택분류?.표시문 ?? ""}|${웹조사}|${공개검색어}|${판매URL}`;
+  const 질문키 = `${category}|${feeSubtype}|${선택분류?.표시문 ?? ""}|${웹조사}|${공개검색어}`;
   const [받은질문키, set받은질문키] = useState<string | null>(null);
   const [저장중, set저장중] = useState(false);
   const [연동오류, set연동오류] = useState<string | null>(null);
@@ -5325,7 +5755,7 @@ function NewPlanPage({
     // ── 서버에서 확인 질문 받기 ──
     let 살아있음 = true;
     set조사오류("");
-    if (!조사확인단계) { 진행Ref.current = []; set진행항목들([]); }
+    if (!조사확인단계) { 진행Ref.current = []; set진행항목들([]); set진행시작(Date.now()); }
     const 질문원문 = 서버정규화?.["질문원문"];
     void 질문가져오기({
       사업명: 현재사업(),
@@ -5339,7 +5769,7 @@ function NewPlanPage({
       용도: 서버정규화 ? (typeof 서버정규화.용도 === "string" ? 서버정규화.용도 : "") : purpose,
       질문원문: typeof 질문원문 === "string" && 질문원문 ? 질문원문 : undefined,
       조사ID: 받은질문키 && 받은질문키 !== 질문키 ? undefined : 정규화조사ID,
-      웹조사, 공개검색어: 웹조사 ? 공개검색어.trim() : undefined, 판매URL: 웹조사 ? 판매URL.trim() || undefined : undefined,
+      웹조사, ...(웹조사 ? 검색입력나누기(공개검색어) : {}),
       ...(조사확인단계 ? { 조사ID, 조사답변: Object.values(조사답) } : {}),
     }, (항목) => { if (살아있음) { 진행Ref.current = 진행추가(진행Ref.current, 항목); set진행항목들(진행Ref.current); } }).then((r) => {
       if (!살아있음) return;
@@ -5396,6 +5826,16 @@ function NewPlanPage({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [questionsLoading]);
+
+  // 공개 검색을 켠 채 확인 질문을 받는 동안은 팝업 대신 검색 칸 안에서 검색 작업을 보여 줍니다.
+  const 검색중 = questionsLoading && 웹조사 && !조사확인단계;
+  /** 2단계의 「AI 점검하기」와 검색 칸의 「검색」 버튼. 둘 다 같은 요청(확인 질문 + 공개 검색)을 보냅니다. */
+  const 둘째단계막힘 = categoryLoading || questionsLoading || 저장중 || !필수입력됨 || !category || (웹조사 && !공개검색어.trim());
+  const 둘째단계다음 = () => {
+    // 주의: 「이전」으로 왔다가 그대로 돌아가면 다시 받지 않습니다. 다시 받다 실패하면 답이 사라집니다.
+    if (API켜짐() && (서버질문.length || 서버칸.length || 조사후보들.length || 웹조사) && 받은질문키 === 질문키) setStep(3);
+    else { set조사확인단계(false); set조사ID(undefined); setQuestionsLoading(true); }
+  };
 
   const saveDraft = () => {
     if (!API켜짐()) {
@@ -5633,8 +6073,22 @@ function NewPlanPage({
                 </div>
               </section>
             )}
-            {API켜짐() && <공개검색설정 사용={웹조사} 설정={set웹조사} 검색어={공개검색어} 검색어변경={set공개검색어} url={판매URL} url변경={set판매URL} />}
-            {조사오류 && <div role="alert"><p>{조사오류}</p>{웹조사 && <button type="button" className="outline" onClick={() => { set웹조사(false); setQuestionsLoading(true); }}>검색 없이 계속</button>}</div>}
+            {API켜짐() && (
+              <공개검색설정
+                사용={웹조사}
+                설정={set웹조사}
+                검색어={공개검색어}
+                검색어변경={set공개검색어}
+                검색하기={둘째단계다음}
+                검색막힘={둘째단계막힘}
+                검색중={검색중}
+                진행={진행항목들}
+                시작={진행시작}
+                오류={웹조사 && 조사오류 ? 조사오류 : undefined}
+                검색없이계속={() => { set웹조사(false); setQuestionsLoading(true); }}
+              />
+            )}
+            {조사오류 && !웹조사 && <div role="alert"><p>{조사오류}</p></div>}
           </>
         )}
         {step === 3 && (
@@ -5649,9 +6103,10 @@ function NewPlanPage({
                   ? `${feeSubtype} 기준에서 확인할 사항입니다.`
                   : `${category} 규정에서 확인할 사항입니다.`}
             </p>
-            {조사확인단계 && !!조사후보들.length && <조사확인 후보={조사후보들} 답={조사답} 변경={(v) => set조사답((이전) => ({ ...이전, [v.id]: v }))} />}
+            {조사확인단계 && !!진행항목들.length && <작업로그 className="research-stream" 항목들={진행항목들} 진행중={false} 시작={진행시작} 기본문장="공개 정보 검색을 마쳤어요." 끝문장="공개 정보 검색을 마쳤어요." />}
+            {조사확인단계 && !!조사후보들.length && <조사확인 후보={조사후보들} 답={조사답} 검색어={검색입력나누기(공개검색어).공개검색어} 변경={(v) => set조사답((이전) => ({ ...이전, [v.id]: v }))} />}
             {조사확인단계 && !조사후보들.length && <p>확인된 공개 정보가 없어요. 입력한 내용으로 계속 점검할 수 있어요.</p>}
-            {조사확인단계 && !!부족정보들.length && <p>더 확인이 필요한 공개 정보: {부족정보들.join(" · ")}</p>}
+            {조사확인단계 && !!부족정보들.length && <p>더 확인이 필요한 공개 정보: {부족정보들.map(유형표기).join(" · ")}</p>}
             {조사확인단계 && <직접확인안내 항목들={직접확인들} />}
             <div className="auto-check-note">
               <Icon name="check" />
@@ -5727,9 +6182,7 @@ function NewPlanPage({
             if (step === 1) {
               setCategoryLoading(true);
             } else if (step === 2) {
-              // 주의: 「이전」으로 왔다가 그대로 돌아가면 다시 받지 않습니다. 다시 받다 실패하면 답이 사라집니다.
-              if (API켜짐() && (서버질문.length || 서버칸.length || 조사후보들.length || 웹조사) && 받은질문키 === 질문키) setStep(3);
-              else { set조사확인단계(false); set조사ID(undefined); setQuestionsLoading(true); }
+              둘째단계다음();
             } else if (조사확인단계) setQuestionsLoading(true);
             else submit();
           }}
@@ -5741,7 +6194,7 @@ function NewPlanPage({
               : 조사확인단계 ? "규정 확인하기" : "결과 확인하기"}
         </button>
       </footer>
-      {(categoryLoading || questionsLoading) && (
+      {(categoryLoading || questionsLoading) && !검색중 && (
         <div className="category-analysis-backdrop">
           <section
             className="category-analysis-modal"
@@ -5757,7 +6210,7 @@ function NewPlanPage({
             </span>
             <h2 id="category-analysis-title">{questionsLoading ? "AI가 내용을 점검하고 있어요." : "입력한 내용을 분석하고 있어요"}</h2>
             <p>{questionsLoading ? "서버 응답을 기다리고 있어요." : "지출 항목과 사용 목적을 바탕으로 적합한 비목을 찾고 있습니다."}</p>
-            {questionsLoading && <진행목록 항목들={진행항목들} />}
+            {questionsLoading && <작업로그 항목들={진행항목들} 진행중 시작={진행시작} 기본문장="확인할 내용을 준비하고 있어요." 펼침기본 />}
             <small>잠시만 기다려주세요.</small>
           </section>
         </div>
@@ -6431,6 +6884,7 @@ function 결과평가칸({
 
 function PlanDetail({
   plan,
+  작업내역,
   allPlans,
   판정시작,
   update,
@@ -6445,6 +6899,8 @@ function PlanDetail({
   notify,
 }: {
   plan?: ExpensePlan;
+  /** 이 화면을 연 동안 마친 마지막 판정의 작업 내역. 없으면 그리지 않습니다. */
+  작업내역?: 판정기록;
   allPlans: ExpensePlan[];
   기준문서보기: () => void;
   확인: (요청: 확인요청) => Promise<boolean>;
@@ -6703,6 +7159,22 @@ function PlanDetail({
               <h2>AI 점검 결과</h2>
             </div>
           </header>
+          {/* 방금 끝난 판정의 작업 내역. 접어 두고 「작업 내역 보기」로 엽니다. 실패면 이유를 머리줄에 그대로 보입니다. */}
+          {작업내역 && plan.status !== "점검 중" && (!!작업내역.항목들.length || !!작업내역.오류) && (
+            <작업로그
+              key={작업내역.끝}
+              className="judge-result-log"
+              앞단계이름="점검 전 확인"
+              이번단계이름="AI 점검"
+              항목들={작업내역.항목들}
+              진행중={false}
+              시작={작업내역.시작}
+              끝={작업내역.끝}
+              기본문장="AI 점검을 마쳤어요."
+              끝문장="AI 점검을 마쳤어요."
+              실패={작업내역.오류 ? `AI 점검을 마치지 못했어요. ${작업내역.오류}` : undefined}
+            />
+          )}
           {plan.status === "점검 중" && (
             <div className="recheck-stale-notice">
               <Icon name="spark" size={19} />

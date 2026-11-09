@@ -18,14 +18,39 @@ export type SSE핸들러 = (이벤트: string, 데이터: unknown) => void;
 export type 진행항목 = {
   id: string; 단계: string; 상태: string; 문장: string;
   출처: { 제목: string; url: string; 발췌?: string }[];
+  /** 화면이 이 id 를 처음 받은 시각과 마지막으로 받은 시각(ms). 서버가 보내는 값이 아니라 경과 시간 표시에만 씁니다. */
+  처음?: number;
+  갱신?: number;
+};
+
+/**
+ * 서버가 문장 없이 단계만 보냈을 때 화면에 쓸 문장입니다. 서버 단계 이름(`orchestrate.py` · `web_research.py` ·
+ * `question_generate.py`)과 같아야 합니다. 모르는 단계는 문장이 없으면 그리지 않습니다.
+ */
+export const 단계기본문장: Record<string, string> = {
+  정규화: "입력한 지출 내용을 살펴보고 있어요.",
+  입력확인: "지출 내용과 분류를 확인하고 있어요.",
+  규정조회: "적용되는 규정을 찾고 있어요.",
+  규정검색: "관련 원문을 불러오고 있어요.",
+  근거구성: "원문과 입력 내용을 정리하고 있어요.",
+  판정준비: "더 확인할 규정이 있는지 살펴보고 있어요.",
+  규정추가조회: "규정을 추가로 확인하고 있어요.",
+  판정생성: "원문과 비교하고 있어요.",
+  인용검증: "인용한 원문을 다시 확인하고 있어요.",
+  판정: "판정 결과를 정리하고 있어요.",
+  확인질문: "확인할 질문을 준비하고 있어요.",
+  "공개 검색": "공개 정보를 검색하고 있어요.",
+  "공개 페이지 확인": "공개 페이지를 읽고 있어요.",
 };
 
 export function 진행항목정리(값: unknown): 진행항목 | null {
   if (!값 || typeof 값 !== "object") return null;
   const o = 값 as Record<string, unknown>;
-  const 문장 = typeof o.문장 === "string" ? o.문장 : typeof o.설명 === "string" ? o.설명 : "";
-  if (!문장) return null;
   const 단계 = typeof o.단계 === "string" || typeof o.단계 === "number" ? String(o.단계) : "";
+  const 문장 = typeof o.문장 === "string" && o.문장.trim() ? o.문장
+    : typeof o.설명 === "string" && o.설명.trim() ? o.설명
+    : 단계기본문장[단계] ?? "";
+  if (!문장) return null;
   const id = typeof o.id === "string" ? o.id : `기존-${단계}-${문장}`;
   const 출처 = (Array.isArray(o.출처) ? o.출처 : []).flatMap((v): 진행항목["출처"] => {
     if (!v || typeof v !== "object") return [];
@@ -33,7 +58,7 @@ export function 진행항목정리(값: unknown): 진행항목 | null {
     if (typeof c.url !== "string" || !/^https?:\/\//i.test(c.url)) return [];
     return [{ 제목: typeof c.제목 === "string" ? c.제목 : c.url, url: c.url, 발췌: typeof c.발췌 === "string" ? c.발췌 : undefined }];
   });
-  return { id, 단계, 상태: typeof o.상태 === "string" ? o.상태 : "진행중", 문장, 출처 };
+  return { id, 단계, 상태: typeof o.상태 === "string" && o.상태 ? o.상태 : "진행중", 문장, 출처 };
 }
 
 /**
