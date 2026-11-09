@@ -164,6 +164,7 @@ export type 인용 = {
 };
 
 export type 판정상세 = {
+  조사?: import("./questions").조사결과 | null;
   판정?: 판정값;
   요약?: string | null;
   신뢰등급?: "A" | "B" | null;

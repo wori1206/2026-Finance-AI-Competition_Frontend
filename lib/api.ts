@@ -79,7 +79,8 @@ export const 계획추가 = (입력: {
 
 /**
  * 예상 지출일을 바꿉니다. `일정이동` 이 true 면 완료 안 된 연결 일정도 같은 일수만큼 옮깁니다.
- * 주의: 판정은 바뀌지 않습니다. 판정 경로가 집행예정일을 읽지 않습니다.
+ * 주의: 판정이 집행예정일(서버 `사용일자`)을 읽습니다. 프로필의 협약 기간 밖이면 코드 불가입니다. 저장한 판정은 그대로이니 호출한 쪽이
+ * 이미 점검한 계획이면 「재점검 필요」로 표시해야 합니다.
  */
 export const 계획수정 = (planId: number | string, 입력: {
   집행예정일?: string | null;
@@ -189,9 +190,11 @@ export const 할일목록 = (opt: {
 /* ── 내 정보 (화면 14) ───────────────────────── */
 
 /** 기업 프로필. 키는 `협약`(협약 정보)·`집행내역`·`참여인력` 입니다. */
-export const 프로필읽기 = () => GET("/api/profile") as Promise<Record<string, unknown>>;
-export const 프로필저장 = (p: { 협약?: unknown; 집행내역?: unknown[]; 참여인력?: unknown[] }) =>
-  PUT("/api/profile", p) as Promise<Record<string, unknown>>;
+export const 프로필읽기 = (사업명?: string) =>
+  GET("/api/profile", 사업명 ? { 사업명 } : undefined) as Promise<Record<string, unknown>>;
+/** 주의: `사업명` 은 응답의 `협약경고` 가 어느 사업의 규정을 볼지만 고릅니다. 서버는 저장하지 않습니다. */
+export const 프로필저장 = (p: { 협약?: unknown; 집행내역?: unknown[]; 참여인력?: unknown[] }, 사업명?: string) =>
+  PUT("/api/profile", p, 사업명 ? { 사업명 } : undefined) as Promise<Record<string, unknown>>;
 
 /* ── 기관 규정 업로드 (화면 4) ───────────────── */
 

@@ -19,6 +19,7 @@ export type RuleItem = {
 };
 
 export type ExpensePlan = {
+  조사?: import("./questions").조사결과 | null;
   id: string;
   name: string;
   purpose: string;

@@ -138,9 +138,9 @@ export async function PATCH(경로: string, 바디: unknown) {
   );
 }
 
-export async function PUT(경로: string, 바디: unknown) {
+export async function PUT(경로: string, 바디: unknown, 쿼리?: Record<string, unknown>) {
   return 응답처리(
-    await fetch(주소(경로), {
+    await fetch(주소(경로, 쿼리), {
       method: "PUT",
       headers: await 헤더(true),
       body: JSON.stringify(바디),

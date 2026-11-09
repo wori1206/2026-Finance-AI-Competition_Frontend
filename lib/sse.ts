@@ -15,6 +15,27 @@ import type { 답변항목, 부가세구분 } from "./server-types";
  */
 export type SSE핸들러 = (이벤트: string, 데이터: unknown) => void;
 
+export type 진행항목 = {
+  id: string; 단계: string; 상태: string; 문장: string;
+  출처: { 제목: string; url: string; 발췌?: string }[];
+};
+
+export function 진행항목정리(값: unknown): 진행항목 | null {
+  if (!값 || typeof 값 !== "object") return null;
+  const o = 값 as Record<string, unknown>;
+  const 문장 = typeof o.문장 === "string" ? o.문장 : typeof o.설명 === "string" ? o.설명 : "";
+  if (!문장) return null;
+  const 단계 = typeof o.단계 === "string" || typeof o.단계 === "number" ? String(o.단계) : "";
+  const id = typeof o.id === "string" ? o.id : `기존-${단계}-${문장}`;
+  const 출처 = (Array.isArray(o.출처) ? o.출처 : []).flatMap((v): 진행항목["출처"] => {
+    if (!v || typeof v !== "object") return [];
+    const c = v as Record<string, unknown>;
+    if (typeof c.url !== "string" || !/^https?:\/\//i.test(c.url)) return [];
+    return [{ 제목: typeof c.제목 === "string" ? c.제목 : c.url, url: c.url, 발췌: typeof c.발췌 === "string" ? c.발췌 : undefined }];
+  });
+  return { id, 단계, 상태: typeof o.상태 === "string" ? o.상태 : "진행중", 문장, 출처 };
+}
+
 /**
  * 주의: 게스트(비로그인)는 Authorization 을 '안' 보냅니다. 빈 헤더를 보내면 서버가
  *    「헤더가 있으면 토큰으로 끝난다」 규칙에 따라 401 로 거부합니다.
@@ -60,6 +81,12 @@ export async function SSE(
     throw Object.assign(new Error(사유 || `요청에 실패했습니다 (${res.status})`), { status: res.status });
   }
 
+  if (!res.headers.get("content-type")?.includes("text/event-stream")) {
+    if (경로 !== "/api/questions") throw new Error("서버에서 점검 결과를 받지 못했습니다.");
+    on("완료", await res.json());
+    return;
+  }
+
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let 버퍼 = "";
@@ -73,13 +100,13 @@ export async function SSE(
     버퍼 += decoder.decode(value, { stream: true });
 
     // 이벤트는 빈 줄(\n\n)로 끊어집니다
-    const 덩어리들 = 버퍼.split("\n\n");
+    const 덩어리들 = 버퍼.split(/\r?\n\r?\n/);
     버퍼 = 덩어리들.pop() ?? "";
 
     for (const 덩어리 of 덩어리들) {
       let 이름 = "message";
       const 데이터줄: string[] = [];
-      for (const 줄 of 덩어리.split("\n")) {
+      for (const 줄 of 덩어리.split(/\r?\n/)) {
         if (줄.startsWith("event:")) 이름 = 줄.slice(6).trim();
         else if (줄.startsWith("data:")) 데이터줄.push(줄.slice(5).trim());
       }
@@ -141,6 +168,8 @@ export type 판정입력 = {
   /** 추가 입력 칸에 채운 값. 코드의 한도 비교는 이 값과 금액 · 부가세구분만 읽습니다. */
   추가입력값?: Record<string, string | number>;
   부가세구분?: 부가세구분;
+  조사ID?: string;
+  조사답변?: import("./questions").조사답변[];
 };
 
 /**

@@ -9,7 +9,7 @@
 //   ④ 그래서 상세를 한 번 더 읽어 최신 할일까지 반영한 계획을 돌려준다
 
 import { 계획상세 } from "./api";
-import { 판정SSE } from "./sse";
+import { 판정SSE, 진행항목정리, type 진행항목 } from "./sse";
 import { 상세를계획으로, 판정을상태로, 판정설명, 시각표기, 인용정리, 기준문서정리, 사용자답변정리, 분류정리, 문장목록정리, 용어풀이정리, 코드판정정리, 정규화저장값, 부가세확정, 부가세질문id, 확인한조건정리 } from "./adapt";
 import { 초안보관 } from "./inquiry-store";
 import type { 기준문서정보, ChecklistItem, RuleItem } from "./types";
@@ -21,6 +21,7 @@ export type Mock판정 = "가능" | "조건부" | "불가" | "판단불가";
 export type 판정중계 = {
   /** 진행 설명 문구. 「관련 조항을 찾는 중」 같은 것 */
   진행: (설명: string) => void;
+  작업?: (항목: 진행항목) => void;
   /** 판정이 확정된 순간. 배지를 먼저 보여주고 싶을 때 씁니다 */
   판정?: (값: { 판정: 판정값; 요약: string; 신뢰등급: string | null }) => void;
   /** 판단불가일 때만 옵니다 */
@@ -74,6 +75,8 @@ export async function 판정실행(
     /** 없으면 계획의 `정규화` 에 저장된 값을 씁니다(목록·상세의 재점검). */
     확정세목?: string | null;
     부가세구분?: 부가세구분;
+    조사ID?: string;
+    조사답변?: import("./questions").조사답변[];
   },
 ): Promise<판정결과> {
   // 주의: 방금 만든 계획은 상세 조회가 '서버 버그로' 500 이 납니다
@@ -125,6 +128,7 @@ export async function 판정실행(
   let 요약 = "";
   let 해야할일: ChecklistItem[] = [];
   let 인용: RuleItem[] = [];
+  let 조사: import("./questions").조사결과 | null = null;
   let 문의초안: string | null = null;
   let 사용자답변: 사용자답변항목[] = [];
   let 분류: 분류값 | null = null;
@@ -185,6 +189,7 @@ export async function 판정실행(
     // 주의: 비어 있어도 종전과 바이트 단위로 같은 경로다(`models.py::판정요청.답변` 기본값 []
     //    → `_사용자프로필값_구성` 이 None 을 돌려준다) — 안 보내던 필드를 뒤늦게 넣어도 안전하다.
     답변: 옵션?.답변 ?? [],
+    ...(옵션?.조사ID ? { 조사ID: 옵션.조사ID, 조사답변: 옵션.조사답변 ?? [] } : {}),
     ...(옵션?.질문세트 ? { 질문세트: 옵션.질문세트 } : {}),
     ...(확정세목 ? { 확정세목 } : {}),
     ...(옵션?.추가입력값 && Object.keys(옵션.추가입력값).length ? { 추가입력값: 옵션.추가입력값 } : {}),
@@ -197,15 +202,15 @@ export async function 판정실행(
       const v = (값 ?? {}) as Record<string, unknown>;
       switch (이름) {
         case "진행":
-          중계.진행(문자(v["설명"], "점검하는 중"));
+          { const 항목 = 진행항목정리(값); if (항목) { 중계.진행(항목.문장); 중계.작업?.(항목); } }
           break;
         case "keep-alive":
           중계.활동?.();
           break;
         case "판정":
-          판정 = (v["판정"] as 판정값) ?? null;
+          판정 = ["가능", "조건부", "불가", "판단불가"].includes(String(v["판정"])) ? v["판정"] as 판정값 : null;
           요약 = 문자(v["요약"]);
-          중계.판정?.({
+          if (판정) 중계.판정?.({
             판정,
             요약,
             신뢰등급: 문자(v["신뢰등급"]) || null,
@@ -234,6 +239,7 @@ export async function 판정실행(
           if (문의초안) 중계.문의초안?.(문의초안);
           break;
         case "결과":
+          조사 = v["조사"] && typeof v["조사"] === "object" ? v["조사"] as import("./questions").조사결과 : null;
           사용자답변 = 사용자답변정리(v["사용자답변"]);
           // 주의: 옛 경로 서버는 아래 키를 보내지 않습니다. 그때는 빈 값이고 화면의 해당 칸이 그려지지 않습니다.
           분류 = 분류정리(v["분류"]);
@@ -277,6 +283,9 @@ export async function 판정실행(
   }
 
   if (서버오류) throw new Error(서버오류);
+  if (!["가능", "조건부", "불가", "판단불가"].includes(판정 ?? "")) {
+    throw new Error("서버에서 점검 결과를 받지 못했습니다. 다시 확인해 주세요.");
+  }
 
   // 주의: 판정 직후 서버가 할일을 '자동으로' 넣습니다. tasks:sync 를 부르면 중복됩니다.
   //    그래서 부르지 않고, 상세를 다시 읽어 최신 상태를 가져옵니다.
@@ -317,6 +326,7 @@ export async function 판정실행(
     aiSummary: 요약 || 바탕.aiSummary || 판정설명(최종판정),
     aiChecks: 스트림값만 ? 해야할일 : 바탕.aiChecks.length ? 바탕.aiChecks : 해야할일,
     rules: 스트림값만 ? 인용 : 바탕.rules.length ? 바탕.rules : 인용,
+    조사,
     evidence: 스트림값만 ? [] : 바탕.evidence,
     저장안됨,
     // 주의: 새 판정이면 이전 판정의 평가를 잇지 않습니다. 다시 읽기에 실패하면 바탕이 옛 판정이라 비워 둡니다.

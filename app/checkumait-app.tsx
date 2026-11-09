@@ -32,8 +32,9 @@ import {
 } from "../lib/attachments";
 import { 지금출처, 출처구독, 출처문구 } from "../lib/data-source";
 import { 인증켜짐, 로그인 as supabase로그인, 가입 as supabase가입, 로그아웃 as supabase로그아웃, 이메일 as supabase이메일, 팀이름 as supabase팀이름, 팀이름쓰기 as supabase팀이름쓰기, 온보딩기록읽기, 온보딩마침, 재설정링크읽기, 재설정끝내기, 재설정메일보내기, 새비밀번호저장 } from "../lib/supabase";
-import { 상세를계획으로, 판정제목, 행동문구, 조건칸상태, 시각표기, L3등록사실, L3현재문서요약짓기, 조문연결셈, 문서명보기, 답표기, 로조사, 부가세확정, 부가세표기, 부가세질문id, type L3현재문서요약 } from "../lib/adapt";
-import { 질문가져오기, 추가입력초기값, 추가입력값만들기, type 질문결과 } from "../lib/questions";
+import { 상세를계획으로, 판정제목, 행동문구, 조건칸상태, 시각표기, L3등록사실, L3현재문서요약짓기, 조문연결셈, 문서명보기, 답표기, 로조사, 부가세확정, 부가세표기, 부가세질문id, 정규화저장값, type L3현재문서요약 } from "../lib/adapt";
+import { 질문가져오기, 추가입력초기값, 추가입력값만들기, type 질문결과, type 조사후보, type 조사답변 } from "../lib/questions";
+import type { 진행항목 } from "../lib/sse";
 // 주의: `데모종료` 는 남깁니다 — 「계정 없이 둘러보기」를 없앴어도 예전에 받아 둔
 //    데모 토큰이 브라우저에 2시간 남아 있을 수 있고, 그게 로그인 조회를 가로챕니다.
 import { 데모종료, 데모중, 이메일기억, 기억된이메일, 이메일잊기, 팀이름기억, 기억된팀이름 } from "../lib/session";
@@ -1159,6 +1160,9 @@ const FEE_QUESTIONS: Record<string, CheckQuestion[]> = {
   ],
 };
 
+/** 판정을 받은 계획의 상태인가(점검 전 · 점검 중 · 재점검 필요가 아니다). 점검에 쓰인 입력이 바뀌면 이 계획만 재점검 대상이 된다. */
+const 점검한상태 = (value: PlanStatus): value is Exclude<PlanStatus, "점검 전" | "점검 중" | "재점검 필요"> =>
+  value !== "점검 전" && value !== "점검 중" && value !== "재점검 필요";
 const displayPlanStatus = (value: PlanStatus) =>
   value === "점검 전" || value === "재점검 필요" ? "점검전" : value;
 
@@ -1239,6 +1243,25 @@ function DataSourceBanner() {
       <button type="button" aria-label="안내 닫기" onClick={() => set접음(true)}>
         ×
       </button>
+    </div>
+  );
+}
+
+/**
+ * 저장된 협약 금액이 사업의 협약 구성 규정(예: 자기부담 현물은 총사업비의 20% 이하)을 어길 때 서버가 준 문장을 보여 줍니다.
+ * 주의: 안내일 뿐 점검 결과에는 영향이 없습니다. 문장이 없으면 아무것도 그리지 않습니다.
+ */
+function 협약경고알림({ 줄들, 모달 = false }: { 줄들: string[]; 모달?: boolean }) {
+  if (줄들.length === 0) return null;
+  return (
+    <div className={`data-source-banner warn profile-ratio-warning${모달 ? " in-modal" : ""}`} role="status">
+      <Icon name="alert" size={16} />
+      <span>
+        <b>협약 금액이 규정 기준과 달라요</b>
+        {줄들.map((줄) => (
+          <small key={줄}>{줄}</small>
+        ))}
+      </span>
     </div>
   );
 }
@@ -1593,7 +1616,8 @@ export default function CheckumaitApp() {
 
   /**
    * 예상 지출일을 바꿉니다. 옮길 일정이 있으면 먼저 묻고, 없으면 바로 저장합니다.
-   * 주의: 판정 경로가 집행예정일을 읽지 않아 「재점검 필요」를 띄우지 않습니다.
+   * 주의: 판정이 예상 지출일을 읽습니다(프로필의 협약 기간 밖이면 코드 불가). 이미 점검한 계획의 날짜가 바뀌면
+   *    옛 판정이 새 날짜와 맞지 않으므로 「재점검 필요」를 띄웁니다(`지출일저장`).
    */
   const [지출일창, set지출일창] = useState<{ plan: ExpensePlan; 새날짜: string; 줄들: ScheduleItem[] } | null>(null);
   /** 일정·체크가 바뀐 뒤 진행 단계를 다시 받습니다. 단계는 서버가 할일에서 계산합니다. */
@@ -1630,11 +1654,21 @@ export default function CheckumaitApp() {
   const 지출일저장 = (plan: ExpensePlan, 새날짜: string, 일정이동: boolean, 옮길일정있음: boolean) => {
     계획수정(plan.id, { 집행예정일: 새날짜 || null, 일정이동 })
       .then((d) => {
-        계획반영({ ...plan, plannedDate: d.집행예정일 ?? "", 단계요약: d.단계요약, 현재단계: d.현재단계 ?? null });
+        const 새지출일 = d.집행예정일 ?? "";
+        // 주의: 점검한 계획의 날짜가 실제로 바뀐 경우만입니다. 점검 전 · 점검 중 · 이미 재점검 필요인 계획은 그대로 둡니다.
+        //    표시 방식은 계획을 고쳤을 때와 같습니다(`previousStatus` 에 옛 판정 상태를 남깁니다).
+        const 재점검 = 새지출일 !== (plan.plannedDate ?? "") && 점검한상태(plan.status);
+        계획반영({
+          ...plan,
+          plannedDate: 새지출일,
+          ...(재점검 ? { status: "재점검 필요" as const, previousStatus: plan.status as Exclude<PlanStatus, "점검 전" | "점검 중" | "재점검 필요">, nextAction: "AI 재점검 필요" } : {}),
+          단계요약: d.단계요약,
+          현재단계: d.현재단계 ?? null,
+        });
         notify(
-          일정이동 && 옮길일정있음
-            ? "예상 지출일과 연결된 일정을 옮겼습니다."
-            : "예상 지출일을 저장했습니다.",
+          `${일정이동 && 옮길일정있음 ? "예상 지출일과 연결된 일정을 옮겼습니다." : "예상 지출일을 저장했습니다."}${
+            재점검 ? " 점검에 쓰이는 날짜라 AI 재점검이 필요합니다." : ""
+          }`,
         );
         일정다시읽기();
       })
@@ -2112,6 +2146,9 @@ export default function CheckumaitApp() {
             추가입력값={작업.추가입력값}
             확정세목={작업.확정세목}
             부가세구분={작업.부가세구분}
+            조사ID={작업.조사ID}
+            조사답변={작업.조사답변}
+            이전진행={작업.이전진행}
             이름={작업.계획.name}
             순번={순번}
             최소화={작업.최소화}
@@ -3747,6 +3784,61 @@ function 탭제목알림(제목: string) {
 /** 접은 판정 표시 한 줄의 높이. 여러 건이면 위로 쌓습니다. */
 const 파일높이 = 66;
 
+function 진행목록({ 항목들 }: { 항목들: 진행항목[] }) {
+  if (!항목들.length) return null;
+  return <ol className="research-progress" aria-live="polite">{항목들.map((항목) => <li key={항목.id}>
+    <span>{항목.상태}</span> {항목.문장}
+    {!!항목.출처.length && <details><summary>출처 보기</summary>{항목.출처.map((출처, i) => <p key={i}><a href={출처.url} target="_blank" rel="noopener noreferrer">{출처.제목}</a>{출처.발췌 && <> · {출처.발췌}</>}</p>)}</details>}
+  </li>)}</ol>;
+}
+
+function 진행추가(이전: 진행항목[], 항목: 진행항목): 진행항목[] {
+  const 위치 = 이전.findIndex((v) => v.id === 항목.id);
+  if (위치 < 0) return [...이전, 항목];
+  return 이전.map((v, i) => i === 위치 ? 항목 : v);
+}
+
+function 조사확인({ 후보, 답, 변경 }: { 후보: 조사후보[]; 답: Record<string, 조사답변>; 변경: (v: 조사답변) => void }) {
+  return <div className="research-candidates">{후보.map((항목) => <article key={항목.id}>
+    <strong>{항목.유형}</strong><p>{항목.내용}</p>
+    {!!항목.출처?.length && <details><summary>출처 보기</summary>{항목.출처.filter((c) => /^https?:\/\//i.test(c.url)).map((c, i) => <p key={i}><a href={c.url} target="_blank" rel="noopener noreferrer">{c.제목}</a>{c.발췌 && <> · {c.발췌}</>}</p>)}</details>}
+    <div role="group" aria-label={`${항목.내용} 확인`}>{(["맞아요", "아니에요", "모르겠어요"] as const).map((선택) => <button type="button" key={선택} aria-pressed={답[항목.id]?.답 === 선택} onClick={() => 변경({ id: 항목.id, 답: 선택, 정정: 선택 === "아니에요" ? 답[항목.id]?.정정 : undefined })}>{선택}</button>)}</div>
+    {답[항목.id]?.답 === "아니에요" && <label>직접 정정하기 (선택)<input maxLength={500} value={답[항목.id]?.정정 ?? ""} onChange={(e) => 변경({ id: 항목.id, 답: "아니에요", 정정: e.target.value })} /></label>}
+  </article>)}</div>;
+}
+
+function 조사결과보기({ 결과 }: { 결과: import("../lib/questions").조사결과 | null | undefined }) {
+  if (!결과) return null;
+  const 정보 = Array.isArray(결과.확인한정보) ? 결과.확인한정보.filter((v) => v.유형 !== "업체이용조건") : [];
+  const 조건 = Array.isArray(결과.업체이용조건) ? 결과.업체이용조건 : [];
+  const 미확인 = Array.isArray(결과.미확인) ? 결과.미확인.filter((v) => v.유형 !== "업체이용조건") : [];
+  if (!정보.length && !조건.length && !미확인.length && !결과.부족정보?.length && !결과.사용자확인?.length) return null;
+  const 항목 = (v: 조사후보 & { 답?: string; 정정?: string }, i: number) => <article key={`${v.id}-${i}`}>
+    <strong>{v.유형}</strong><p>{v.내용}</p>
+    {v.답 && <p>답변: {v.답}</p>}{v.정정 && <p>직접 정정한 내용: {v.정정}</p>}
+    {!!v.출처?.length && <details><summary>출처 보기</summary>{v.출처.filter((c) => /^https?:\/\//i.test(c.url)).map((c, j) => <p key={j}><a href={c.url} target="_blank" rel="noopener noreferrer">{c.제목}</a>{c.발췌 && <> · {c.발췌}</>}</p>)}</details>}
+  </article>;
+  return <section className="research-candidates"><h3>검색해 확인한 정보</h3>{정보.map(항목)}
+    {!!미확인.length && <><h4>확인되지 않은 정보</h4>{미확인.map(항목)}</>}
+    {!!조건.length && <><h4>업체 이용 조건</h4><p>업체가 안내한 내용입니다.</p>{조건.map(항목)}</>}
+    {!!결과.부족정보?.length && <p>더 확인이 필요한 공개 정보: {결과.부족정보.join(" · ")}</p>}
+    <직접확인안내 항목들={결과.사용자확인 ?? []} 결과화면 />
+  </section>;
+}
+
+function 직접확인안내({ 항목들, 결과화면 = false }: { 항목들: { 항목: string; 질문: string }[]; 결과화면?: boolean }) {
+  if (!항목들.length) return null;
+  return <section className="research-settings"><b>직접 확인할 사항</b><p>{결과화면 ? "공개 정보만으로는 알 수 없는 내용이에요. 집행 전에 직접 확인해 주세요." : "공개 정보만으로는 알 수 없는 내용이에요. 다음 규정 질문에서 해당 내용을 물으면 답해 주세요."}</p><ul>{항목들.map((v, i) => <li key={`${v.항목}-${i}`}>{v.질문}</li>)}</ul></section>;
+}
+
+function 공개검색설정({ 사용, 설정, 검색어, 검색어변경, url, url변경 }: { 사용: boolean; 설정: (v: boolean) => void; 검색어: string; 검색어변경: (v: string) => void; url: string; url변경: (v: string) => void }) {
+  return <fieldset className="research-settings"><legend>공개 정보 검색</legend>
+    <p>선택하면 아래에 직접 입력한 공개 검색어와 공식 판매 URL을 외부 검색 서비스에 전송합니다. 개인 정보나 계약 정보는 입력하지 마세요.</p>
+    <label><input type="checkbox" checked={사용} onChange={(e) => 설정(e.target.checked)} /> 공개 정보를 검색할게요</label>
+    {사용 && <><label>외부 검색에 사용할 공개 검색어<input maxLength={120} value={검색어} onChange={(e) => 검색어변경(e.target.value)} placeholder="서비스·판매처·확인할 주제" /></label><label>공식 판매 URL (선택)<input type="url" maxLength={2048} value={url} onChange={(e) => url변경(e.target.value)} placeholder="https://" /></label></>}
+  </fieldset>;
+}
+
 /** 페이지가 앱 최상단에 맡기는 판정 한 건. 페이지를 옮겨도 판정이 끊기지 않게 최상단이 들고 있습니다. */
 type 판정시작입력 = {
   계획: ExpensePlan;
@@ -3759,6 +3851,9 @@ type 판정시작입력 = {
   추가입력값?: Record<string, string | number>;
   확정세목?: string | null;
   부가세구분?: 부가세구분;
+  조사ID?: string;
+  조사답변?: 조사답변[];
+  이전진행?: 진행항목[];
   /** 창을 열어 둔 채 끝났을 때만 부릅니다. 접어 두었으면 사용자를 끌고 가지 않고 최상단이 알립니다. */
   끝남: (판정된계획?: ExpensePlan, 오류?: string) => void;
 };
@@ -3780,6 +3875,9 @@ function AiCheckingOverlay({
   추가입력값,
   확정세목,
   부가세구분,
+  조사ID,
+  조사답변,
+  이전진행,
   제목,
   onComplete,
   onFail,
@@ -3822,11 +3920,15 @@ function AiCheckingOverlay({
   /** 새 지출 계획 화면에서 확정한 값. 재점검은 안 주고 계획에 저장된 값을 씁니다(`lib/judge.ts`). */
   확정세목?: string | null;
   부가세구분?: 부가세구분;
+  조사ID?: string;
+  조사답변?: 조사답변[];
+  이전진행?: 진행항목[];
   onComplete: (판정된계획?: ExpensePlan) => void;
   onFail?: (메시지: string) => void;
 }) {
-  const [stage, setStage] = useState(0);
+  const [, setStage] = useState(0);
   const [설명, set설명] = useState("");
+  const [진행항목들, set진행항목들] = useState<진행항목[]>(이전진행 ?? []);
   const 진행중 = useRef<Promise<{ 계획: ExpensePlan }> | null>(null);
   // 주의: 마지막으로 「진행」 이벤트나 keep-alive 를 받은 시각을 기록합니다. 아래 타임아웃은 절대시간이
   //    아니라 '마지막 수신 이후 무응답 시간' 을 잽니다. 2026-09-04 에 GPU 콜드 기동
@@ -3872,6 +3974,7 @@ function AiCheckingOverlay({
             set설명(문구);
             setStage((s) => Math.min(2, s + 1));
           },
+          작업: (항목) => set진행항목들((이전) => 진행추가(이전, 항목)),
           // 주의: 서버는 진행 3개를 처음에 한꺼번에 보내고, 판정이 끝날 때까지는 12초마다
           //    keep-alive 만 보냅니다. 이걸로 다시 재지 않으면 서버 마감(180초) 안에 끝날
           //    판정도 150초에 「오래 걸립니다」로 끊고, 서버는 그 뒤에 저장합니다.
@@ -3879,7 +3982,7 @@ function AiCheckingOverlay({
             진행시각.current = Date.now();
           },
         },
-        { 대체입력, 답변, 질문세트, 추가입력값, 확정세목, 부가세구분 },
+        { 대체입력, 답변, 질문세트, 추가입력값, 확정세목, 부가세구분, 조사ID, 조사답변 },
       );
     }
 
@@ -3940,12 +4043,8 @@ function AiCheckingOverlay({
         <h2 id="ai-checking-title">
           {제목 ?? `AI가 지출 계획${count > 1 ? ` ${count}건을` : "을"} 점검하고 있어요`}
         </h2>
-        <p>{설명 || "비목, 확인 항목, 필요 증빙을 정리하고 있습니다. 잠시만 기다려주세요."}</p>
-        <div className="ai-checking-steps">
-          {["기본 정보 확인", "비목 분류", "확인 항목 정리"].map((label, index) => (
-            <span className={index <= stage ? "active" : ""} key={label}><i /><b>{label}</b></span>
-          ))}
-        </div>
+        <p>{설명 || "서버 응답을 기다리고 있어요."}</p>
+        <진행목록 항목들={진행항목들} />
         {/* 주의: 첫 분기(`GPU기동중`)는 예전 GPU 콜드 기동 안내입니다. 현재 서버는 해당 문구를
             보내지 않아 표시되지 않습니다.
             주의: 2026-09-07(책임자 결정) — 실제 판정은 Qwen 경로에서 1건 약 60초다(판정 LLM 55~59초
@@ -3966,7 +4065,7 @@ function AiCheckingOverlay({
 }
 
 /** 재점검 창에서 받은 답. `AiCheckingOverlay` 로 그대로 넘깁니다. */
-type 재점검답 = { 답변: 답변항목[]; 질문세트: string | null; 추가입력값: Record<string, string | number> };
+type 재점검답 = { 답변: 답변항목[]; 질문세트: string | null; 추가입력값: Record<string, string | number>; 조사ID?: string; 조사답변?: 조사답변[]; 이전진행?: 진행항목[] };
 
 /**
  * 재점검 전 확인 창. 서버 모드는 새 지출 계획과 같은 확인 질문을 묻고, 물을 것이 없으면 바로 점검합니다.
@@ -4007,7 +4106,17 @@ function PlanRecheckQuestionsModal({
   const [받은, set받은] = useState<{ 키: string; 결과: 질문결과 } | null>(null);
   const [답, set답] = useState<Record<string, string>>({});
   const [칸값, set칸값] = useState<Record<string, string>>({});
-  const 받는중 = 서버모드 && !!category && 받은?.키 !== 질문키;
+  const [검색시작, set검색시작] = useState(false);
+  const [웹조사, set웹조사] = useState(false);
+  const [공개검색어, set공개검색어] = useState("");
+  const [판매URL, set판매URL] = useState("");
+  const [진행항목들, set진행항목들] = useState<진행항목[]>([]);
+  const 진행Ref = useRef<진행항목[]>([]);
+  const [조사답, set조사답] = useState<Record<string, 조사답변>>({});
+  const [조사오류, set조사오류] = useState("");
+  const [규정요청, set규정요청] = useState(false);
+  const [조사확인ID, set조사확인ID] = useState<string | undefined>();
+  const 받는중 = 서버모드 && 검색시작 && !!category && 받은?.키 !== 질문키;
   const 지금결과 = 서버모드 && 받은?.키 === 질문키 ? 받은.결과 : null;
   const 서버질문 = 지금결과?.질문 ?? [];
   const 서버칸 = 지금결과?.추가입력 ?? [];
@@ -4015,33 +4124,48 @@ function PlanRecheckQuestionsModal({
   const 답키 = (q: 확인질문) => `${지금결과?.질문세트}:${q.id}`;
 
   useEffect(() => {
-    if (!서버모드 || !category) return;
+    if (!서버모드 || !category || !검색시작) return;
     let 살아있음 = true;
-    void 질문가져오기({
-      사업명: 현재사업(),
+    void 계획상세(plan.id).catch(() => null).then((상세) => {
+      if (!살아있음) throw new Error("취소됨");
+      const n = 상세?.정규화 && Object.keys(상세.정규화).length ? 상세.정규화 : null;
+      const 저장값 = 상세 ? 정규화저장값(상세.정규화) : null;
+      return 질문가져오기({
+      사업명: 상세 ? 상세.사업명 : 현재사업(),
       확정비목: category,
       // 주의: 계획에 저장된 세목과 부가세 구분을 그대로 보냅니다. 이 창에서 고른 비목이면 저장된 세목은 없습니다.
-      확정세목: plan.category ? plan.확정세목 : undefined,
-      부가세구분: plan.부가세구분,
+      확정세목: plan.category ? (저장값?.확정세목 ?? plan.확정세목) : undefined,
+      부가세구분: 저장값?.부가세구분 ?? plan.부가세구분,
       세부유형,
-      품목: plan.name,
-      금액: plan.amount,
-      용도: plan.purpose,
+      품목: n ? (typeof n.품목 === "string" ? n.품목 : "") : (상세 ? 상세.제목 ?? "" : plan.name),
+      금액: n ? (typeof n.금액 === "number" ? n.금액 : null) : (상세 ? 상세.금액 ?? 0 : plan.amount),
+      용도: n ? (typeof n.용도 === "string" ? n.용도 : "") : (상세 ? 상세.용도 ?? "" : plan.purpose),
+      질문원문: n ? [n.질문원문, n.질문, n._원문].find((v): v is string => typeof v === "string" && !!v) : (상세?.질문원문 ?? undefined),
+      웹조사, 공개검색어: 웹조사 ? 공개검색어.trim() : undefined, 판매URL: 웹조사 ? 판매URL.trim() || undefined : undefined,
+      ...(규정요청 ? { 조사ID: 조사확인ID, 조사답변: Object.values(조사답) } : {}),
+      }, (항목) => { if (살아있음) { 진행Ref.current = 진행추가(진행Ref.current, 항목); set진행항목들(진행Ref.current); } });
     }).then((결과) => {
       if (!살아있음) return;
       // 물을 것이 없으면 바로 점검합니다. 이 창에서 비목을 고른 경우는 사용자가 시작을 눌러야 합니다.
-      if (!결과.질문.length && !결과.추가입력.length && plan.category) {
-        start();
+      if (!결과.질문.length && !결과.추가입력.length && 결과.상태 !== "조사확인" && plan.category) {
+        start(undefined, { 답변: [], 질문세트: 결과.질문세트, 추가입력값: {}, 조사ID: 결과.조사ID, 조사답변: 규정요청 ? Object.values(조사답) : [], 이전진행: 진행Ref.current });
         return;
       }
       set칸값(추가입력초기값(결과.추가입력, plan.수치));
       set받은({ 키: 질문키, 결과 });
+    }).catch((오류: unknown) => {
+      if (!살아있음) return;
+      set조사오류(오류 && typeof 오류 === "object" && "status" in 오류 && 오류.status === 503 ? "규정을 확인하지 못했어요. 잠시 후 다시 확인해 주세요." : 규정요청 ? "규정 질문을 받지 못했어요. 검색 없이 계속하거나 다시 확인해 주세요." : 웹조사 ? "검색 서비스에 연결하지 못했어요. 검색 없이 계속하거나 나중에 다시 시도해 주세요." : "확인할 내용을 받지 못했어요. 다시 확인해 주세요.");
+      set규정요청(false);
+      set조사확인ID(undefined);
+      set조사답({});
+      set검색시작(false);
     });
     return () => {
       살아있음 = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [서버모드, 질문키]);
+  }, [서버모드, 질문키, 검색시작, 규정요청]);
 
   return (
     <div className="ai-checking-backdrop" role="presentation">
@@ -4056,8 +4180,10 @@ function PlanRecheckQuestionsModal({
                 : !서버모드
                   ? `${category} 규정에서 확인할 사항입니다. 답변은 아직 AI 점검에 반영되지 않습니다.`
                   : 받는중
-                    ? "규정에서 확인할 사항을 찾고 있어요."
-                    : "답변을 반영해 판정합니다. 모르면 모르겠어요를 눌러 주세요."}
+                    ? "서버 응답을 기다리고 있어요."
+                    : 지금결과?.상태 === "조사확인"
+                      ? "공개 정보를 확인한 뒤 규정 질문을 준비합니다."
+                      : "답변을 반영해 판정합니다. 모르면 모르겠어요를 눌러 주세요."}
             </p>
           </div>
           <button type="button" onClick={close} aria-label="닫기">×</button>
@@ -4068,9 +4194,17 @@ function PlanRecheckQuestionsModal({
               label="이 지출의 비목을 골라 주세요."
               options={[...비목선택지]}
               value={선택비목}
-              onChange={set선택비목}
+              onChange={(값) => { set선택비목(값); set검색시작(false); set규정요청(false); set받은(null); set조사답({}); }}
             />
           )}
+          {서버모드 && !검색시작 && <공개검색설정 사용={웹조사} 설정={set웹조사} 검색어={공개검색어} 검색어변경={set공개검색어} url={판매URL} url변경={set판매URL} />}
+          {조사오류 && <p role="alert">{조사오류}</p>}
+          {조사오류 && 웹조사 && <button type="button" className="outline" onClick={() => { set조사오류(""); set웹조사(false); set검색시작(true); }}>검색 없이 계속</button>}
+          {받는중 && <진행목록 항목들={진행항목들} />}
+          {지금결과?.상태 === "조사확인" && !!지금결과.조사후보?.length && <조사확인 후보={지금결과.조사후보} 답={조사답} 변경={(v) => set조사답((이전) => ({ ...이전, [v.id]: v }))} />}
+          {지금결과?.상태 === "조사확인" && !지금결과.조사후보?.length && <p>확인된 공개 정보가 없어요. 입력한 내용으로 계속 점검할 수 있어요.</p>}
+          {지금결과?.상태 === "조사확인" && !!지금결과.부족정보?.length && <p>더 확인이 필요한 공개 정보: {지금결과.부족정보.join(" · ")}</p>}
+          {지금결과?.상태 === "조사확인" && <직접확인안내 항목들={지금결과.사용자확인 ?? []} />}
           {서버모드 && (
             <추가입력칸목록 칸들={서버칸} 값들={칸값} onChange={(키, v) => set칸값((prev) => ({ ...prev, [키]: v }))} />
           )}
@@ -4092,21 +4226,31 @@ function PlanRecheckQuestionsModal({
           <button className="outline" onClick={close}>취소</button>
           <button
             className="primary"
-            disabled={!category || 받는중 || 서버질문.some((q) => !답[답키(q)])}
-            onClick={() =>
+            disabled={!category || 받는중 || (웹조사 && !공개검색어.trim()) || 서버질문.some((q) => !답[답키(q)]) || (지금결과?.상태 === "조사확인" && !!지금결과.조사후보?.some((c) => !조사답[c.id]))}
+            onClick={() => {
+              if (서버모드 && !검색시작) { set조사오류(""); 진행Ref.current = []; set진행항목들([]); set검색시작(true); return; }
+              if (지금결과?.상태 === "조사확인") {
+                set조사확인ID(지금결과.조사ID);
+                set받은(null);
+                set규정요청(true);
+                return;
+              }
               start(
                 plan.category ? undefined : 선택비목,
-                서버질문.length || 서버칸.length
+                서버질문.length || 서버칸.length || 지금결과?.조사ID
                   ? {
                       답변: 서버질문.map((q) => ({ code: q.id, 값: 답[답키(q)] })),
-                      질문세트: 서버질문.length ? (지금결과?.질문세트 ?? null) : null,
+                      질문세트: 지금결과?.질문세트 ?? null,
                       추가입력값: 추가입력값만들기(서버칸, 칸값),
+                      조사ID: 지금결과?.조사ID,
+                      조사답변: Object.values(조사답),
+                      이전진행: 진행항목들,
                     }
                   : undefined,
-              )
-            }
+              );
+            }}
           >
-            AI 점검 시작
+            {서버모드 && !검색시작 ? (조사오류 ? "다시 확인" : "계속") : 지금결과?.상태 === "조사확인" ? "규정 확인하기" : "AI 점검 시작"}
           </button>
         </footer>
       </section>
@@ -4729,6 +4873,9 @@ function PlansPage({
               },
               답변: 답?.답변,
               질문세트: 답?.질문세트,
+              조사ID: 답?.조사ID,
+              조사답변: 답?.조사답변,
+              이전진행: 답?.이전진행,
               추가입력값: 답?.추가입력값,
               끝남: (_판정된계획, 오류) => {
                 if (오류) {
@@ -4834,11 +4981,24 @@ function NewPlanPage({
   const [feeSubtype, setFeeSubtype] = useState("멘토링");
   const [categoryLoading, setCategoryLoading] = useState(false);
   const [questionsLoading, setQuestionsLoading] = useState(false);
+  const [웹조사, set웹조사] = useState(false);
+  const [공개검색어, set공개검색어] = useState("");
+  const [판매URL, set판매URL] = useState("");
+  const [진행항목들, set진행항목들] = useState<진행항목[]>([]);
+  const 진행Ref = useRef<진행항목[]>([]);
+  const [조사오류, set조사오류] = useState("");
+  const [조사ID, set조사ID] = useState<string | undefined>();
+  const [조사후보들, set조사후보들] = useState<조사후보[]>([]);
+  const [직접확인들, set직접확인들] = useState<{ 항목: string; 질문: string }[]>([]);
+  const [부족정보들, set부족정보들] = useState<string[]>([]);
+  const [조사답, set조사답] = useState<Record<string, 조사답변>>({});
+  const [조사확인단계, set조사확인단계] = useState(false);
   // ── 서버 연동 상태 ──
   // 주의: 예전에는 첫 후보 하나만 들고 있었습니다(`서버추천: string`). 서버는 후보를
   //    '여러 개' 줄 수 있고 그때는 배지도 여러 개 붙어야 하므로 배열로 들고 갑니다.
   const [서버후보, set서버후보] = useState<비목후보[]>([]);
   const [서버정규화, set서버정규화] = useState<Record<string, unknown> | null>(null);
+  const [정규화조사ID, set정규화조사ID] = useState<string | undefined>();
   // 온톨로지 경로 서버가 준 분류 후보와 지금 고른 후보입니다. 옛 경로 서버면 후보가 비어 있고 비목만 고릅니다.
   // 주의: `선택분류` 가 null 이면 세목 없이 `category` 비목으로만 판정합니다.
   const [서버분류후보, set서버분류후보] = useState<분류값[]>([]);
@@ -4853,7 +5013,7 @@ function NewPlanPage({
   const [칸값, set칸값] = useState<Record<string, string>>({});
   const [서버풀이, set서버풀이] = useState<용어풀이항목[]>([]);
   // 지금 들고 있는 질문이 어떤 비목으로 받은 것인지 둡니다. 품목·목적·금액을 고치면 질문 자체가 비워집니다.
-  const 질문키 = `${category}|${feeSubtype}|${선택분류?.표시문 ?? ""}`;
+  const 질문키 = `${category}|${feeSubtype}|${선택분류?.표시문 ?? ""}|${웹조사}|${공개검색어}|${판매URL}`;
   const [받은질문키, set받은질문키] = useState<string | null>(null);
   const [저장중, set저장중] = useState(false);
   const [연동오류, set연동오류] = useState<string | null>(null);
@@ -4893,6 +5053,7 @@ function NewPlanPage({
   const 자동선택비목 = useRef<string | null>(null);
   useEffect(() => {
     set서버정규화(null);
+    set정규화조사ID(undefined);
     set서버후보([]);
     set서버분류후보([]);
     set선택분류(null);
@@ -4902,6 +5063,12 @@ function NewPlanPage({
     set서버칸([]);
     set칸값({});
     set서버풀이([]);
+    set조사ID(undefined);
+    set조사후보들([]);
+    set직접확인들([]);
+    set부족정보들([]);
+    set조사답({});
+    set조사확인단계(false);
     setCategory((v) => (v && v === 자동선택비목.current ? "" : v));
     자동선택비목.current = null;
   }, [name, purpose, amount, 부가세]);
@@ -4981,7 +5148,9 @@ function NewPlanPage({
     })
       .then((r) => {
         if (!살아있음) return;
-        set서버정규화(r.정규화);
+        const { 조사ID: 토큰, ...정규화값 } = r.정규화;
+        set정규화조사ID(typeof 토큰 === "string" ? 토큰 : undefined);
+        set서버정규화(정규화값);
         // 주의: 후보가 '비어 있는 것도 정상' 입니다 (운영 서버 폼 경로). 그때는 사용자가 고릅니다.
         set서버후보(r.비목후보);
         set서버분류후보(r.분류후보);
@@ -5087,7 +5256,7 @@ function NewPlanPage({
     save(계획, 임시, 점검오류);
   };
 
-  const 점검시작 = (계획: ExpensePlan, planId?: string) => {
+  const 점검시작 = (계획: ExpensePlan, planId?: string, 받은조사ID?: string, 받은조사답?: 조사답변[], 받은질문세트?: string | null) => {
     // 창을 닫으면 이 화면을 떠나므로 첨부파일을 먼저 올립니다.
     첨부넘기기(계획.id);
     판정시작({
@@ -5106,7 +5275,10 @@ function NewPlanPage({
       답변: 서버질문
         .filter((q) => 질문답변[q.id])
         .map((q) => ({ code: q.id, 값: 질문답변[q.id] })),
-      질문세트: 서버질문.length ? 질문세트 : null,
+      질문세트: 받은질문세트 === undefined ? 질문세트 : 받은질문세트,
+      조사ID: 받은조사ID ?? 조사ID,
+      조사답변: 받은조사답 ?? Object.values(조사답),
+      이전진행: 진행Ref.current,
       추가입력값: 추가입력값만들기(서버칸, 칸값),
       확정세목: 선택분류?.세목 ?? null,
       부가세구분: 부가세,
@@ -5121,16 +5293,16 @@ function NewPlanPage({
     });
   };
 
-  const submit = () => {
+  const submit = (받은조사ID?: string, 받은조사답?: 조사답변[], 받은질문세트?: string | null) => {
     if (!API켜짐()) {
-      점검시작(buildPlan(false));
+      점검시작(buildPlan(false), undefined, 받은조사ID, 받은조사답, 받은질문세트);
       return Promise.resolve();
     }
     set저장중(true);
     set연동오류(null);
     return 서버에저장()
       .then((d) => {
-        점검시작(상세를계획으로(d), String(d.plan_id));
+        점검시작(상세를계획으로(d), String(d.plan_id), 받은조사ID, 받은조사답, 받은질문세트);
       })
       .catch((e: unknown) => {
         set연동오류(e instanceof Error ? e.message : "저장하지 못했습니다");
@@ -5152,6 +5324,8 @@ function NewPlanPage({
 
     // ── 서버에서 확인 질문 받기 ──
     let 살아있음 = true;
+    set조사오류("");
+    if (!조사확인단계) { 진행Ref.current = []; set진행항목들([]); }
     const 질문원문 = 서버정규화?.["질문원문"];
     void 질문가져오기({
       사업명: 현재사업(),
@@ -5160,14 +5334,25 @@ function NewPlanPage({
       부가세구분: 부가세,
       // 주의: 세부 유형 칸은 분류 후보가 없을 때만 보입니다. 안 보이는 기본값(멘토링)을 서버로 보내면 안 됩니다.
       세부유형: category === "지급수수료" && !분류경로 ? feeSubtype : null,
-      품목: name,
-      금액: Number(amount.replace(/,/g, "")) || 0,
-      용도: purpose,
+      품목: 서버정규화 ? (typeof 서버정규화.품목 === "string" ? 서버정규화.품목 : "") : name,
+      금액: 서버정규화 ? (typeof 서버정규화.금액 === "number" ? 서버정규화.금액 : null) : Number(amount.replace(/,/g, "")) || 0,
+      용도: 서버정규화 ? (typeof 서버정규화.용도 === "string" ? 서버정규화.용도 : "") : purpose,
       질문원문: typeof 질문원문 === "string" && 질문원문 ? 질문원문 : undefined,
-    }).then((r) => {
+      조사ID: 받은질문키 && 받은질문키 !== 질문키 ? undefined : 정규화조사ID,
+      웹조사, 공개검색어: 웹조사 ? 공개검색어.trim() : undefined, 판매URL: 웹조사 ? 판매URL.trim() || undefined : undefined,
+      ...(조사확인단계 ? { 조사ID, 조사답변: Object.values(조사답) } : {}),
+    }, (항목) => { if (살아있음) { 진행Ref.current = 진행추가(진행Ref.current, 항목); set진행항목들(진행Ref.current); } }).then((r) => {
       if (!살아있음) return;
       // 주의: id(Q1…)는 묶음마다 다시 매겨져 옛 답이 다른 질문의 답으로 나가면 안 됩니다.
       set서버질문(r.질문);
+      set조사ID(r.조사ID);
+      if (!조사확인단계) {
+        set조사후보들(r.조사후보 ?? []);
+        set직접확인들(r.사용자확인 ?? []);
+        set부족정보들(r.부족정보 ?? []);
+        set조사답({});
+      }
+      set조사확인단계(r.상태 === "조사확인");
       set질문세트(r.질문세트);
       set질문답변({});
       set서버칸(r.추가입력);
@@ -5178,7 +5363,7 @@ function NewPlanPage({
         ...추가입력초기값(r.추가입력, typeof 수치 === "object" && 수치 !== null ? (수치 as Record<string, unknown>) : undefined),
         ...지금,
       }));
-      if (r.질문.length || r.추가입력.length) {
+      if (r.질문.length || r.추가입력.length || r.상태 === "조사확인") {
         set받은질문키(질문키);
         set연동오류(null);
         setStep(3);
@@ -5188,7 +5373,23 @@ function NewPlanPage({
       // 질문이 없거나 실패·제한 시간 초과. 3단계 없이 바로 판정합니다.
       // 주의: 저장이 끝날 때까지 로딩 창을 둡니다. 먼저 닫으면 2단계 화면이 잠깐 비쳤다가 판정 창이 뜹니다.
       set받은질문키(null);
-      void submit().finally(() => setQuestionsLoading(false));
+      void submit(r.조사ID, 조사확인단계 ? Object.values(조사답) : [], r.질문세트).finally(() => setQuestionsLoading(false));
+    }).catch((오류: unknown) => {
+      if (!살아있음) return;
+      set정규화조사ID(undefined);
+      set조사ID(undefined);
+      set조사확인단계(false);
+      set조사답({});
+      set조사후보들([]);
+      set직접확인들([]);
+      set부족정보들([]);
+      set서버질문([]);
+      set질문세트(null);
+      set서버칸([]);
+      set받은질문키(null);
+      setStep(2);
+      set조사오류(오류 && typeof 오류 === "object" && "status" in 오류 && 오류.status === 503 ? "규정을 확인하지 못했어요. 잠시 후 다시 확인해 주세요." : 조사확인단계 ? "규정 질문을 받지 못했어요. 검색 없이 계속하거나 다시 확인해 주세요." : 웹조사 ? "검색 서비스에 연결하지 못했어요. 검색 없이 계속하거나 나중에 다시 시도해 주세요." : "확인할 내용을 받지 못했어요. 다시 확인해 주세요.");
+      setQuestionsLoading(false);
     });
     return () => {
       살아있음 = false;
@@ -5432,18 +5633,26 @@ function NewPlanPage({
                 </div>
               </section>
             )}
+            {API켜짐() && <공개검색설정 사용={웹조사} 설정={set웹조사} 검색어={공개검색어} 검색어변경={set공개검색어} url={판매URL} url변경={set판매URL} />}
+            {조사오류 && <div role="alert"><p>{조사오류}</p>{웹조사 && <button type="button" className="outline" onClick={() => { set웹조사(false); setQuestionsLoading(true); }}>검색 없이 계속</button>}</div>}
           </>
         )}
         {step === 3 && (
           <>
-            <h2 className="additional-check-title">몇 가지만 추가로 확인할게요</h2>
+            <h2 className="additional-check-title">{조사확인단계 ? "공개 정보를 확인해 주세요" : "몇 가지만 추가로 확인할게요"}</h2>
             <p className="section-copy additional-check-copy">
-              {API켜짐()
+              {조사확인단계
+                ? "검색한 내용이 맞는지 확인해 주세요. 확인한 내용으로 규정 질문을 준비합니다."
+                : API켜짐()
                 ? "입력한 지출에 맞춰 규정에서 확인할 사항을 골랐어요."
                 : category === "지급수수료"
                   ? `${feeSubtype} 기준에서 확인할 사항입니다.`
                   : `${category} 규정에서 확인할 사항입니다.`}
             </p>
+            {조사확인단계 && !!조사후보들.length && <조사확인 후보={조사후보들} 답={조사답} 변경={(v) => set조사답((이전) => ({ ...이전, [v.id]: v }))} />}
+            {조사확인단계 && !조사후보들.length && <p>확인된 공개 정보가 없어요. 입력한 내용으로 계속 점검할 수 있어요.</p>}
+            {조사확인단계 && !!부족정보들.length && <p>더 확인이 필요한 공개 정보: {부족정보들.join(" · ")}</p>}
+            {조사확인단계 && <직접확인안내 항목들={직접확인들} />}
             <div className="auto-check-note">
               <Icon name="check" />
               <span>
@@ -5455,7 +5664,7 @@ function NewPlanPage({
               {API켜짐() && (
                 <추가입력칸목록 칸들={서버칸} 값들={칸값} onChange={(키, v) => set칸값((prev) => ({ ...prev, [키]: v }))} />
               )}
-              {API켜짐()
+              {조사확인단계 ? null : API켜짐()
                 ? 서버질문.map((q) => (
                     <확인질문카드
                       key={`${질문세트}-${q.id}`}
@@ -5476,7 +5685,7 @@ function NewPlanPage({
             <div className="info-note">
               <Icon name="spark" />
               {/* 주의: 예시 모드는 판정을 부르지 않아 답이 어디에도 쓰이지 않으므로 그 사실을 그대로 둡니다. */}
-              {API켜짐()
+              {조사확인단계 ? "모르면 모르겠어요를 선택해 주세요." : API켜짐()
                 ? 서버질문.length
                   ? "답변을 반영해 판정합니다. 모르면 모르겠어요를 눌러 주세요."
                   : "채운 값을 반영해 판정합니다. 모르면 비워 두세요."
@@ -5511,23 +5720,25 @@ function NewPlanPage({
             저장중 ||
             !필수입력됨 ||
             (step >= 2 && !category) ||
-            (step === 3 && 서버질문.some((q) => !질문답변[q.id]))
+            (step === 2 && 웹조사 && !공개검색어.trim()) ||
+            (step === 3 && (서버질문.some((q) => !질문답변[q.id]) || (조사확인단계 && 조사후보들.some((c) => !조사답[c.id]))))
           }
           onClick={() => {
             if (step === 1) {
               setCategoryLoading(true);
             } else if (step === 2) {
               // 주의: 「이전」으로 왔다가 그대로 돌아가면 다시 받지 않습니다. 다시 받다 실패하면 답이 사라집니다.
-              if (API켜짐() && (서버질문.length || 서버칸.length) && 받은질문키 === 질문키) setStep(3);
-              else setQuestionsLoading(true);
-            } else submit();
+              if (API켜짐() && (서버질문.length || 서버칸.length || 조사후보들.length || 웹조사) && 받은질문키 === 질문키) setStep(3);
+              else { set조사확인단계(false); set조사ID(undefined); setQuestionsLoading(true); }
+            } else if (조사확인단계) setQuestionsLoading(true);
+            else submit();
           }}
         >
           {step === 1
             ? "비목 확인하기"
             : step === 2
-              ? "AI 점검하기"
-              : "결과 확인하기"}
+              ? (조사오류 ? "다시 확인" : "AI 점검하기")
+              : 조사확인단계 ? "규정 확인하기" : "결과 확인하기"}
         </button>
       </footer>
       {(categoryLoading || questionsLoading) && (
@@ -5545,7 +5756,8 @@ function NewPlanPage({
               <i className="analysis-spark analysis-spark-two"><Icon name="sparkSolid" size={6} /></i>
             </span>
             <h2 id="category-analysis-title">{questionsLoading ? "AI가 내용을 점검하고 있어요." : "입력한 내용을 분석하고 있어요"}</h2>
-            <p>{questionsLoading ? "선택한 비목에 맞는 추가 질문을 준비하고 있습니다." : "지출 항목과 사용 목적을 바탕으로 적합한 비목을 찾고 있습니다."}</p>
+            <p>{questionsLoading ? "서버 응답을 기다리고 있어요." : "지출 항목과 사용 목적을 바탕으로 적합한 비목을 찾고 있습니다."}</p>
+            {questionsLoading && <진행목록 항목들={진행항목들} />}
             <small>잠시만 기다려주세요.</small>
           </section>
         </div>
@@ -6566,6 +6778,7 @@ function PlanDetail({
             <결과접는목록 제목="해당할 때만 필요해요" 항목={plan.해당시조건} 펼침={!plan.조건?.length && !plan.기한조건?.length} />
             <결과접는목록 제목="사업 전체 공통 사항" 항목={plan.공통사항} 펼침={false} />
             <확인한내용 항목={plan.사용자답변} 조건={plan.확인한조건} />
+            <조사결과보기 결과={plan.조사} />
             <div className="ai-explanation">
               <Icon name="spark" size={20} />
               <div>
@@ -6623,7 +6836,7 @@ function PlanDetail({
               <header>
                 <div>
                   <Icon name="rules" size={20} />
-                  <b>적용 근거</b>
+                  <b>지원금 규정 근거</b>
                 </div>
                 <strong>{plan.rules.length}건</strong>
               </header>
@@ -7003,6 +7216,9 @@ function PlanDetail({
               },
               답변: 답?.답변,
               질문세트: 답?.질문세트,
+              조사ID: 답?.조사ID,
+              조사답변: 답?.조사답변,
+              이전진행: 답?.이전진행,
               추가입력값: 답?.추가입력값,
               끝남: (판정된계획, 오류) => {
                 if (오류) {
@@ -9152,6 +9368,8 @@ function MyPage({
   const [협약, set협약] = useState<협약정보>(지금협약);
   const [협약초안, set협약초안] = useState(협약);
   const [협약저장중, set협약저장중] = useState(false);
+  // 서버가 저장된 협약 금액을 규정의 비율 기준과 견줘 준 안내 문장들(없으면 빈 목록)
+  const [협약경고, set협약경고] = useState<string[]>([]);
   // 주의: 「예시」는 사용자 값이 아니므로 수정 창에 넣지 않습니다. 하나만 고쳐 저장하면 나머지 예시 값까지
   //    이 계정의 협약으로 저장되어 판정에 쓰입니다. 「실패」면 서버 값을 모르니 덮어쓰지 못하게 막습니다.
   const [협약출처, set협약출처] = useState<"서버" | "이 브라우저" | "예시" | "조회중" | "실패">("조회중");
@@ -9187,13 +9405,14 @@ function MyPage({
     set협약(현재협약);
     set협약초안(기억 ? 현재협약 : 빈협약);
     set협약출처("조회중");
-    서버협약조회().then(({ 값: 서버값, 실패 }) => {
+    서버협약조회().then(({ 값: 서버값, 실패, 경고 }) => {
       if (!살아있음) return;
       if (서버값) {
         협약잊기();
         set협약출처("서버");
         set협약(서버값);
         set협약초안(서버값);
+        set협약경고(경고);
         return;
       }
       set협약출처(실패 ? "실패" : 기억 ? "이 브라우저" : "예시");
@@ -9276,7 +9495,9 @@ function MyPage({
           <div><dt>협약 시작일</dt><dd>{날짜표기(협약.시작일)}</dd></div>
           <div><dt>협약 종료일</dt><dd>{날짜표기(협약.종료일)}</dd></div>
           <div><dt>사업 지원비</dt><dd>{원(협약.정부지원 + 협약.자기부담)}</dd></div>
+          <div><dt>자기부담금 현물</dt><dd>{협약.자기부담현물 == null ? "미입력" : 원(협약.자기부담현물)}</dd></div>
         </dl>
+        {협약출처 === "서버" && <협약경고알림 줄들={협약경고} />}
         {협약출처 === "예시" && (
           <p className="section-copy">아직 입력한 협약 정보가 없어 사업 예시 값을 보여 줍니다. 점검에는 쓰이지 않습니다.</p>
         )}
@@ -9588,8 +9809,8 @@ function MyPage({
                   <option value="X">X</option>
                 </select>
               </label>
-              {/* 주의: 아래 4칸이 서버 기업 프로필의 `협약` 입니다. AI 점검이 「협약기간 밖 지출」·
-                  「사업비 초과」를 판단할 때 전제로 씁니다. */}
+              {/* 주의: 아래 5칸이 서버 기업 프로필의 `협약` 입니다. AI 점검이 「협약기간 밖 지출」·
+                  「사업비 초과」·「현물 비율 한도」를 판단할 때 전제로 씁니다. */}
               <label>
                 <span>협약 시작일</span>
                 <input type="date" disabled={협약잠김} value={협약초안.시작일} onChange={(event) => set협약초안((v) => ({ ...v, 시작일: event.target.value }))} />
@@ -9603,10 +9824,26 @@ function MyPage({
                 <input inputMode="numeric" disabled={협약잠김} value={협약초안.정부지원.toLocaleString("ko-KR")} onChange={(event) => set협약초안((v) => ({ ...v, 정부지원: Number(event.target.value.replace(/[^0-9]/g, "")) || 0 }))} />
               </label>
               <label>
-                <span>자기부담금 (원)</span>
+                <span>자기부담금 현금 (원)</span>
                 <input inputMode="numeric" disabled={협약잠김} value={협약초안.자기부담.toLocaleString("ko-KR")} onChange={(event) => set협약초안((v) => ({ ...v, 자기부담: Number(event.target.value.replace(/[^0-9]/g, "")) || 0 }))} />
               </label>
+              {/* 주의: 현물은 비워 두면 「모름」, 0 이면 「현물 없음」입니다. 서버가 「현물은 총사업비의 20% 이하」
+                  같은 비율 한도를 이 값으로 계산하므로 빈 칸을 0 으로 바꾸지 않습니다. */}
+              <label>
+                <span>자기부담금 현물 (원) <small className="profile-fixed-label">없으면 0</small></span>
+                <input
+                  inputMode="numeric"
+                  placeholder="모르면 비워 두세요"
+                  disabled={협약잠김}
+                  value={협약초안.자기부담현물 == null ? "" : 협약초안.자기부담현물.toLocaleString("ko-KR")}
+                  onChange={(event) => {
+                    const 숫자만 = event.target.value.replace(/[^0-9]/g, "");
+                    set협약초안((v) => ({ ...v, 자기부담현물: 숫자만 ? Number(숫자만) : null }));
+                  }}
+                />
+              </label>
             </div>
+            {협약출처 === "서버" && <협약경고알림 줄들={협약경고} 모달 />}
             <footer>
               <button className="outline" onClick={() => setEditingProfile(false)}>취소</button>
               <button className="primary" disabled={!profileDraft.host.trim() || 협약저장중} onClick={() => {
@@ -9649,13 +9886,14 @@ function MyPage({
                 set협약(협약초안);
                 set협약저장중(true);
                 협약쓰기(협약초안)
-                  .then(({ 결과, 사유 }) => {
+                  .then(({ 결과, 사유, 경고 }) => {
                     // 주의: 서버가 받으면 서버 값이 기준이므로 로컬 값을 지웁니다. 게스트·mock 은 서버에
                     //    안 남아서 이 브라우저에 기억합니다. 서버가 거부하면(422 등) 기억하지 않고 화면도
                     //    되돌립니다 — 거부된 값이 화면에 남으면 판정이 쓰는 값과 어긋납니다.
                     if (결과 === "저장됨") {
                       협약잊기();
                       set협약출처("서버");
+                      set협약경고(경고);
                     } else if (결과 === "실패") set협약(이전협약);
                     else {
                       협약기억(협약초안);
