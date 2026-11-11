@@ -6627,7 +6627,7 @@ function Question({
  *    「AI 점검 결과」가 안 읽힙니다. 필요한 사람만 폅니다.
  */
 function 문의초안카드({
-  초안,
+  초안: 서버초안,
   문의처,
   notify,
 }: {
@@ -6636,6 +6636,10 @@ function 문의초안카드({
   notify: (message: string) => void;
 }) {
   const [복사됨, set복사됨] = useState(false);
+  // v030: 서버는 팀 이름을 확실히 몰라 「[팀명]」 자리표시자로 보냅니다(`server/inquiry.py`).
+  //    팀 이름의 기준은 Supabase 계정 정보라 여기서 채웁니다. 모르면 자리표시자를 남겨 사용자가 채웁니다.
+  const 팀이름 = use팀이름();
+  const 초안 = 팀이름 ? 서버초안.replaceAll("[팀명]", 팀이름) : 서버초안;
 
   const 복사 = async () => {
     try {
