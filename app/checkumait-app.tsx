@@ -5827,10 +5827,9 @@ function NewPlanPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [questionsLoading]);
 
-  // 공개 검색을 켠 채 확인 질문을 받는 동안은 팝업 대신 검색 칸 안에서 검색 작업을 보여 줍니다.
+  // v025: 검색 칸이 STEP 1 로 옮겨 가서, 검색 중에도 진행 창에서 작업을 보여 줍니다.
   const 검색중 = questionsLoading && 웹조사 && !조사확인단계;
-  /** 2단계의 「AI 점검하기」와 검색 칸의 「검색」 버튼. 둘 다 같은 요청(확인 질문 + 공개 검색)을 보냅니다. */
-  const 둘째단계막힘 = categoryLoading || questionsLoading || 저장중 || !필수입력됨 || !category || (웹조사 && !공개검색어.trim());
+  /** 2단계의 「AI 점검하기」. 확인 질문과 (켜져 있으면) 공개 검색을 한 요청으로 보냅니다. */
   const 둘째단계다음 = () => {
     // 주의: 「이전」으로 왔다가 그대로 돌아가면 다시 받지 않습니다. 다시 받다 실패하면 답이 사라집니다.
     if (API켜짐() && (서버질문.length || 서버칸.length || 조사후보들.length || 웹조사) && 받은질문키 === 질문키) setStep(3);
@@ -5978,6 +5977,11 @@ function NewPlanPage({
                 )}
               </div>
             </div>
+            {/* v025: 공개 정보 검색은 STEP 1 에서 켜고 검색어를 적습니다. 검색은 비목이 정해진 뒤
+                STEP 2 「AI 점검하기」 때 확인 질문 요청과 함께 나갑니다(같은 요청). */}
+            {API켜짐() && (
+              <공개검색설정 사용={웹조사} 설정={set웹조사} 검색어={공개검색어} 검색어변경={set공개검색어} />
+            )}
           </>
         )}
         {step === 2 && (
@@ -6073,22 +6077,25 @@ function NewPlanPage({
                 </div>
               </section>
             )}
-            {API켜짐() && (
-              <공개검색설정
-                사용={웹조사}
-                설정={set웹조사}
-                검색어={공개검색어}
-                검색어변경={set공개검색어}
-                검색하기={둘째단계다음}
-                검색막힘={둘째단계막힘}
-                검색중={검색중}
-                진행={진행항목들}
-                시작={진행시작}
-                오류={웹조사 && 조사오류 ? 조사오류 : undefined}
-                검색없이계속={() => { set웹조사(false); setQuestionsLoading(true); }}
-              />
+            {API켜짐() && 웹조사 && (
+              <div className="auto-check-note public-search-note">
+                <Icon name="search" />
+                <span>
+                  <b>공개 정보 검색: {공개검색어}</b>
+                  「AI 점검하기」를 누르면 함께 찾아요. 바꾸려면 「이전」을 눌러 주세요.
+                </span>
+              </div>
             )}
-            {조사오류 && !웹조사 && <div role="alert"><p>{조사오류}</p></div>}
+            {조사오류 && (
+              <div role="alert">
+                <p>{조사오류}</p>
+                {웹조사 && (
+                  <button type="button" className="outline small" onClick={() => { set웹조사(false); setQuestionsLoading(true); }}>
+                    검색 없이 계속
+                  </button>
+                )}
+              </div>
+            )}
           </>
         )}
         {step === 3 && (
@@ -6174,6 +6181,7 @@ function NewPlanPage({
             questionsLoading ||
             저장중 ||
             !필수입력됨 ||
+            (step === 1 && 웹조사 && !공개검색어.trim()) ||
             (step >= 2 && !category) ||
             (step === 2 && 웹조사 && !공개검색어.trim()) ||
             (step === 3 && (서버질문.some((q) => !질문답변[q.id]) || (조사확인단계 && 조사후보들.some((c) => !조사답[c.id]))))
@@ -6194,7 +6202,7 @@ function NewPlanPage({
               : 조사확인단계 ? "규정 확인하기" : "결과 확인하기"}
         </button>
       </footer>
-      {(categoryLoading || questionsLoading) && !검색중 && (
+      {(categoryLoading || questionsLoading) && (
         <div className="category-analysis-backdrop">
           <section
             className="category-analysis-modal"
@@ -6208,7 +6216,7 @@ function NewPlanPage({
               <i className="analysis-spark analysis-spark-one"><Icon name="sparkSolid" size={8} /></i>
               <i className="analysis-spark analysis-spark-two"><Icon name="sparkSolid" size={6} /></i>
             </span>
-            <h2 id="category-analysis-title">{questionsLoading ? "AI가 내용을 점검하고 있어요." : "입력한 내용을 분석하고 있어요"}</h2>
+            <h2 id="category-analysis-title">{검색중 ? "공개 정보를 검색하고 있어요." : questionsLoading ? "AI가 내용을 점검하고 있어요." : "입력한 내용을 분석하고 있어요"}</h2>
             <p>{questionsLoading ? "서버 응답을 기다리고 있어요." : "지출 항목과 사용 목적을 바탕으로 적합한 비목을 찾고 있습니다."}</p>
             {questionsLoading && <작업로그 항목들={진행항목들} 진행중 시작={진행시작} 기본문장="확인할 내용을 준비하고 있어요." 펼침기본 />}
             <small>잠시만 기다려주세요.</small>
