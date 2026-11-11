@@ -6533,13 +6533,50 @@ function 결과문장목록({ 제목, 항목 }: { 제목: string; 항목?: strin
   );
 }
 
-/** 해당할 때만 필요한 조건 · 사업 전체 공통 사항. 첫 화면을 채우지 않게 접어 둡니다. */
-function 결과접는목록({ 제목, 항목, 펼침 }: { 제목: string; 항목?: string[]; 펼침: boolean }) {
+/**
+ * v031: AI 해설 상자 안의 「꼭 알아야 할 것」 — 조건 묶음에서 최대 3개만 보입니다.
+ *    우선순위: 안 되는 경우 → 기한 → 조건(같은 종류 안에서는 서버가 보낸 순서). 같은 문장은 한 번만 씁니다.
+ *    이미 답으로 해소된 「안 되는 경우」는 빼고, 답대로면 걸리는 것은 맨 앞에 둡니다.
+ *    나머지 조건은 지우지 않고 「조건·근거 자세히 보기」에 원래 분류대로 둡니다.
+ */
+function 꼭알아야할것({ plan }: { plan: ExpensePlan }) {
+  // 「확인한조건」: `문장` = 답으로 해소된 금지 기준, `해당문장` = 답대로면 걸리는 금지 기준.
+  //    해소된 것은 빼고, 걸리는 것은 맨 앞에 둡니다.
+  const 해소 = new Set((plan.확인한조건 ?? []).flatMap((c) => c.문장));
+  const 걸림 = new Set((plan.확인한조건 ?? []).flatMap((c) => c.해당문장));
+  const 금지 = (plan.금지조건 ?? [])
+    .filter((문장) => !해소.has(문장) || 걸림.has(문장))
+    .sort((a, b) => Number(걸림.has(b)) - Number(걸림.has(a)));
+  const 후보 = [
+    ...금지.map((문장) => ({ 문장, 종류: "안 돼요", 색: "risk" })),
+    ...(plan.기한조건 ?? []).map((문장) => ({ 문장, 종류: "기한", 색: "warn" })),
+    ...(plan.조건 ?? []).map((문장) => ({ 문장, 종류: "조건", 색: "info" })),
+  ].filter((x, i, 전체) => 전체.findIndex((y) => y.문장 === x.문장) === i);
+  if (!후보.length) return null;
+  return (
+    <div className="ai-must-know">
+      <b>꼭 알아야 할 것</b>
+      <ul>
+        {후보.slice(0, 3).map((x) => (
+          <li key={x.문장}>
+            <em className={`must-tag ${x.색}`}>{x.종류}</em>
+            <span>{x.문장}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** v031: 「조건·근거 자세히 보기」 안의 조건 묶음. 제목과 개수만 보이고, 필요한 묶음만 폅니다. */
+function 결과접는묶음({ 제목, 항목 }: { 제목: string; 항목?: string[] }) {
   if (!항목?.length) return null;
   return (
-    <details className="ai-confirmed ai-confirmed-fold" open={펼침}>
+    <details className="ai-confirmed ai-confirmed-fold">
       <summary>
-        <b>{제목}</b>
+        <b>
+          {제목} <small>{항목.length}</small>
+        </b>
         <Icon name="arrow" size={13} />
       </summary>
       <ul>
@@ -6623,8 +6660,8 @@ function Question({
  *    작성합니다(`server/inquiry.py`). 값이 없으면 키 자체가 안 오므로, 부르는 쪽에서
  *    `plan.문의초안` 이 있을 때만 그립니다.
  *
- * 주의: 접어 둡니다. 판정 결과를 보러 온 사람에게 긴 메일 본문이 먼저 펼쳐져 있으면
- *    「AI 점검 결과」가 안 읽힙니다. 필요한 사람만 폅니다.
+ * 주의: v031부터 펼쳐 둡니다. 판단불가에서 사용자가 할 일이 '문의' 라서, AI 해설 바로
+ *    아래로 옮기고 본문을 바로 보이게 했습니다. 접기 버튼은 그대로 둡니다.
  */
 function 문의초안카드({
   초안,
@@ -6651,7 +6688,7 @@ function 문의초안카드({
   };
 
   return (
-    <details className="ai-inquiry">
+    <details className="ai-inquiry" open>
       <summary>
         <div className="ai-inquiry-title">
           <Icon name="fileText" size={20} />
@@ -6950,6 +6987,8 @@ function PlanDetail({
   const 집행등록됨 = plan?.executionStatus === "결제 완료";
   const [집행수정중, set집행수정중] = useState(false);
   const [집행확인, set집행확인] = useState<null | "등록" | "수정">(null);
+  // v031: 「AI 점검 결과」와 「집행 준비」를 탭으로 나눠 한 화면이 아래로 길게 늘어지지 않게 합니다.
+  const [상세탭, set상세탭] = useState<"ai" | "prep">("ai");
   const 집행잠김 = 집행등록됨 && !집행수정중;
   if (!plan || !draft)
     return (
@@ -7153,12 +7192,20 @@ function PlanDetail({
             </div>
           </dl>
         </section>
+        <nav className="plans-v2-tabs expense-v5-tabs" role="tablist" aria-label="지출 상세 보기">
+          <button role="tab" aria-selected={상세탭 === "ai"} className={상세탭 === "ai" ? "active" : ""} onClick={() => set상세탭("ai")}>
+            AI 점검 결과
+          </button>
+          <button role="tab" aria-selected={상세탭 === "prep"} className={상세탭 === "prep" ? "active" : ""} onClick={() => set상세탭("prep")}>
+            집행 준비{" "}
+            <em>
+              {[...plan.aiChecks, ...plan.evidence].filter((item) => item.done).length}/
+              {plan.aiChecks.length + plan.evidence.length}
+            </em>
+          </button>
+        </nav>
+        {상세탭 === "ai" && (
         <section className="expense-v5-section expense-v5-ai">
-          <header className="expense-v5-section-head">
-            <div>
-              <h2>AI 점검 결과</h2>
-            </div>
-          </header>
           {/* 방금 끝난 판정의 작업 내역. 접어 두고 「작업 내역 보기」로 엽니다. 실패면 이유를 머리줄에 그대로 보입니다. */}
           {작업내역 && plan.status !== "점검 중" && (!!작업내역.항목들.length || !!작업내역.오류) && (
             <작업로그
@@ -7232,25 +7279,15 @@ function PlanDetail({
                     </b>
                   </p>
                 )}
-                {(!plan.판정 || 결제전항목.length > 0 || 조건문장.length > 0) && (
-                  <p>
-                    {plan.status === "점검 전" && !plan.판정
-                      ? "AI 점검을 실행하면 규정 근거와 확인할 항목이 여기에 표시됩니다."
-                      : "현재 입력된 내용을 기준으로 확인했으며, 안전한 집행을 위해 아래 항목을 추가로 점검해주세요."}
-                  </p>
+                {plan.status === "점검 전" && !plan.판정 && (
+                  <p>AI 점검을 실행하면 규정 근거와 확인할 항목이 여기에 표시됩니다.</p>
                 )}
               </div>
             </div>
             {plan.코드판정 && (
               <코드판정카드 판정={plan.코드판정} 부가세={plan.부가세구분} 문의처={plan.문의처} 다시점검={() => setRecheckQuestions(true)} />
             )}
-            <결과문장목록 제목="이번 지출에 영향 있는 조건" 항목={plan.조건} />
-            <결과문장목록 제목="기한이 있는 일" 항목={plan.기한조건} />
-            <결과문장목록 제목="이런 경우에는 안 돼요" 항목={plan.금지조건} />
-            <결과접는목록 제목="해당할 때만 필요해요" 항목={plan.해당시조건} 펼침={!plan.조건?.length && !plan.기한조건?.length} />
-            <결과접는목록 제목="사업 전체 공통 사항" 항목={plan.공통사항} 펼침={false} />
-            <확인한내용 항목={plan.사용자답변} 조건={plan.확인한조건} />
-            <조사결과보기 결과={plan.조사} />
+            {/* v031: 한 줄 결론(AI 해설)을 조건 목록보다 먼저 보입니다. */}
             <div className="ai-explanation">
               <Icon name="spark" size={20} />
               <div>
@@ -7264,46 +7301,29 @@ function PlanDetail({
                       ? "현재 조건에서는 주요 사전 준비가 확인됐습니다. 집행 후 증빙을 빠짐없이 보관하세요."
                       : "사업계획과의 연관성은 확인됐습니다. 다만 계약 전에 과업 범위, 결과물, 검수 기준을 문서로 명확히 하고 금액 적정성과 특수관계 여부를 추가로 확인해야 합니다.")}
                 </p>
+                <꼭알아야할것 plan={plan} />
               </div>
             </div>
+            {/* 「판단불가」의 결말입니다 — 할 일이 '문의' 라서 해설 바로 아래에 둡니다.
+                서버가 준 값이 있을 때만 나옵니다(빈 카드를 남기지 않습니다). */}
+            {plan.문의초안 && <문의초안카드 초안={plan.문의초안} 문의처={plan.문의처} notify={notify} />}
+            <조사결과보기 결과={plan.조사} />
+            {/* v031: 결제 전 확인 카드는 「집행 준비」 탭 1단계와 같은 내용이라 한 줄 링크로 줄입니다. */}
             {결제전항목.length > 0 && (
-            <section className="ai-before-checks">
-              <header>
-                <div>
-                  <Icon name="clipboardCheck" size={20} />
-                  <b>결제 전 확인</b>
-                </div>
-                <button
-                  className="outline small"
-                  onClick={() =>
-                    document
-                      .getElementById("payment-before")
-                      ?.scrollIntoView({ behavior: "smooth", block: "center" })
-                  }
-                >
-                  집행 준비에서 확인하기 <span aria-hidden="true">↓</span>
-                </button>
-              </header>
-              <div>
-                {결제전항목.map((item, index) => (
-                  <article key={item.id}>
-                    <i>
-                      <Icon
-                        name={
-                          index === 1 ? "alert" : index === 2 ? "user" : "plans"
-                        }
-                        size={20}
-                      />
-                    </i>
-                    <span>
-                      <b>{item.label}</b>
-                      <small>{item.description}</small>
-                    </span>
-                  </article>
-                ))}
-              </div>
-            </section>
+              <button className="ai-prep-link" onClick={() => { set상세탭("prep"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+                <Icon name="clipboardCheck" size={18} />
+                <span>결제 전 할 일 <b>{plan.aiChecks.filter((item) => !item.done).length}건</b></span>
+                <em>집행 준비 보기 →</em>
+              </button>
             )}
+            {/* v031: 조건 전체·근거·확인한 내용·용어는 필요한 사람만 폅니다. */}
+            <details className="ai-basis-more">
+              <summary>조건·근거 자세히 보기</summary>
+            <결과접는묶음 제목="이번 지출에 영향 있는 조건" 항목={plan.조건} />
+            <결과접는묶음 제목="이런 경우에는 안 돼요" 항목={plan.금지조건} />
+            <결과접는묶음 제목="기한이 있는 일" 항목={plan.기한조건} />
+            <결과접는묶음 제목="해당할 때만 필요해요" 항목={plan.해당시조건} />
+            <결과접는묶음 제목="사업 전체 공통 사항" 항목={plan.공통사항} />
             <section className="ai-basis">
               <header>
                 <div>
@@ -7326,7 +7346,9 @@ function PlanDetail({
               </div>
             </section>
             <결과문장목록 제목="근거 경로" 항목={plan.근거경로} />
+            <확인한내용 항목={plan.사용자답변} 조건={plan.확인한조건} />
             <결과용어풀이 항목={plan.용어풀이} />
+            </details>
             {/* 주의: 저장된 최신 판정에만 평가를 받습니다. 재점검하면 번호가 바뀌어 칸이 새로 열립니다. */}
             {plan.latestDecisionId != null && !plan.저장안됨 && plan.status !== "재점검 필요" && (
               <결과평가칸
@@ -7336,10 +7358,6 @@ function PlanDetail({
                 notify={notify}
               />
             )}
-            {/* 주의: 「판단불가」의 결말입니다. 배지와 해설은 '못 정했다' 까지만 말하고,
-                「그래서 뭐라고 물어보나」는 여기 있습니다. 서버가 준 값이 있을 때만
-                나옵니다 — 없으면 카드 전체를 렌더링하지 않습니다(빈 카드를 남기지 않습니다). */}
-            {plan.문의초안 && <문의초안카드 초안={plan.문의초안} 문의처={plan.문의처} notify={notify} />}
             {plan.저장안됨 && (
               <p className="ai-result-notice">
                 <span>ⓘ</span>이번 점검 결과는 저장되지 않았습니다. 새로고침하면 사라지니,
@@ -7352,10 +7370,11 @@ function PlanDetail({
             </p>
           </div>
         </section>
+        )}
+        {상세탭 === "prep" && (
         <section className="expense-v5-section expense-v5-prep">
           <header className="expense-v5-section-head">
             <div>
-              <h2>집행 준비</h2>
               <p>결제 전 확인부터 지출 후 증빙까지 단계별로 관리하세요.</p>
             </div>
           </header>
@@ -7575,6 +7594,7 @@ function PlanDetail({
             </section>
           </div>
         </section>
+        )}
       </main>
       {/* 주의: 누적 집행액에 들어가는 값이라 '되돌리기가 쉽지 않습니다'. 한 번 묻습니다. */}
       {집행확인 && (
