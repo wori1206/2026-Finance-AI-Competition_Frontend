@@ -1,0 +1,80 @@
+/* v032 홈 (4안): 할 일 배너 → 이번 주 → 사업비 원차트 | 확인할 지출 */
+.home-v4{max-width:1180px;display:grid;gap:18px}
+.home-v4 h2{margin:0}
+.home-v4 .text-button{display:inline-flex;align-items:center;gap:3px;padding:0;border:0;background:none;color:var(--brand);font-size:13px;font-weight:600;text-decoration:none;cursor:pointer}
+.home-v4-head{display:flex;justify-content:space-between;align-items:center;gap:16px}
+.home-v4-head h1{margin:0;font-size:26px;font-weight:760;letter-spacing:-.6px}
+.home-v4-head p{margin:6px 0 0;color:var(--sub);font-size:14px}
+.home-v4-head .primary{display:inline-flex;align-items:center;gap:6px}
+
+/* ① 할 일 배너 */
+.home-v4-next{display:flex;align-items:center;gap:22px;padding:26px 30px;border-radius:14px;background:#171717;color:#fff}
+.home-v4-next>div{min-width:0}
+.home-v4-next small{color:#aaa;font-size:12px;letter-spacing:.3px}
+.home-v4-next h2{margin:6px 0;font-size:22px;font-weight:750;letter-spacing:-.4px;color:#fff}
+.home-v4-next p{margin:0;color:#ccc;font-size:14px}
+.home-v4-next-sub{display:flex;flex-wrap:wrap;gap:14px;margin-top:12px;color:#bbb;font-size:12px}
+.home-v4-next-sub b{color:#fff}
+.home-v4-next>button{flex:none;margin-left:auto;display:inline-flex;align-items:center;gap:6px;padding:11px 18px;border:0;border-radius:7px;background:#fff;color:#171717;font-weight:700;font-size:14px;cursor:pointer}
+.home-v4-next.is-clear{background:var(--brand-soft);color:var(--text)}
+.home-v4-next.is-clear h2{color:var(--brand)}
+.home-v4-next.is-clear small,.home-v4-next.is-clear p{color:var(--sub)}
+.home-v4-next.is-clear>button{background:var(--brand);color:#fff}
+
+/* ② 이번 주 */
+.home-v4-week-wrap>header,.home-v4-card>header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px}
+.home-v4-week-wrap h2{font-size:15px;font-weight:700}
+.home-v4-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
+.home-v4-day{min-height:104px;display:flex;flex-direction:column;align-items:stretch;gap:5px;padding:10px;border:1px solid var(--line);border-radius:10px;background:#fff;text-align:left;font-size:12px;cursor:pointer}
+.home-v4-day:hover{border-color:#cbd3cf}
+/* 공통 규칙(.app-shell button … border-color !important · box-shadow none !important)이 버튼 테두리를 덮어써서
+   오늘 칸 테두리는 가상 요소로 그립니다 */
+.home-v4-day{position:relative}
+.home-v4-day.is-today::after{content:"";position:absolute;inset:-1px;border:2px solid var(--brand);border-radius:10px;pointer-events:none}
+.home-v4-day-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;color:var(--sub)}
+.home-v4-day-head b{color:var(--text);font-size:15px}
+.home-v4-day.is-today .home-v4-day-head b{color:var(--brand)}
+/* 한 줄로 자릅니다(칸 높이를 고르게). 전체 이름은 title 로 보입니다. 하루 4개 이상이면 3개 + 「+N개」 */
+.home-v4-ev{overflow:hidden;padding:5px 7px;border-radius:5px;font-weight:600;line-height:1.35;text-overflow:ellipsis;white-space:nowrap}
+.home-v4-ev.late{background:var(--red-soft);color:var(--red)}
+.home-v4-ev.need{background:var(--amber-soft);color:var(--amber)}
+.home-v4-ev.plan{background:#f1f2f1;color:#444}
+.home-v4-day small{color:var(--sub);font-weight:600}
+
+/* ③④ 아래 두 칸 */
+.home-v4-bottom{display:grid;grid-template-columns:400px minmax(0,1fr);gap:16px;align-items:start}
+.home-v4-card{padding:22px 24px;border:1px solid var(--line);border-radius:12px;background:#fff}
+.home-v4-card h2{font-size:16px;font-weight:700}
+.home-v4-card>header>span{display:flex;align-items:center;gap:12px;color:var(--sub);font-size:12px}
+.home-v4-chart{display:flex;align-items:center;gap:24px}
+.home-v4-donut{width:180px;height:180px;flex:none;display:grid;place-items:center;border-radius:50%}
+.home-v4-donut>div{width:124px;height:124px;display:grid;place-content:center;border-radius:50%;background:#fff;text-align:center}
+.home-v4-donut small{color:var(--sub);font-size:12px}
+.home-v4-donut b{font-size:24px;letter-spacing:-.5px}
+.home-v4-chart ul{flex:1;display:grid;gap:9px;margin:0;padding:0;list-style:none;font-size:13px}
+.home-v4-chart li{display:flex;align-items:center;gap:8px}
+.home-v4-chart li b{margin-left:auto}
+.home-v4-chart li i{width:10px;height:10px;border-radius:3px;background:#eef0ef;border:1px solid #ddd}
+.home-v4-chart li i.spent{background:var(--brand);border-color:var(--brand)}
+.home-v4-chart li i.planned{background:#8cc3b3;border-color:#8cc3b3}
+.home-v4-budget-empty{display:grid;justify-items:start;gap:10px;padding:18px 0;color:var(--sub);font-size:13px}
+.home-v4-budget-empty p{margin:0}
+.home-v4-dday{display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding:11px 14px;border-radius:8px;background:var(--brand-soft);font-size:13px}
+.home-v4-dday b{color:var(--brand);font-size:18px}
+.home-v4-row{width:100%;display:flex;align-items:center;gap:12px;padding:13px 0;border:0;border-top:1px solid #f0f0f0;background:none;text-align:left;cursor:pointer}
+.home-v4-attention>header+.home-v4-row{border-top:0}
+.home-v4-row-text{flex:1;min-width:0;display:grid;gap:3px}
+.home-v4-row-text b{font-size:14px}
+.home-v4-row-text small{overflow:hidden;color:var(--sub);font-size:12px;text-overflow:ellipsis;white-space:nowrap}
+.home-v4-row:hover .home-v4-row-text b{color:var(--brand)}
+
+@media(max-width:1050px){.home-v4-bottom{grid-template-columns:1fr}}
+@media(max-width:760px){
+  .home-v4-head{align-items:flex-start;flex-direction:column}
+  .home-v4-next{flex-direction:column;align-items:stretch;padding:20px}
+  .home-v4-next>button{margin-left:0;justify-content:center}
+  .home-v4-week{display:flex;overflow-x:auto}
+  .home-v4-day{min-width:120px}
+  .home-v4-chart{flex-direction:column;align-items:stretch}
+  .home-v4-donut{align-self:center}
+}
