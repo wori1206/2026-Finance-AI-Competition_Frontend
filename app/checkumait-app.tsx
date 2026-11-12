@@ -1371,6 +1371,7 @@ async function 미등록계정(): Promise<boolean> {
 
 export default function CheckumaitApp() {
   const [signedIn, setSignedIn] = useState(false);
+  const [route, setRoute] = useState<AppRoute>({ page: "home" });
   // 주의: 세션을 확인하기 전에 로그인 화면을 그리면 새로고침마다 한 번 번쩍입니다.
   const [세션확인중, set세션확인중] = useState(인증켜짐);
   /** 가입하고 온보딩을 마치지 못한 계정이 세션을 가진 채 돌아온 경우입니다. */
@@ -1396,7 +1397,13 @@ export default function CheckumaitApp() {
           const 필요 = await 온보딩기록적용();
           if (!살아있음) return;
           if (필요) set온보딩이어가기(true);
-          else setSignedIn(true);
+          else {
+            setSignedIn(true);
+            // 팀 닫기·들어가기처럼 새로고침으로 자료를 다시 받는 동작 뒤에도 보던 화면에 남습니다.
+            // 주의: 계획 작성·상세는 자료가 오기 전이라 홈으로 둡니다.
+            const 직전 = window.history.state as AppRoute | null;
+            if (직전 && ["plans", "schedule", "rules", "ai-chat"].includes(직전.page)) setRoute(직전);
+          }
         }
       } catch {
         /* 세션을 읽지 못하면 로그인 화면으로 갑니다 */
@@ -1421,7 +1428,6 @@ export default function CheckumaitApp() {
   useEffect(() => {
     set데모기관(데모중()?.기관명 ?? null);
   }, [signedIn]);
-  const [route, setRoute] = useState<AppRoute>({ page: "home" });
   // 주의: 서버 모드에서 예시 계획으로 시작하면 응답이 오기 전까지 실제 계획처럼 보입니다.
   const [plans, setPlans] = useState<ExpensePlan[]>(() => (API켜짐() ? [] : INITIAL_PLANS));
   const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
@@ -9786,7 +9792,7 @@ function 팀카드({
                 <span>
                   {사람.이메일}
                   {사람.나 && <em>나</em>}
-                  {사람.대표 && <em>대표</em>}
+                  {사람.대표 && <em className="lead">대표</em>}
                 </span>
                 {대표 && !사람.나 && (
                   <button className="outline small" disabled={처리중} onClick={() => void 내보내기(사람.account_id, 사람.이메일)}>

@@ -1416,18 +1416,21 @@ input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-ou
 
 .institution-review-button{display:block;margin-top:8px}
 .item-author{font-weight:400;font-size:12px;color:#66716c}
-.team-card{display:grid;gap:14px}
-.team-card .section-copy{margin:0}
-.team-actions{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap}
+.team-card{display:block;margin:0 0 30px}
+.team-card .card-head>div{display:block}
+.team-card .section-copy{margin:0;padding:16px 20px}
+.team-card>.file-replace-notice{margin:0 20px 16px}
+.team-actions{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;padding:16px 20px}
 .team-actions small,.team-code small{color:#66716c;font-size:12px;line-height:1.5}
 .team-form{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;width:100%}
 .team-form label{display:grid;gap:6px;flex:1 1 220px;font-size:13px;font-weight:600}
 .team-form input,.onboarding-invite input{height:40px;width:100%;padding:0 12px;border:1px solid #d7dcd9;border-radius:6px;background:#fff;font:inherit;font-weight:400}
-.team-members{display:grid;gap:0;margin:0;padding:0;list-style:none;border-top:1px solid #e8ebe9}
-.team-members li{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:10px 2px;border-bottom:1px solid #e8ebe9;font-size:14px}
+.team-members{display:grid;gap:0;margin:0;padding:0;list-style:none}
+.team-members li{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;min-height:56px;box-sizing:border-box;padding:10px 20px;border-bottom:1px solid #eff1f0;font-size:13px}
 .team-members li>span{min-width:0;overflow-wrap:anywhere}
-.team-members em{margin-left:6px;padding:1px 7px;border-radius:10px;background:#eef1ef;color:#4a5550;font-size:11px;font-style:normal}
-.team-code{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap}
+.team-members em{margin-left:6px;padding:2px 7px;border-radius:4px;background:#eef1ef;color:#4a5550;font-size:11px;font-weight:650;font-style:normal;vertical-align:1px}
+.team-members em.lead{background:var(--brand-soft);color:var(--brand)}
+.team-code{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid #eff1f0;background:#fafbfa}
 .team-code b{font-size:18px;letter-spacing:.06em}
 .team-code small{flex:1 1 220px}
 .onboarding-invite{display:grid;gap:8px;margin-top:14px}
