@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps } from "react";
 import { INITIAL_PLANS } from "../lib/mock-data";
 import { planService } from "../lib/plan-service";
 import type { 기준문서정보,
@@ -44,6 +44,7 @@ import { 협약쓰기, 원, 날짜표기, 디데이표기, 지금협약, 협약�
 import { SendButton } from "./send-button";
 import "./detail-refinement.css";
 import "./home-v4.css";
+import "./detail-v033.css";
 
 const won = (value: number) => `${value.toLocaleString("ko-KR")}원`;
 const scheduleStateLabel = (state: ScheduleItem["state"]) =>
@@ -1166,6 +1167,11 @@ const 점검한상태 = (value: PlanStatus): value is Exclude<PlanStatus, "점�
   value !== "점검 전" && value !== "점검 중" && value !== "재점검 필요";
 const displayPlanStatus = (value: PlanStatus) =>
   value === "점검 전" || value === "재점검 필요" ? "점검전" : value;
+
+/** v033: 판정 카드 색. 불가 = risk, 확인 필요 = warn, 가능 = safe, 그 밖(점검 전 등) = draft */
+function 판정색(value: PlanStatus): "risk" | "warn" | "safe" | "draft" {
+  return value === "위험" ? "risk" : value === "특이사항 없음" ? "safe" : value === "확인 필요" ? "warn" : "draft";
+}
 
 function Status({ value }: { value: PlanStatus }) {
   const key =
@@ -6807,6 +6813,65 @@ const 틀림이유: { 값: NonNullable<판정피드백["이유"]>; 글: string }
 ];
 
 /** 점검 결과의 「맞았어요 / 틀렸어요」. 맞았어요는 바로 저장하고, 틀렸어요는 이유를 받은 뒤 저장합니다. */
+/**
+ * v033: 처음 한 번만 보이는 안내 말풍선. 닫거나 안내한 기능을 쓰면 이 브라우저에서는 다시 보이지 않습니다.
+ *    주의: 저장소가 막힌 환경(시크릿 창 등)이면 매번 보일 수 있지만 화면은 정상으로 그립니다.
+ */
+function useFirstVisitTip(키: string): [boolean, () => void] {
+  // 주의: 상세 화면은 로그인 뒤 브라우저에서만 그려져 첫 렌더에서 바로 읽어도 됩니다. 키는 호출 위치마다 고정입니다.
+  const [보임, set보임] = useState(() => {
+    try {
+      return typeof window !== "undefined" && !window.localStorage.getItem(`checkumait-첫안내-${키}`);
+    } catch {
+      return false;
+    }
+  });
+  const 닫기 = useCallback(() => {
+    set보임(false);
+    try {
+      window.localStorage.setItem(`checkumait-첫안내-${키}`, "1");
+    } catch {
+      /* 저장하지 못해도 이번 화면에서는 닫습니다 */
+    }
+  }, [키]);
+  return [보임, 닫기];
+}
+
+function 첫안내말풍선({ 제목, 글, 닫기, 위치 = "left" }: { 제목: string; 글: string; 닫기: () => void; 위치?: "left" | "right" }) {
+  return (
+    <span className={`first-tip is-${위치}`} role="note">
+      <span className="first-tip-head">
+        <b>{제목}</b>
+        <button type="button" aria-label="안내 닫기" onClick={닫기}>
+          ×
+        </button>
+      </span>
+      <span>{글}</span>
+    </span>
+  );
+}
+
+/**
+ * v033: ⓘ 설명. 마우스를 올리거나 누르면(포커스) 보이고, 바깥을 누르거나 Esc 를 누르면 닫힙니다.
+ *    상태 없이 CSS :hover · :focus-within 으로 엽니다.
+ */
+function 정보({ 글 }: { 글: string }) {
+  return (
+    <span className="info-tip">
+      <button
+        type="button"
+        aria-label="설명 보기"
+        onKeyDown={(e) => {
+          if (e.key === "Escape") e.currentTarget.blur();
+        }}
+      >
+        ⓘ
+      </button>
+      <span role="tooltip">{글}</span>
+    </span>
+  );
+}
+
 function 결과평가칸({
   plan,
   저장됨,
@@ -6850,7 +6915,9 @@ function 결과평가칸({
         </ul>
       )}
       <div className="result-feedback-head">
-        <b>이 점검 결과가 맞았나요?</b>
+        <b>
+          이 점검 결과가 맞았나요? <정보 글="평가는 서비스 개선에 쓰이며, 이 점검 결과를 바꾸지는 않습니다." />
+        </b>
         <div>
           <button
             type="button"
@@ -6859,7 +6926,7 @@ function 결과평가칸({
             disabled={저장중}
             onClick={() => 저장({ 평가: "맞음", 이유: null, 의견: null }, "평가를 저장했습니다.")}
           >
-            맞았어요
+            ✓ 맞았어요
           </button>
           <button
             type="button"
@@ -6869,7 +6936,7 @@ function 결과평가칸({
             disabled={저장중}
             onClick={() => set펼침(true)}
           >
-            틀렸어요
+            ✕ 틀렸어요
           </button>
         </div>
       </div>
@@ -6922,7 +6989,6 @@ function 결과평가칸({
           </p>
         )
       )}
-      <small>평가는 서비스 개선에 쓰이며, 이 점검 결과를 바꾸지는 않습니다.</small>
     </section>
   );
 }
@@ -6997,6 +7063,8 @@ function PlanDetail({
   const [집행확인, set집행확인] = useState<null | "등록" | "수정">(null);
   // v031: 「AI 점검 결과」와 「집행 준비」를 탭으로 나눠 한 화면이 아래로 길게 늘어지지 않게 합니다.
   const [상세탭, set상세탭] = useState<"ai" | "prep">("ai");
+  const [일정안내, 일정안내닫기] = useFirstVisitTip("일정에추가");
+  const [첨부안내, 첨부안내닫기] = useFirstVisitTip("첨부");
   const 집행잠김 = 집행등록됨 && !집행수정중;
   if (!plan || !draft)
     return (
@@ -7092,8 +7160,6 @@ function PlanDetail({
   // 이번 판정의 분류를 먼저 쓰고, 새로고침 뒤에는 계획에 저장해 둔 세목으로 같은 모양을 만듭니다.
   // 주의: 수정 창에서 화면에만 고친 비목이면 그 값을 그대로 보여 줍니다. 옛 세목을 붙이면 고친 비목과 어긋납니다.
   // 조건 묶음이나 AI 해설에 이미 있는 문장은 결제 전 확인에 다시 적지 않습니다
-  const 조건문장 = [...(plan.조건 ?? []), ...(plan.기한조건 ?? []), ...(plan.금지조건 ?? []), ...(plan.해당시조건 ?? []), ...(plan.공통사항 ?? [])];
-  const 결제전항목 = plan.aiChecks.filter((item) => !조건문장.includes(item.label) && item.label !== plan.aiSummary);
   const 표시분류 = plan.화면만수정
     ? plan.category
     : plan.분류?.표시문 ?? (plan.확정세목 ? `${plan.category} > ${plan.확정세목}` : plan.category);
@@ -7180,6 +7246,9 @@ function PlanDetail({
                   ))}
                 </ul>
                 <footer>
+                  {첨부안내 && (
+                    <첫안내말풍선 제목="첨부 파일 안내" 글="첨부 파일은 보관용이며, AI 점검에는 사용되지 않습니다." 닫기={첨부안내닫기} />
+                  )}
                   <label className="outline small expense-v5-add-file">
                     <input
                       type="file"
@@ -7188,13 +7257,16 @@ function PlanDetail({
                       onChange={(event) => {
                         const { 통과, 안내 } = 첨부검사(첨부칸.목록.length, Array.from(event.target.files || []));
                         if (안내) notify(안내);
+                        if (통과.length) 첨부안내닫기();
                         통과.forEach((file) => void 첨부올리기(plan.id, file));
                         event.target.value = "";
                       }}
                     />
                     파일 추가
                   </label>
-                  <small>최대 10개 / 개별 3MB 이하 · 보관용이며 AI 점검에는 쓰이지 않습니다</small>
+                  <small>
+                    최대 10개 · 파일당 3MB 이하 <정보 글="첨부 파일은 보관용이며, AI 점검에는 사용되지 않습니다." />
+                  </small>
                 </footer>
               </div>
             </div>
@@ -7205,11 +7277,7 @@ function PlanDetail({
             AI 점검 결과
           </button>
           <button role="tab" aria-selected={상세탭 === "prep"} className={상세탭 === "prep" ? "active" : ""} onClick={() => set상세탭("prep")}>
-            집행 준비{" "}
-            <em>
-              {[...plan.aiChecks, ...plan.evidence].filter((item) => item.done).length}/
-              {plan.aiChecks.length + plan.evidence.length}
-            </em>
+            집행 준비
           </button>
         </nav>
         {상세탭 === "ai" && (
@@ -7262,6 +7330,8 @@ function PlanDetail({
             {plan.기준문서 && plan.판정 && plan.판정 !== "판단불가" && (
               <기준문서줄 정보={plan.기준문서} 기준문서보기={기준문서보기} />
             )}
+            {/* v033: 상태 · 결론 · AI 해설을 판정 색 카드 하나로 묶습니다. */}
+            <section className={`ai-verdict-card tone-${판정색(plan.status === "재점검 필요" ? plan.previousStatus || "확인 필요" : plan.status)}`}>
             <div className="ai-verdict-row">
               <Status value={plan.status === "재점검 필요" ? plan.previousStatus || "확인 필요" : plan.status} />
               <div>
@@ -7312,47 +7382,82 @@ function PlanDetail({
                 <꼭알아야할것 plan={plan} />
               </div>
             </div>
+            </section>
             {/* 「판단불가」의 결말입니다 — 할 일이 '문의' 라서 해설 바로 아래에 둡니다.
                 서버가 준 값이 있을 때만 나옵니다(빈 카드를 남기지 않습니다). */}
             {plan.문의초안 && <문의초안카드 초안={plan.문의초안} 문의처={plan.문의처} notify={notify} />}
             <조사결과보기 결과={plan.조사} />
-            {/* v031: 결제 전 확인 카드는 「집행 준비」 탭 1단계와 같은 내용이라 한 줄 링크로 줄입니다. */}
-            {결제전항목.length > 0 && (
-              <button className="ai-prep-link" onClick={() => { set상세탭("prep"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
-                <Icon name="clipboardCheck" size={18} />
-                <span>결제 전 할 일 <b>{plan.aiChecks.filter((item) => !item.done).length}건</b></span>
-                <em>집행 준비 보기 →</em>
-              </button>
+            {/* v033: 결제 전 확인은 판정을 본 직후에 할 일이라 AI 점검 결과 안에 둡니다(집행 준비에서 옮김). */}
+            {plan.aiChecks.length > 0 && (
+              <section className="ai-precheck" id="payment-before">
+                <header>
+                  <h3>
+                    <Icon name="clipboardCheck" size={22} />
+                    결제 전 확인
+                  </h3>
+                  <b>
+                    {plan.aiChecks.filter((item) => item.done).length} / {plan.aiChecks.length} 확인
+                  </b>
+                  <p>결제 전에 아래 항목을 확인해주세요.</p>
+                </header>
+                <div className="ai-precheck-head">확인 항목</div>
+                <div className="ai-precheck-list">
+                  {plan.aiChecks.map((item) => (
+                    <label key={item.id} className={item.done ? "done" : ""}>
+                      <input type="checkbox" checked={Boolean(item.done)} onChange={() => toggle("aiChecks", item.id)} />
+                      <span>
+                        <b>{item.label}</b>
+                        {item.description && <small>{item.description}</small>}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                <footer>
+                  {일정안내 && (
+                    <첫안내말풍선 위치="right" 제목="일정으로 관리해보세요" 글="필요한 확인사항을 일정에 연결해 관리할 수 있습니다." 닫기={일정안내닫기} />
+                  )}
+                  <button className="outline small calendar-add" onClick={() => { 일정안내닫기(); setScheduleGroup("aiChecks"); }}>
+                    <Icon name="calendar" size={16} />
+                    일정에 추가
+                  </button>
+                </footer>
+              </section>
             )}
-            {/* v031: 조건 전체·근거·확인한 내용·용어는 필요한 사람만 폅니다. */}
+            {/* v033: 규정 근거는 번호와 제목만 보이고, 항목마다 따로 폅니다. */}
+            {plan.rules.length > 0 && (
+              <section className="ai-basis">
+                <header>
+                  <h3>
+                    <Icon name="rules" size={22} />
+                    지원금 규정 근거
+                  </h3>
+                  <b>근거 {plan.rules.length}건</b>
+                </header>
+                {plan.rules.map((rule, index) => (
+                  <details key={index}>
+                    <summary>
+                      <i>{index + 1}</i>
+                      <b>{rule.title}</b>
+                      <em>
+                        펼치기 <Icon name="chevronDown" size={14} />
+                      </em>
+                    </summary>
+                    <div>
+                      <small>{rule.source}</small>
+                      <규정원문 글={rule.description} />
+                    </div>
+                  </details>
+                ))}
+              </section>
+            )}
+            {/* v031: 조건 전체·근거 경로·확인한 내용·용어는 필요한 사람만 폅니다. */}
             <details className="ai-basis-more">
-              <summary>조건·근거 자세히 보기</summary>
+              <summary>조건 자세히 보기</summary>
             <결과접는묶음 제목="이번 지출에 영향 있는 조건" 항목={plan.조건} />
             <결과접는묶음 제목="이런 경우에는 안 돼요" 항목={plan.금지조건} />
             <결과접는묶음 제목="기한이 있는 일" 항목={plan.기한조건} />
             <결과접는묶음 제목="해당할 때만 필요해요" 항목={plan.해당시조건} />
             <결과접는묶음 제목="사업 전체 공통 사항" 항목={plan.공통사항} />
-            <section className="ai-basis">
-              <header>
-                <div>
-                  <Icon name="rules" size={20} />
-                  <b>지원금 규정 근거</b>
-                </div>
-                <strong>{plan.rules.length}건</strong>
-              </header>
-              <div>
-                {plan.rules.map((rule, index) => (
-                  <article key={index}>
-                    <i>{index + 1}</i>
-                    <span>
-                      <b>{rule.title}</b>
-                      <small>{rule.source}</small>
-                      <규정원문 글={rule.description} />
-                    </span>
-                  </article>
-                ))}
-              </div>
-            </section>
             <결과문장목록 제목="근거 경로" 항목={plan.근거경로} />
             <확인한내용 항목={plan.사용자답변} 조건={plan.확인한조건} />
             <결과용어풀이 항목={plan.용어풀이} />
@@ -7372,10 +7477,6 @@ function PlanDetail({
                 필요하면 다시 점검해 주세요.
               </p>
             )}
-            <p className="ai-result-notice">
-              <span>ⓘ</span>AI 점검 결과는 참고용이며, 최종 판단과 책임은
-              담당기관의 최신 안내를 확인해주세요.
-            </p>
           </div>
         </section>
         )}
@@ -7383,80 +7484,18 @@ function PlanDetail({
         <section className="expense-v5-section expense-v5-prep">
           <header className="expense-v5-section-head">
             <div>
-              <p>결제 전 확인부터 지출 후 증빙까지 단계별로 관리하세요.</p>
+              <h2>집행 준비</h2>
+              <p>결제 전 확인을 마친 뒤, 실제 지출 내역과 필요한 증빙을 등록하세요.</p>
             </div>
           </header>
-          {!!plan.단계요약?.length && (
-            <ol className="expense-stage-bar" aria-label="진행 단계">
-              {plan.단계요약.map((칸) => (
-                <li key={칸.단계} className={`stage-${칸.상태}${칸.단계 === plan.현재단계 ? " current" : ""}`}>
-                  <button
-                    onClick={() =>
-                      document
-                        .getElementById(칸.단계 === "집행" ? "execution-card" : 칸.단계 === "증빙" ? "evidence-card" : "payment-before")
-                        ?.scrollIntoView({ behavior: "smooth", block: "center" })
-                    }
-                  >
-                    <b>{칸.단계}</b>
-                    <small>
-                      {칸.상태 === "항목없음"
-                        ? "항목 없음"
-                        : 칸.상태 === "완료"
-                          ? "완료"
-                          : `${칸.완료}/${칸.전체}`}
-                    </small>
-                  </button>
-                </li>
-              ))}
-            </ol>
-          )}
-          <div className="expense-v5-prep-grid">
-            <section id="payment-before">
-              <header>
-                <div>
-                  <h3><i>1</i><span>결제 전 확인</span></h3>
-                  <small>결제 전에 완료해야 하는 항목</small>
-                </div>
-                <b>
-                  {plan.aiChecks.filter((item) => item.done).length}/
-                  {plan.aiChecks.length}
-                </b>
-              </header>
-              <div className="expense-v5-checks">
-                {plan.aiChecks.map((item) => (
-                  <label key={item.id} className={item.done ? "done" : ""}>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(item.done)}
-                      onChange={() => toggle("aiChecks", item.id)}
-                    />
-                    <span>
-                      <b>{item.label}</b>
-                      <small>{item.description}</small>
-                    </span>
-                  </label>
-                ))}
-              </div>
-              <footer>
-                <span>필요한 확인사항을 일정에 연결해 관리할 수 있습니다.</span>
-                <button
-                  className="outline small"
-                  onClick={() => setScheduleGroup("aiChecks")}
-                >
-                  일정에 추가
-                </button>
-              </footer>
-            </section>
-            {/* 주의: 1 결제 전 확인 / 2·3 결제 이후 — 세 카드가 한 덩어리로 붙어 있어
-                「지금 뭘 해야 하나」가 안 보였습니다. 결제를 기준으로 끊습니다. */}
-            <div className="expense-v5-prep-split" role="presentation" />
+          <div className="expense-v5-prep-grid two-col">
             <section className="expense-v5-execution-card" id="execution-card">
               <header>
-                <div>
-                  <h3><i>2</i><span>실제 집행 정보</span></h3>
-                  <small>누적 집행액 계산에 반영되는 정보</small>
-                </div>
-                {plan.executionStatus && <b>{plan.executionStatus}</b>}
+                <h3>
+                  <Icon name="fileText" size={22} />
+                  실제 지출 등록 <정보 글="결제를 마친 뒤 실제 지출일과 금액을 등록하세요. 누적 집행액에 반영됩니다." />
+                </h3>
+                <b>{plan.executionStatus ?? "미입력"}</b>
               </header>
               <div className={`expense-v5-execution-form ${집행잠김 ? "is-locked" : ""}`}>
                 <label>
@@ -7483,16 +7522,14 @@ function PlanDetail({
                 </label>
               </div>
               <div className="expense-v5-execution-summary">
-                <span>예상 금액 <b>{won(plan.amount)}</b></span>
-                <span>실제 지출액 <b>{savedActualAmount ? won(savedActualAmount) : "미입력"}</b></span>
-                <span>누적 집행액 <b>{won(cumulativeActualAmount)}</b></span>
+                <span>예상 금액 {won(plan.amount)}</span>
+                <span>
+                  <b>누적 집행액 {won(cumulativeActualAmount)}</b>
+                  <정보 글="등록한 실제 지출액은 누적 집행액에 반영됩니다." />
+                </span>
               </div>
               <footer>
-                <span>
-                  {집행잠김
-                    ? "등록을 마쳐 잠겨 있습니다. 값을 바꾸려면 수정하기를 누르세요."
-                    : "등록한 실제 지출액은 누적 집행액에 반영됩니다."}
-                </span>
+                <span>{집행잠김 ? "등록을 마쳐 잠겨 있습니다. 값을 바꾸려면 수정하기를 누르세요." : ""}</span>
                 {/* 주의: 상태에 따라 버튼이 하나씩만 뜹니다 — 「등록」과 「수정」이 같이
                     보이면 어느 것이 지금 할 일인지 안 보입니다. */}
                 {집행수정중 ? (
@@ -7509,10 +7546,10 @@ function PlanDetail({
             </section>
             <section className="expense-v5-evidence-section" id="evidence-card">
               <header>
-                <div>
-                  <h3><i>3</i><span>결제 후 필요 증빙</span></h3>
-                  <small>실제 지출 후 등록해야 하는 자료</small>
-                </div>
+                <h3>
+                  <Icon name="clipboardCheck" size={22} />
+                  결제 후 필요 증빙 <정보 글="실제 지출 후 등록해야 하는 자료입니다. 파일을 올리면 완료로 표시됩니다." />
+                </h3>
                 <b>
                   {plan.evidence.filter((item) => item.done).length}/
                   {plan.evidence.length}
@@ -7586,12 +7623,10 @@ function PlanDetail({
                 ))}
               </div>
               <footer className="expense-v5-evidence-actions">
-                <span>
-                  지출 후 필요한 자료를 일정과 파일로 함께 관리하세요.
-                </span>
+                <span />
                 <div>
                   <button
-                    className="outline small"
+                    className="outline small calendar-add"
                     onClick={() => setScheduleGroup("evidence")}
                   >
                     <Icon name="calendar" size={14} />
@@ -7603,6 +7638,9 @@ function PlanDetail({
           </div>
         </section>
         )}
+        <p className="ai-result-notice expense-v5-footnote">
+          <span>ⓘ</span>AI 점검 결과는 참고용이며, 최종 판단과 책임은 담당기관의 최신 안내를 확인해주세요.
+        </p>
       </main>
       {/* 주의: 누적 집행액에 들어가는 값이라 '되돌리기가 쉽지 않습니다'. 한 번 묻습니다. */}
       {집행확인 && (
