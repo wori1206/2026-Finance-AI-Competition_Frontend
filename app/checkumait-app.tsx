@@ -6817,15 +6817,15 @@ const 틀림이유: { 값: NonNullable<판정피드백["이유"]>; 글: string }
  * v033: 처음 한 번만 보이는 안내 말풍선. 닫거나 안내한 기능을 쓰면 이 브라우저에서는 다시 보이지 않습니다.
  *    주의: 저장소가 막힌 환경(시크릿 창 등)이면 매번 보일 수 있지만 화면은 정상으로 그립니다.
  */
-function use첫안내(키: string): [boolean, () => void] {
-  const [보임, set보임] = useState(false);
-  useEffect(() => {
+function useFirstVisitTip(키: string): [boolean, () => void] {
+  // 주의: 상세 화면은 로그인 뒤 브라우저에서만 그려져 첫 렌더에서 바로 읽어도 됩니다. 키는 호출 위치마다 고정입니다.
+  const [보임, set보임] = useState(() => {
     try {
-      set보임(!window.localStorage.getItem(`checkumait-첫안내-${키}`));
+      return typeof window !== "undefined" && !window.localStorage.getItem(`checkumait-첫안내-${키}`);
     } catch {
-      set보임(false);
+      return false;
     }
-  }, [키]);
+  });
   const 닫기 = useCallback(() => {
     set보임(false);
     try {
@@ -7063,8 +7063,8 @@ function PlanDetail({
   const [집행확인, set집행확인] = useState<null | "등록" | "수정">(null);
   // v031: 「AI 점검 결과」와 「집행 준비」를 탭으로 나눠 한 화면이 아래로 길게 늘어지지 않게 합니다.
   const [상세탭, set상세탭] = useState<"ai" | "prep">("ai");
-  const [일정안내, 일정안내닫기] = use첫안내("일정에추가");
-  const [첨부안내, 첨부안내닫기] = use첫안내("첨부");
+  const [일정안내, 일정안내닫기] = useFirstVisitTip("일정에추가");
+  const [첨부안내, 첨부안내닫기] = useFirstVisitTip("첨부");
   const 집행잠김 = 집행등록됨 && !집행수정중;
   if (!plan || !draft)
     return (
