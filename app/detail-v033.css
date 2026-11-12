@@ -1,0 +1,132 @@
+/* v033 지출 상세 개편 (여민 시안 「결과 화면 개선」 2026-11-11)
+   주의: 지출 상세에는 예전 규칙(!important 다수)이 겹쳐 있어, 여기 규칙은
+   `body .app-shell .expense-v5` 로 시작하고 레이아웃이 걸린 곳만 !important 를 씁니다. */
+
+/* ⓘ 설명 */
+.info-tip{position:relative;display:inline-flex;vertical-align:middle}
+.info-tip>button{width:20px;height:20px;display:grid;place-items:center;padding:0;border:0!important;border-radius:50%;background:none!important;color:#8a918e;font-size:13px;font-weight:500;line-height:1;cursor:help}
+.info-tip>[role=tooltip]{position:absolute;z-index:30;top:calc(100% + 6px);left:50%;transform:translateX(-50%);width:max-content;max-width:300px;padding:10px 14px;border:1px solid #dfe4e1;border-radius:8px;background:#fff;box-shadow:0 6px 18px rgba(0,0,0,.1);color:#333;font-size:13px;font-weight:500;line-height:1.5;text-align:left;white-space:normal}
+/* 지출 상세의 예전 규칙(header h3 span 등 !important)이 span 을 강제로 보이게 해서 여기서 다시 잡습니다 */
+body .app-shell .info-tip{display:inline-flex!important;position:relative!important}
+body .app-shell .info-tip>[role=tooltip]{display:none!important}
+body .app-shell .info-tip:hover>[role=tooltip],body .app-shell .info-tip:focus-within>[role=tooltip]{display:block!important}
+
+/* 탭: 밑줄형, 아래 구분선 */
+body .app-shell .expense-v5 .expense-v5-tabs{gap:24px;margin:8px 0 0;padding-bottom:0;border-bottom:1px solid #e5e8e6}
+body .app-shell .expense-v5 .expense-v5-tabs button{min-width:158px;height:56px;font-size:16px;font-weight:600;color:#666}
+body .app-shell .expense-v5 .expense-v5-tabs button.active{color:var(--brand);font-weight:750}
+body .app-shell .expense-v5 .expense-v5-tabs button.active::after{height:3px}
+
+/* AI 점검 결과 틀: 카드들을 세로로, 바깥 테두리는 없앱니다 */
+body .app-shell .expense-v5 .ai-result-frame{gap:20px;padding:0;border:0;background:transparent}
+
+/* ① 판정 카드 (상태 · 결론 · AI 해설) */
+body .app-shell .expense-v5 .ai-verdict-card{display:grid;gap:24px;padding:28px;border:1px solid #f0d9b5;border-radius:12px;background:#fff8ee}
+body .app-shell .expense-v5 .ai-verdict-card.tone-risk{border-color:#f2c9c9;background:#fff5f5}
+body .app-shell .expense-v5 .ai-verdict-card.tone-safe{border-color:#cfe5db;background:#f3faf7}
+body .app-shell .expense-v5 .ai-verdict-card.tone-draft{border-color:#e5e8e6;background:#fafbfa}
+body .app-shell .expense-v5 .ai-verdict-card .ai-verdict-row{display:grid!important;grid-template-columns:1fr!important;gap:12px;padding:0!important;border:0!important;background:none!important}
+body .app-shell .expense-v5 .ai-verdict-card .ai-verdict-row .status{justify-self:start;padding:0!important;border:0!important;background:none!important;font-size:14px;font-weight:700}
+body .app-shell .expense-v5 .ai-verdict-card .ai-verdict-row h3{margin:0;font-size:22px;font-weight:750;letter-spacing:-.4px;line-height:1.4}
+body .app-shell .expense-v5 .ai-verdict-card .ai-verdict-action{margin:0;padding:10px 14px;border-left:3px solid currentColor;border-radius:0 6px 6px 0;background:rgba(255,255,255,.6);color:#8a5a00}
+body .app-shell .expense-v5 .ai-verdict-card.tone-risk .ai-verdict-action{color:var(--red)}
+body .app-shell .expense-v5 .ai-verdict-card.tone-safe .ai-verdict-action{color:var(--brand)}
+body .app-shell .expense-v5 .ai-verdict-card .ai-verdict-action b{color:inherit}
+body .app-shell .expense-v5 .ai-verdict-card .ai-explanation{display:block!important;padding:0!important;border:0!important;background:none!important;box-shadow:none!important}
+body .app-shell .expense-v5 .ai-verdict-card .ai-explanation>.icon{display:none}
+body .app-shell .expense-v5 .ai-verdict-card .ai-explanation>div>b{display:flex;align-items:center;gap:8px;margin-bottom:8px;color:var(--brand);font-size:16px}
+body .app-shell .expense-v5 .ai-verdict-card .ai-explanation>div>b::before{content:"✦";font-size:16px}
+body .app-shell .expense-v5 .ai-verdict-card .ai-explanation p{margin:0;color:#222;font-size:15px;line-height:1.7}
+body .app-shell .expense-v5 .ai-verdict-card .ai-must-know{border-top-color:rgba(0,0,0,.08)}
+
+/* ② 결제 전 확인 (체크리스트 표) */
+body .app-shell .expense-v5 .ai-precheck{overflow:hidden;border:1px solid #e3e7e5;border-radius:12px;background:#fff}
+.ai-precheck>header{display:grid;grid-template-columns:1fr auto;gap:6px 12px;padding:28px 28px 22px}
+.ai-precheck>header h3{display:flex;align-items:center;gap:10px;margin:0;font-size:20px;font-weight:750}
+.ai-precheck>header h3 .icon{color:var(--brand)}
+.ai-precheck>header>b{align-self:center;color:var(--brand);font-size:14px}
+.ai-precheck>header p{grid-column:1/-1;margin:0;color:var(--sub);font-size:14px}
+.ai-precheck-head{padding:12px 28px 12px 60px;border-bottom:1px solid #e9ecea;background:#f7f8f7;color:#555;font-size:13px;font-weight:600}
+.ai-precheck-list>label{display:flex;align-items:flex-start;gap:14px;padding:20px 28px;border-bottom:1px solid #eef0ef;cursor:pointer}
+.ai-precheck-list>label:last-child{border-bottom:0}
+.ai-precheck-list input{width:18px;height:18px;margin:2px 0 0;flex:none;accent-color:var(--brand)}
+.ai-precheck-list span{display:grid;gap:5px}
+.ai-precheck-list b{font-size:15px}
+.ai-precheck-list small{color:#555;font-size:14px;line-height:1.55}
+.ai-precheck-list label.done b{color:#8a918e;text-decoration:line-through}
+.ai-precheck>footer{display:flex;justify-content:flex-end;padding:16px 28px 22px}
+body .app-shell .expense-v5 button.calendar-add{display:inline-flex;align-items:center;gap:7px;color:var(--brand);font-weight:650}
+
+/* ③ 지원금 규정 근거 (번호 목록, 항목마다 펼침) */
+body .app-shell .expense-v5 .ai-basis{display:block!important;padding:28px!important;border:1px solid #e3e7e5!important;border-radius:12px!important;background:#fff!important}
+body .app-shell .expense-v5 .ai-basis>header{display:flex!important;align-items:center;justify-content:space-between;margin:0 0 8px!important;padding:0 0 16px!important;border-bottom:1px solid #e9ecea!important}
+body .app-shell .expense-v5 .ai-basis>header h3{display:flex;align-items:center;gap:10px;margin:0;font-size:20px;font-weight:750}
+body .app-shell .expense-v5 .ai-basis>header h3 .icon{color:var(--brand)}
+body .app-shell .expense-v5 .ai-basis>header>b{color:var(--brand);font-size:14px}
+.ai-basis>details>summary{display:flex;align-items:center;gap:12px;padding:16px 0;list-style:none;cursor:pointer}
+.ai-basis>details>summary::-webkit-details-marker{display:none}
+.ai-basis>details>summary>i{width:26px;height:26px;flex:none;display:grid;place-items:center;border-radius:50%;background:var(--brand-soft);color:var(--brand);font-size:13px;font-style:normal;font-weight:700}
+.ai-basis>details>summary>b{flex:1;font-size:15px}
+.ai-basis>details>summary>em{display:inline-flex;align-items:center;gap:6px;color:#666;font-size:13px;font-style:normal}
+.ai-basis>details[open]>summary>em{font-size:0}
+.ai-basis>details[open]>summary>em::before{content:"접기";font-size:13px}
+.ai-basis>details[open]>summary>em .icon{transform:rotate(180deg)}
+.ai-basis>details>div{display:grid;gap:8px;margin:0 0 16px 38px;padding:14px 16px;border-radius:8px;background:#f7f8f7;font-size:14px;line-height:1.65}
+.ai-basis>details>div>small{color:var(--sub);font-size:12px}
+
+/* ④ 결과 평가: ⓘ 로 안내, 두 버튼 같은 강조(초록 · 빨강) */
+body .app-shell .expense-v5 .result-feedback{padding:24px 28px;border:1px solid #e3e7e5;border-radius:12px;background:#fff}
+body .app-shell .expense-v5 .result-feedback-head>b{display:inline-flex;align-items:center;gap:4px;font-size:18px}
+body .app-shell .expense-detail-page .result-feedback-head>div>button:nth-child(1){border-color:#9fcdb9!important;background:var(--brand-soft)!important;color:var(--brand)!important;min-width:124px}
+body .app-shell .expense-detail-page .result-feedback-head>div>button:nth-child(2){border-color:#efb4b4!important;background:var(--red-soft)!important;color:var(--red)!important;min-width:124px}
+body .app-shell .expense-detail-page .result-feedback-head>div>button.is-selected{font-weight:800;box-shadow:inset 0 0 0 1px currentColor!important}
+
+/* 집행 준비: 제목 + 2열 카드 */
+body .app-shell .expense-v5 .expense-v5-prep>.expense-v5-section-head{display:block;margin:4px 0 20px}
+body .app-shell .expense-v5 .expense-v5-prep>.expense-v5-section-head h2{margin:0 0 8px;font-size:22px;font-weight:750}
+body .app-shell .expense-v5 .expense-v5-prep>.expense-v5-section-head p{margin:0;color:var(--sub);font-size:14px}
+body .app-shell .expense-v5 .expense-v5-prep-grid.two-col{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:20px!important;align-items:stretch!important}
+body .app-shell .expense-v5 .expense-v5-prep-grid.two-col>section{display:flex!important;flex-direction:column;margin:0!important;padding:28px 25px 25px!important;border:1px solid #e3e7e5!important;border-radius:12px!important;background:#fff!important}
+body .app-shell .expense-v5 .expense-v5-prep-grid.two-col>section>header{display:flex!important;align-items:center!important;justify-content:space-between!important;margin:0 0 24px!important;padding:0 0 16px!important;border-bottom:1px solid #e9ecea!important;background:none!important}
+body .app-shell .expense-v5 .expense-v5-prep-grid.two-col>section>header h3{display:flex!important;align-items:center;gap:8px;margin:0!important;font-size:18px!important;font-weight:750!important}
+body .app-shell .expense-v5 .expense-v5-prep-grid.two-col>section>header h3 .icon{color:var(--brand)}
+body .app-shell .expense-v5 .expense-v5-prep-grid.two-col>section>header>b{color:#666;font-size:13px;font-weight:600}
+body .app-shell .expense-v5 .expense-v5-prep-grid.two-col>section>footer{margin-top:auto!important;padding-top:24px!important;border:0!important;background:none!important;display:flex!important;justify-content:space-between!important;align-items:center!important;gap:12px}
+body .app-shell .expense-v5 .expense-v5-execution-summary{display:flex!important;justify-content:space-between!important;align-items:center;margin-top:20px;padding:14px 16px!important;border:1px solid #d9ebe2!important;border-radius:8px!important;background:var(--brand-soft)!important;color:#555;font-size:13px}
+body .app-shell .expense-v5 .expense-v5-execution-summary>span{display:inline-flex;align-items:center;gap:6px}
+body .app-shell .expense-v5 .expense-v5-execution-summary b{color:#222}
+.expense-v5-footnote{margin:28px 0 0}
+/* 집행 준비 2열 안: 입력은 세로로, 증빙은 제목·설명 아래 업로드 버튼 */
+body .app-shell .expense-v5 .two-col .expense-v5-execution-form{grid-template-columns:1fr!important;gap:22px!important;padding:0!important}
+body .app-shell .expense-v5 .two-col .expense-v5-execution-form>label>span{font-size:14px;color:#333}
+body .app-shell .expense-v5 .two-col .expense-v5-execution-form input:not([type=checkbox]){height:48px;font-size:15px}
+body .app-shell .expense-v5 .two-col .expense-v5-evidence-item{display:grid!important;grid-template-columns:1fr!important;gap:14px!important;min-height:0!important;padding:22px 0!important;border-bottom:1px solid #eef0ef!important}
+body .app-shell .expense-v5 .two-col .expense-v5-evidence-item>label:first-child{display:flex!important;align-items:flex-start!important;gap:12px!important}
+body .app-shell .expense-v5 .two-col .expense-v5-evidence-item>label:first-child>span{display:grid!important;gap:8px;min-width:0}
+body .app-shell .expense-v5 .two-col .expense-v5-evidence-item input[type=checkbox]{width:18px!important;height:18px!important;margin-top:2px;flex:none;accent-color:var(--brand)}
+body .app-shell .expense-v5 .two-col .expense-v5-evidence-item span>b{font-size:15px!important}
+body .app-shell .expense-v5 .two-col .expense-v5-evidence-item span>small{color:#555;font-size:14px;line-height:1.55}
+body .app-shell .expense-v5 .two-col .expense-v5-evidence-item>.expense-v5-upload{grid-column:1!important;grid-row:auto!important;justify-self:start!important;width:auto!important;height:36px!important;margin-left:30px;padding-inline:16px!important;font-size:13px!important}
+body .app-shell .expense-v5 .two-col .expense-v5-evidence-item>.expense-v5-uploaded-files{grid-column:1!important;grid-row:auto!important;margin-left:30px}
+
+@media(max-width:900px){
+  body .app-shell .expense-v5 .expense-v5-prep-grid.two-col{grid-template-columns:1fr!important}
+}
+@media(max-width:680px){
+  body .app-shell .expense-v5 .expense-v5-tabs button{min-width:0;flex:1}
+  body .app-shell .expense-v5 .ai-verdict-card,.ai-precheck>header{padding:20px}
+  .ai-precheck-list>label{padding:16px 20px}
+  .ai-precheck-head{padding-left:52px}
+}
+
+/* 처음 한 번만 보이는 안내 말풍선 (버튼 위, 꼬리는 버튼 쪽) */
+body .app-shell .expense-v5 .expense-v5-file-row footer,body .app-shell .expense-v5 .ai-precheck>footer{position:relative}
+.first-tip{position:absolute;z-index:25;bottom:calc(100% + 10px);width:320px;display:grid!important;gap:8px;padding:16px;border-radius:10px;background:#1f2421;color:#e9ecea;font-size:14px;line-height:1.55;box-shadow:0 8px 24px rgba(0,0,0,.18)}
+.first-tip.is-left{left:0}
+.first-tip.is-right{right:28px}
+.first-tip::after{content:"";position:absolute;top:100%;border:8px solid transparent;border-top-color:#1f2421}
+.first-tip.is-left::after{left:32px}
+.first-tip.is-right::after{right:40px}
+.first-tip-head{display:flex!important;align-items:center;justify-content:space-between;gap:12px}
+.first-tip-head b{color:#fff;font-size:15px}
+body .app-shell .first-tip-head button{width:24px;height:24px;padding:0;border:0!important;background:none!important;color:#cfd5d2;font-size:18px;line-height:1;cursor:pointer}
