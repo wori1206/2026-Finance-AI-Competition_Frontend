@@ -13,6 +13,8 @@ import { 분류정리 } from "./adapt";
 import type { 비목후보, 심층질문항목, 부가세구분, 분류값 } from "./server-types";
 
 export type 정규화입력값 = {
+  /** v033: 한 문장 입력. 있으면 서버가 자연어 경로로 품목·금액·용도를 뽑습니다(아래 칸은 무시). */
+  질문?: string;
   품목: string;
   금액: number;
   용도: string;
