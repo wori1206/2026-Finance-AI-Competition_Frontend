@@ -11,7 +11,7 @@ import type { 기준문서정보,
 import type { 서버팀, 비목후보, 답변항목, 확인질문, 사용자답변항목, 판정피드백, 부가세구분, 분류값, 추가입력칸, 용어풀이항목, 코드판정값, 확인한조건항목 } from "../lib/server-types";
 import { API켜짐 } from "../lib/config";
 import { 판정실행 } from "../lib/judge";
-import { 정규화하기 } from "../lib/normalize";
+import { 정규화하기, type 정규화출력 } from "../lib/normalize";
 import { 인증오류 } from "../lib/http";
 import { 계획목록, 계획상세, 비목목록, 계획추가, 계획수정, 규정업로드, 규정처리기다리기, 규정적용, 규정거절, 조문연결저장, L3현재문서목록, 팀조회, 팀만들기, 초대코드재발급, 팀들어가기, 팀나가기, 팀원내보내기, 계획삭제, 일정수정, 피드백저장 } from "../lib/api";
 import type { L3처리결과, L3현재문서 } from "../lib/server-types";
@@ -45,6 +45,7 @@ import { SendButton } from "./send-button";
 import "./detail-refinement.css";
 import "./home-v4.css";
 import "./detail-v033.css";
+import "./new-plan-v033.css";
 
 const won = (value: number) => `${value.toLocaleString("ko-KR")}원`;
 const scheduleStateLabel = (state: ScheduleItem["state"]) =>
@@ -5384,11 +5385,17 @@ function PlansPage({
   );
 }
 
+/** v033: 한 문장 입력 예시. 누르면 입력창에 채웁니다. */
+const 작성예시 = [
+  "다음 달 초에 개발용 맥북 프로 250만원, 쿠팡에서 살 예정",
+  "12월 4일 부산 고객 인터뷰 출장 KTX 왕복 2명 약 12만원",
+  "랜딩페이지 디자인 외주 330만원 부가세 포함, 스튜디오 오브에 맡길 예정. 11월 말",
+];
+
 function NewPlanPage({
   save,
   cancel,
   판정시작,
-  notify,
 }: {
   판정시작: (작업: 판정시작입력) => boolean;
   notify: (message: string) => void;
@@ -5396,18 +5403,23 @@ function NewPlanPage({
   save: (plan: ExpensePlan, temporary?: boolean, 점검오류?: string) => void;
   cancel: () => void;
 }) {
-  const [step, setStep] = useState(1);
+  // v033: 0 = 한 문장 입력 → 1 = 이렇게 확인했어요 → 2 = 비목 → 3 = 추가 확인
+  const [step, setStep] = useState(0);
+  const [원문, set원문] = useState("");
+  const [정리중, set정리중] = useState(false);
+  const [정리됨, set정리됨] = useState(false);
+  // 한 문장으로 정리한 결과. 「이렇게 확인했어요」에서 값을 고치지 않았으면 비목 단계에서 정규화를 다시 부르지 않습니다.
+  const 정리결과 = useRef<{ name: string; purpose: string; amount: string; r: 정규화출력 } | null>(null);
   const [name, setName] = useState("");
   const [purpose, setPurpose] = useState("");
   const [amount, setAmount] = useState("");
   // 주의: 기본은 「모르겠어요」입니다. 고르지 않은 값을 포함으로 두면 한도 비교가 틀린 기준으로 돕니다.
   //    모름이고 비교에 필요하면 서버가 3단계에 부가세 확인 질문을 더합니다.
-  const [부가세, set부가세] = useState<부가세구분>("모름");
+  // v033: 처음 입력에서 부가세 칸을 뺐습니다(시안). 필요하면 서버가 추가 확인 단계에서 묻습니다.
+  const [부가세] = useState<부가세구분>("모름");
   // 주의: 비워 둡니다. 예전 기본값(2026-09-30)은 이미 지난 날이었고, 사용자가 안 고치면 그대로
   //    집행예정일로 저장되어 할일 기한까지 지난 날짜로 계산됐습니다.
   const [date, setDate] = useState("");
-  const [vendor, setVendor] = useState("");
-  const [attachments, setAttachments] = useState<File[]>([]);
   // 주의: 비워 둡니다. 초기값을 두면 사용자가 고르지 않은 비목이 추천처럼 보이고 그 비목으로 판정됩니다.
   const [category, setCategory] = useState("");
   const [feeSubtype, setFeeSubtype] = useState("멘토링");
@@ -5553,6 +5565,28 @@ function NewPlanPage({
   // 예시 모드 전용 질문표입니다. 서버 모드는 `서버질문` 을 그립니다.
   const questions =
     category === "지급수수료" ? FEE_QUESTIONS[feeSubtype] : 질문찾기(category);
+  /** 정규화 결과를 비목 단계 상태로 옮깁니다. 폼 경로와 한 문장 경로가 같이 씁니다. */
+  function 정규화반영(r: 정규화출력) {
+        const { 조사ID: 토큰, ...정규화값 } = r.정규화;
+        set정규화조사ID(typeof 토큰 === "string" ? 토큰 : undefined);
+        set서버정규화(정규화값);
+        // 주의: 후보가 '비어 있는 것도 정상' 입니다 (운영 서버 폼 경로). 그때는 사용자가 고릅니다.
+        set서버후보(r.비목후보);
+        set서버분류후보(r.분류후보);
+        const 첫분류 = r.분류후보.find((c) => 비목선택지.includes(c.비목)) ?? null;
+        set선택분류(첫분류);
+        // 자동 선택은 가장 확신하는 '하나' 만. 배지는 후보 전부에 붙지만 커서는 하나다.
+        // 주의: 후보가 없으면 지금 값을 그대로 둡니다. 처음이면 빈 값이고, 이전 단계로 돌아갔다
+        //    다시 온 경우에는 사용자가 직접 고른 비목이 남습니다.
+        // 주의: 이 사업의 비목 목록에 없는 후보는 화면에 칸이 없어 무엇이 골렸는지 보이지 않습니다.
+        // 주의: 분류 후보가 있으면 그 맨 앞이 먼저입니다. 신뢰도로 다시 세운 비목 후보를 따르면 문구와 칸이 어긋납니다.
+        const 첫후보 = 첫분류?.비목 ?? r.비목후보.map((c) => c.비목).find((b) => 비목선택지.includes(b));
+        if (첫후보) {
+          setCategory(첫후보);
+          자동선택비목.current = 첫후보;
+        }
+  }
+
   useEffect(() => {
     if (!categoryLoading) return;
 
@@ -5574,30 +5608,12 @@ function NewPlanPage({
       금액: Number(amount.replace(/,/g, "")) || 0,
       용도: purpose,
       집행예정일: date || undefined,
-      거래처: vendor || undefined,
       사업명: 현재사업(),
       부가세구분: 부가세,
     })
       .then((r) => {
         if (!살아있음) return;
-        const { 조사ID: 토큰, ...정규화값 } = r.정규화;
-        set정규화조사ID(typeof 토큰 === "string" ? 토큰 : undefined);
-        set서버정규화(정규화값);
-        // 주의: 후보가 '비어 있는 것도 정상' 입니다 (운영 서버 폼 경로). 그때는 사용자가 고릅니다.
-        set서버후보(r.비목후보);
-        set서버분류후보(r.분류후보);
-        const 첫분류 = r.분류후보.find((c) => 비목선택지.includes(c.비목)) ?? null;
-        set선택분류(첫분류);
-        // 자동 선택은 가장 확신하는 '하나' 만. 배지는 후보 전부에 붙지만 커서는 하나다.
-        // 주의: 후보가 없으면 지금 값을 그대로 둡니다. 처음이면 빈 값이고, 이전 단계로 돌아갔다
-        //    다시 온 경우에는 사용자가 직접 고른 비목이 남습니다.
-        // 주의: 이 사업의 비목 목록에 없는 후보는 화면에 칸이 없어 무엇이 골렸는지 보이지 않습니다.
-        // 주의: 분류 후보가 있으면 그 맨 앞이 먼저입니다. 신뢰도로 다시 세운 비목 후보를 따르면 문구와 칸이 어긋납니다.
-        const 첫후보 = 첫분류?.비목 ?? r.비목후보.map((c) => c.비목).find((b) => 비목선택지.includes(b));
-        if (첫후보) {
-          setCategory(첫후보);
-          자동선택비목.current = 첫후보;
-        }
+        정규화반영(r);
       })
       .catch((e: unknown) => {
         if (!살아있음) return;
@@ -5613,6 +5629,53 @@ function NewPlanPage({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [categoryLoading]);
+
+  // v033: 한 문장 → AI 정리. 서버 자연어 경로(`질문`)가 품목·금액·용도를 뽑고, 못 뽑은 칸은 비워 둡니다.
+  useEffect(() => {
+    if (!정리중) return;
+    const 칸채우기 = (r: 정규화출력 | null) => {
+      const 값 = r?.정규화 ?? {};
+      const 품목 = typeof 값["품목"] === "string" ? 값["품목"] : "";
+      const 금액 = typeof 값["금액"] === "number" && 값["금액"] > 0 ? String(Math.round(값["금액"])) : "";
+      const 용도 = typeof 값["용도"] === "string" && 값["용도"] ? 값["용도"] : 원문.trim();
+      const 날 = ["집행예정일", "사용일자"].map((k) => 값[k]).find((v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v));
+      setName(품목);
+      setAmount(금액);
+      setPurpose(용도);
+      if (typeof 날 === "string") setDate(날);
+      정리결과.current = r ? { name: 품목, purpose: 용도, amount: 금액, r } : null;
+      set정리됨(Boolean(r));
+      setStep(1);
+      set정리중(false);
+    };
+    if (!API켜짐()) {
+      const timer = window.setTimeout(() => 칸채우기(null), 900);
+      return () => window.clearTimeout(timer);
+    }
+    let 살아있음 = true;
+    정규화하기({ 질문: 원문.trim(), 품목: "", 금액: 0, 용도: "", 사업명: 현재사업(), 부가세구분: 부가세 })
+      .then((r) => 살아있음 && 칸채우기(r))
+      .catch((e: unknown) => {
+        if (!살아있음) return;
+        set연동오류(`${e instanceof Error ? e.message : "정리하지 못했습니다"} 칸을 직접 확인해 주세요.`);
+        칸채우기(null);
+      });
+    return () => {
+      살아있음 = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [정리중]);
+
+  /** 「이렇게 확인했어요」의 「다음」. 정리한 값을 그대로 두었으면 정규화를 다시 부르지 않습니다. */
+  const 확인다음 = () => {
+    const 앞 = 정리결과.current;
+    if (API켜짐() && 앞 && 앞.name === name && 앞.purpose === purpose && 앞.amount === amount) {
+      정규화반영(앞.r);
+      setStep(2);
+      return;
+    }
+    setCategoryLoading(true);
+  };
   const buildPlan = (temporary: boolean): ExpensePlan => {
     const base =
       INITIAL_PLANS.find((p) => p.category === category) || INITIAL_PLANS[0];
@@ -5626,7 +5689,7 @@ function NewPlanPage({
       amount: Number(amount.replace(/,/g, "")) || 0,
       부가세구분: 부가세,
       plannedDate: date,
-      vendor: vendor || "거래처 미정",
+      vendor: "거래처 미정",
       // 서버가 없는 예시 모드 전용입니다. 1단계 임시저장은 비목이 비어 있어 키워드 추정을 씁니다.
       category: categoryLabel || recommendation,
       status: temporary
@@ -5659,7 +5722,6 @@ function NewPlanPage({
       용도: purpose,
       제목: name,
       집행예정일: date || undefined,
-      거래처: vendor || undefined,
       // 주의: 화면 9 에서 '사용자가 확정한' 비목입니다. 서버가 enum 10종으로 검증합니다.
       //    1단계에서 임시저장하면 아직 비목을 고르지 않았으므로 보내지 않습니다 — 보내면 초기값이
       //    확정비목으로 저장되고, 나중 판정이 그 비목으로 강제됩니다.
@@ -5667,30 +5729,10 @@ function NewPlanPage({
       정규화: 저장할정규화() ?? undefined,
     });
 
-  /**
-   * 계획을 만든 직후 고른 파일을 올립니다. 결과는 상세 화면의 첨부 목록에 나타나고, 실패한 파일은
-   * 거기서 다시 올릴 수 있습니다.
-   * 주의: 점검 시작과 점검 끝에 모두 불리므로 한 번만 올립니다.
-   */
-  const 첨부넘긴 = useRef(false);
-  const 첨부넘기기 = (planId: string) => {
-    if (첨부넘긴.current) return;
-    첨부넘긴.current = true;
-    attachments.forEach((file) => {
-      void 첨부올리기(planId, file).then((저장됨) => {
-        if (!저장됨) notify(`「${file.name}」 파일을 저장하지 못했습니다. 계획 상세에서 다시 올려 주세요.`);
-      });
-    });
-  };
-
-  const 저장 = (계획: ExpensePlan, 임시?: boolean, 점검오류?: string) => {
-    첨부넘기기(계획.id);
-    save(계획, 임시, 점검오류);
-  };
+  // v033: 첨부는 처음 입력에서 뺐습니다(시안). 계획 상세에서 올립니다.
+  const 저장 = (계획: ExpensePlan, 임시?: boolean, 점검오류?: string) => save(계획, 임시, 점검오류);
 
   const 점검시작 = (계획: ExpensePlan, planId?: string, 받은조사ID?: string, 받은조사답?: 조사답변[], 받은질문세트?: string | null) => {
-    // 창을 닫으면 이 화면을 떠나므로 첨부파일을 먼저 올립니다.
-    첨부넘기기(계획.id);
     판정시작({
       계획,
       count: 1,
@@ -5852,27 +5894,50 @@ function NewPlanPage({
       .finally(() => set저장중(false));
   };
   return (
-    <div className="page narrow">
+    <div className="page narrow new-plan-page-v033">
       <header className="detail-top new-plan-header">
         <button className="back-button" onClick={cancel}>
           <Icon name="back" />
         </button>
         <div>
           <h1>새 지출 계획</h1>
-          <p>기본 정보를 입력하면 AI가 비목과 확인 항목을 추천합니다.</p>
         </div>
       </header>
-      <div className="stepper">
-        <span className={step >= 1 ? "active" : ""}>1 기본 정보</span>
-        <i />
-        <span className={step >= 2 ? "active" : ""}>2 비목 확인</span>
-        <i />
-        <span className={step >= 3 ? "active" : ""}>3 추가 확인</span>
-      </div>
-      <section className="form-card">
+      <section className="form-card new-plan-v033">
+        {step === 0 && (
+          <>
+            <h2 className="new-plan-big">
+              어떤 지출을 준비하고 계신가요? <em className="required-mark">*</em>
+            </h2>
+            <p className="section-copy">무엇을 하려는지, 예산은 어느 정도인지 편하게 적어주세요.</p>
+            <textarea
+              className="new-plan-sentence"
+              value={원문}
+              maxLength={2000}
+              onChange={(e) => set원문(e.target.value)}
+              placeholder={"업무용 노트북을 구매하려고 해요.\n앱 개발과 테스트에 쓰고, 예산은 150만 원 정도예요."}
+            />
+            <div className="new-plan-examples">
+              <span>이렇게 써보세요</span>
+              <div>
+                {작성예시.map((예) => (
+                  <button key={예} type="button" onClick={() => set원문(예)}>
+                    {예}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="new-plan-manual">
+              <button type="button" className="text-button" onClick={() => { 정리결과.current = null; set정리됨(false); setStep(1); }}>
+                정해진 칸을 직접 채울게요
+              </button>
+            </div>
+          </>
+        )}
         {step === 1 && (
           <>
-            <h2>기본 정보</h2>
+            <h2 className="new-plan-big">{정리됨 ? "이렇게 확인했어요!" : "지출 내용을 적어 주세요"}</h2>
+            <p className="section-copy">지출 항목과 금액, 사용 목적을 확인해 주세요.</p>
             <div className="field-grid">
               <label className="full">
                 <span className="field-label">
@@ -5886,6 +5951,17 @@ function NewPlanPage({
               </label>
               <label className="full">
                 <span className="field-label">
+                  예상 금액 <em className="required-mark">*</em>
+                </span>
+                <input
+                  inputMode="numeric"
+                  value={amount ? Number(amount).toLocaleString("ko-KR") : ""}
+                  onChange={(e) => setAmount(e.target.value.replace(/[^0-9]/g, ""))}
+                  placeholder="0"
+                />
+              </label>
+              <label className="full">
+                <span className="field-label">
                   사용 목적 <em className="required-mark">*</em>
                 </span>
                 <textarea
@@ -5894,93 +5970,14 @@ function NewPlanPage({
                   placeholder="사업 수행에 왜 필요한지 작성해주세요."
                 />
               </label>
-              <label>
-                <span className="field-label">
-                  예상 금액 <em className="required-mark">*</em>
-                </span>
-                <input
-                  value={amount}
-                  onChange={(e) =>
-                    setAmount(e.target.value.replace(/[^0-9]/g, ""))
-                  }
-                  placeholder="0"
-                />
+              <label className="full">
+                <span className="field-label">예상 지출일</span>
+                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+                <small className="field-help">아직 정하지 않았다면 비워두셔도 돼요.</small>
               </label>
-              <label>
-                부가세 구분
-                <select value={부가세} onChange={(e) => set부가세(e.target.value as 부가세구분)}>
-                  <option value="포함">부가세 포함 금액이에요</option>
-                  <option value="공급가액">공급가액이에요 (부가세 별도)</option>
-                  <option value="모름">모르겠어요</option>
-                </select>
-              </label>
-              <label>
-                예상 지출일
-                <input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                />
-              </label>
-              <label>
-                거래처
-                <input
-                  value={vendor}
-                  onChange={(e) => setVendor(e.target.value)}
-                  placeholder="미정인 경우 비워둘 수 있어요."
-                />
-              </label>
-              <div className="full file-field">
-                <div className="new-plan-file-head">
-                  <span>
-                    <b className="field-label">첨부파일</b>
-                    <small>견적서·과업자료 등이 있다면 첨부해주세요. 보관용이며 AI 점검에는 쓰이지 않습니다.</small>
-                  </span>
-                  <label className="new-plan-file-button">
-                    <input
-                      type="file"
-                      multiple
-                      accept={첨부accept}
-                      onChange={(event) => {
-                        const { 통과, 안내 } = 첨부검사(attachments.length, Array.from(event.target.files || []));
-                        if (안내) set연동오류(안내);
-                        if (통과.length) setAttachments((current) => [...current, ...통과]);
-                        event.target.value = "";
-                      }}
-                    />
-                    + 파일 첨부
-                  </label>
-                </div>
-                {attachments.length > 0 && (
-                  <ul className="new-plan-file-list">
-                    {attachments.map((file, index) => (
-                      <li key={`${file.name}-${file.lastModified}-${index}`}>
-                        <Icon name="fileText" size={15} />
-                        <b>{file.name}</b>
-                        <small>
-                          {file.size >= 1024 * 1024
-                            ? `${(file.size / 1024 / 1024).toFixed(1)}MB`
-                            : `${Math.max(1, Math.round(file.size / 1024))}KB`}
-                        </small>
-                        <button
-                          type="button"
-                          aria-label={`${file.name} 삭제`}
-                          onClick={() =>
-                            setAttachments((current) =>
-                              current.filter((_, fileIndex) => fileIndex !== index),
-                            )
-                          }
-                        >
-                          ×
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
             </div>
-            {/* v025: 공개 정보 검색은 STEP 1 에서 켜고 검색어를 적습니다. 검색은 비목이 정해진 뒤
-                STEP 2 「AI 점검하기」 때 확인 질문 요청과 함께 나갑니다(같은 요청). */}
+            {/* v025 → v033: 공개 정보 검색은 「이렇게 확인했어요」에서 켜고 검색어를 적습니다. 검색은 비목이 정해진 뒤
+                「AI 점검하기」 때 확인 질문 요청과 함께 나갑니다(같은 요청). */}
             {API켜짐() && (
               <공개검색설정 사용={웹조사} 설정={set웹조사} 검색어={공개검색어} 검색어변경={set공개검색어} />
             )}
@@ -5988,12 +5985,19 @@ function NewPlanPage({
         )}
         {step === 2 && (
           <>
-            <h2>AI 비목 추천</h2>
+            <h2 className="new-plan-big">AI 비목 추천</h2>
             <p className="section-copy">
               {추천비목.size
-                ? "입력한 지출 내용과 목적을 바탕으로 가장 가까운 비목을 자동 선택했습니다. 직접 변경할 수 있습니다."
-                : "추천할 비목을 찾지 못했습니다. 지출 내용에 맞는 비목을 직접 골라 주세요."}
+                ? "입력하신 지출에 맞는 비목을 추천했어요. 다른 비목으로 변경할 수도 있어요."
+                : "추천할 비목을 찾지 못했어요. 지출 내용에 맞는 비목을 직접 골라 주세요."}
             </p>
+            {category && 비목설명.get(category) && !분류경로 && (
+              <div className="new-plan-category-tip">
+                <Icon name="bulb" size={18} />
+                <b>{category}?</b>
+                <span>{비목설명.get(category)}</span>
+              </div>
+            )}
             {/* 주의: 분류 확인은 필수입니다. 첫 후보를 골라 두지만 아래 「AI 점검하기」를 눌러야 그 분류로 판정합니다. */}
             {분류경로 && category && (
               <div className="auto-check-note classification-note">
@@ -6102,8 +6106,13 @@ function NewPlanPage({
         )}
         {step === 3 && (
           <>
-            <h2 className="additional-check-title">{조사확인단계 ? "공개 정보를 확인해 주세요" : "몇 가지만 추가로 확인할게요"}</h2>
-            <p className="section-copy additional-check-copy">
+            <h2 className="additional-check-title new-plan-big">{조사확인단계 ? "공개 정보를 확인해 주세요" : "몇 가지만 추가로 확인할게요"}</h2>
+            {!조사확인단계 && (
+              <p className="new-plan-summary">
+                {[name, amount ? won(Number(amount)) : "", 선택분류?.표시문 ?? category].filter(Boolean).join(" · ")}
+              </p>
+            )}
+            <p className="section-copy additional-check-copy" hidden={!조사확인단계 && API켜짐()}>
               {조사확인단계
                 ? "검색한 내용이 맞는지 확인해 주세요. 확인한 내용으로 규정 질문을 준비합니다."
                 : API켜짐()
@@ -6117,13 +6126,6 @@ function NewPlanPage({
             {조사확인단계 && !조사후보들.length && <p>확인된 공개 정보가 없어요. 입력한 내용으로 계속 점검할 수 있어요.</p>}
             {조사확인단계 && !!부족정보들.length && <p>더 확인이 필요한 공개 정보: {부족정보들.map(유형표기).join(" · ")}</p>}
             {조사확인단계 && <직접확인안내 항목들={직접확인들} />}
-            <div className="auto-check-note">
-              <Icon name="check" />
-              <span>
-                <b>입력한 내용으로 점검합니다</b>품목·예상 금액·사용
-                목적이 자동 점검에 반영됩니다.
-              </span>
-            </div>
             <div className="question-list">
               {API켜짐() && (
                 <추가입력칸목록 칸들={서버칸} 값들={칸값} onChange={(키, v) => set칸값((prev) => ({ ...prev, [키]: v }))} />
@@ -6166,10 +6168,10 @@ function NewPlanPage({
       <footer className="form-actions">
         <button
           className="outline"
-          disabled={categoryLoading || questionsLoading}
-          onClick={step === 1 ? cancel : () => setStep(step - 1)}
+          disabled={categoryLoading || questionsLoading || 정리중}
+          onClick={step === 0 ? cancel : () => setStep(step - 1)}
         >
-          {step === 1 ? "취소" : "이전"}
+          {step === 0 ? "취소" : "이전"}
         </button>
         {/* 주의: 계획 수정이 서버에 저장되지 않아, 비어 있는 채로 임시저장하면 채울 방법이 없고
             0원·빈 목적으로 판정될 수 있습니다. 필수 항목을 채워야 저장합니다. */}
@@ -6181,30 +6183,36 @@ function NewPlanPage({
           disabled={
             categoryLoading ||
             questionsLoading ||
+            정리중 ||
             저장중 ||
-            !필수입력됨 ||
+            (step === 0 ? !원문.trim() : !필수입력됨) ||
             (step === 1 && 웹조사 && !공개검색어.trim()) ||
             (step >= 2 && !category) ||
             (step === 2 && 웹조사 && !공개검색어.trim()) ||
             (step === 3 && (서버질문.some((q) => !질문답변[q.id]) || (조사확인단계 && 조사후보들.some((c) => !조사답[c.id]))))
           }
           onClick={() => {
-            if (step === 1) {
-              setCategoryLoading(true);
+            if (step === 0) {
+              set연동오류(null);
+              set정리중(true);
+            } else if (step === 1) {
+              확인다음();
             } else if (step === 2) {
               둘째단계다음();
             } else if (조사확인단계) setQuestionsLoading(true);
             else submit();
           }}
         >
-          {step === 1
-            ? "비목 확인하기"
+          {step === 0
+            ? "AI로 정리하기"
+            : step === 1
+            ? "다음"
             : step === 2
               ? (조사오류 ? "다시 확인" : "AI 점검하기")
               : 조사확인단계 ? "규정 확인하기" : "결과 확인하기"}
         </button>
       </footer>
-      {(categoryLoading || questionsLoading) && (
+      {(categoryLoading || questionsLoading || 정리중) && (
         <div className="category-analysis-backdrop">
           <section
             className="category-analysis-modal"
@@ -6218,8 +6226,22 @@ function NewPlanPage({
               <i className="analysis-spark analysis-spark-one"><Icon name="sparkSolid" size={8} /></i>
               <i className="analysis-spark analysis-spark-two"><Icon name="sparkSolid" size={6} /></i>
             </span>
-            <h2 id="category-analysis-title">{검색중 ? "공개 정보를 검색하고 있어요." : questionsLoading ? "AI가 내용을 점검하고 있어요." : "입력한 내용을 분석하고 있어요"}</h2>
-            <p>{questionsLoading ? "서버 응답을 기다리고 있어요." : "지출 항목과 사용 목적을 바탕으로 적합한 비목을 찾고 있습니다."}</p>
+            <h2 id="category-analysis-title">
+              {정리중
+                ? "입력하신 내용을 정리하고 있어요"
+                : 검색중
+                  ? "공개 정보를 검색하고 있어요."
+                  : questionsLoading
+                    ? "필요한 확인 항목을 찾고 있어요"
+                    : "맞는 비목을 찾고 있어요"}
+            </h2>
+            <p>
+              {정리중
+                ? "지출 항목·예상 금액·사용 목적을 정리해요."
+                : questionsLoading
+                  ? "입력 내용과 선택한 비목을 바탕으로 살펴봐요."
+                  : "지출 항목과 사용 목적을 바탕으로 비목을 추천해요."}
+            </p>
             {questionsLoading && <작업로그 항목들={진행항목들} 진행중 시작={진행시작} 기본문장="확인할 내용을 준비하고 있어요." 펼침기본 />}
             <small>잠시만 기다려주세요.</small>
           </section>
