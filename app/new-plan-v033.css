@@ -50,10 +50,13 @@ body .app-shell .new-plan-page-v033 .confirm-question-options{display:flex!impor
 body .app-shell .new-plan-page-v033 .confirm-question-options button{flex:0 0 140px;height:48px;margin:0!important;border:1px solid #dfe4e1!important;border-radius:8px!important}
 body .app-shell .new-plan-page-v033 .confirm-question-options button.active{border-color:var(--brand)!important;background:var(--brand-soft)!important;color:var(--brand)!important}
 
+/* 정리 중 창의 현재 작업 한 줄 */
+.new-plan-current-task{display:block;margin:4px 0 12px;color:var(--brand);font-size:13px}
+
 /* 아래 버튼: 이전은 왼쪽, 임시저장·다음은 오른쪽 */
 body .app-shell .new-plan-page-v033 .form-actions{margin-top:40px}
 body .app-shell .new-plan-page-v033 .form-actions>button{height:48px;padding:0 22px;font-size:15px}
-body .app-shell .new-plan-page-v033 .form-actions>button:first-child{margin-right:auto}
+body .app-shell .new-plan-page-v033 .form-actions>button:first-child:not(.draft-save){margin-right:auto}
 
 @media(max-width:760px){
   body .app-shell .new-plan-page-v033 .category-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}

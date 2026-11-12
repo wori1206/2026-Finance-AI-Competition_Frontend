@@ -965,6 +965,20 @@ const EXPENSE_CATEGORIES = [
   "창업활동비",
 ] as const;
 
+/** 비목 단계 상단 「○○? 한 줄 설명」. 서버가 설명을 보내면 그쪽을 씁니다. */
+const 비목한줄설명: Record<string, string> = {
+  재료비: "시제품 제작 등에 직접 쓰는 재료와 부품을 사는 비용이에요.",
+  외주용역비: "사업 일부를 다른 업체에 맡겨 처리하는 비용이에요.",
+  기계장치비: "사업에 필요한 장비와 기기 등을 구입하는 비용이에요.",
+  "특허권 등 무형자산 취득비": "특허·상표 등 지식재산을 출원하거나 사들이는 비용이에요.",
+  인건비: "사업에 참여하는 인력에게 주는 급여예요.",
+  지급수수료: "인증·시험·전시회 참가 등 서비스를 이용하고 내는 수수료예요.",
+  교육훈련비: "사업 수행에 필요한 교육과 훈련을 받는 비용이에요.",
+  여비: "사업 때문에 출장 갈 때 드는 교통비와 숙박비예요.",
+  광고선전비: "제품과 서비스를 알리는 광고·홍보 비용이에요.",
+  창업활동비: "대표자의 창업 활동에 드는 소소한 경비예요.",
+};
+
 const FEE_SUBTYPES = [
   "기술이전",
   "학회·세미나",
@@ -2117,7 +2131,6 @@ export default function CheckumaitApp() {
                 notify("지출 계획을 저장하고 AI 점검을 완료했습니다.");
               }
             }}
-            cancel={() => go({ page: "plans" })}
           />
         )}
         {route.page === "plan-detail" && (
@@ -5394,14 +5407,12 @@ const 작성예시 = [
 
 function NewPlanPage({
   save,
-  cancel,
   판정시작,
 }: {
   판정시작: (작업: 판정시작입력) => boolean;
   notify: (message: string) => void;
   /** `점검오류` 는 계획은 저장됐지만 판정이 실패했을 때의 사유입니다. */
   save: (plan: ExpensePlan, temporary?: boolean, 점검오류?: string) => void;
-  cancel: () => void;
 }) {
   // v033: 0 = 한 문장 입력 → 1 = 이렇게 확인했어요 → 2 = 비목 → 3 = 추가 확인
   const [step, setStep] = useState(0);
@@ -5896,9 +5907,6 @@ function NewPlanPage({
   return (
     <div className="page narrow new-plan-page-v033">
       <header className="detail-top new-plan-header">
-        <button className="back-button" onClick={cancel}>
-          <Icon name="back" />
-        </button>
         <div>
           <h1>새 지출 계획</h1>
         </div>
@@ -5991,11 +5999,11 @@ function NewPlanPage({
                 ? "입력하신 지출에 맞는 비목을 추천했어요. 다른 비목으로 변경할 수도 있어요."
                 : "추천할 비목을 찾지 못했어요. 지출 내용에 맞는 비목을 직접 골라 주세요."}
             </p>
-            {category && 비목설명.get(category) && !분류경로 && (
+            {category && (비목설명.get(category) ?? 비목한줄설명[category]) && (
               <div className="new-plan-category-tip">
                 <Icon name="bulb" size={18} />
                 <b>{category}?</b>
-                <span>{비목설명.get(category)}</span>
+                <span>{비목설명.get(category) ?? 비목한줄설명[category]}</span>
               </div>
             )}
             {/* 주의: 분류 확인은 필수입니다. 첫 후보를 골라 두지만 아래 「AI 점검하기」를 눌러야 그 분류로 판정합니다. */}
@@ -6014,19 +6022,13 @@ function NewPlanPage({
             <div className="category-grid">
               {비목선택지.map((item) => {
                 const 추천됨 = 추천비목.has(item);
-                const 설명 = 비목설명.get(item);
                 return (
                   <button
                     key={item}
                     className={`${category === item ? "selected" : ""} ${추천됨 ? "recommended" : ""}`}
                     onClick={() => 비목고르기(item)}
                   >
-                    <span className="category-name">
-                      {item}
-                      {/* 주의: 서버가 설명을 보낼 때만 그립니다. 없으면 이 줄 자체가 없어
-                          카드 높이도 예전 그대로입니다. */}
-                      {설명 && <small>{설명}</small>}
-                    </span>
+                    <span className="category-name">{item}</span>
                     {추천됨 && (
                       <em>
                         <Icon name="sparkSolid" size={11} />
@@ -6148,7 +6150,7 @@ function NewPlanPage({
                     />
                   ))}
             </div>
-            <div className="info-note">
+            {(!API켜짐() || 조사확인단계) && <div className="info-note">
               <Icon name="spark" />
               {/* 주의: 예시 모드는 판정을 부르지 않아 답이 어디에도 쓰이지 않으므로 그 사실을 그대로 둡니다. */}
               {조사확인단계 ? "모르면 모르겠어요를 선택해 주세요." : API켜짐()
@@ -6156,7 +6158,7 @@ function NewPlanPage({
                   ? "답변을 반영해 판정합니다. 모르면 모르겠어요를 눌러 주세요."
                   : "채운 값을 반영해 판정합니다. 모르면 비워 두세요."
                 : "답변은 아직 AI 점검에 반영되지 않습니다. 품목·금액·사용 목적으로 공통 기준과 비목별 기준을 점검합니다."}
-            </div>
+            </div>}
           </>
         )}
       </section>
@@ -6166,13 +6168,15 @@ function NewPlanPage({
         </p>
       )}
       <footer className="form-actions">
-        <button
-          className="outline"
-          disabled={categoryLoading || questionsLoading || 정리중}
-          onClick={step === 0 ? cancel : () => setStep(step - 1)}
-        >
-          {step === 0 ? "취소" : "이전"}
-        </button>
+        {step > 0 && (
+          <button
+            className="outline"
+            disabled={categoryLoading || questionsLoading || 정리중}
+            onClick={() => setStep(step - 1)}
+          >
+            이전
+          </button>
+        )}
         {/* 주의: 계획 수정이 서버에 저장되지 않아, 비어 있는 채로 임시저장하면 채울 방법이 없고
             0원·빈 목적으로 판정될 수 있습니다. 필수 항목을 채워야 저장합니다. */}
         <button className="outline draft-save" onClick={saveDraft} disabled={categoryLoading || questionsLoading || 저장중 || !필수입력됨}>
@@ -6243,6 +6247,7 @@ function NewPlanPage({
                   : "지출 항목과 사용 목적을 바탕으로 비목을 추천해요."}
             </p>
             {questionsLoading && <작업로그 항목들={진행항목들} 진행중 시작={진행시작} 기본문장="확인할 내용을 준비하고 있어요." 펼침기본 />}
+            {정리중 && <span className="new-plan-current-task">빠진 정보가 있는지 확인하고 있어요</span>}
             <small>잠시만 기다려주세요.</small>
           </section>
         </div>
