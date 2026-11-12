@@ -40,9 +40,10 @@ import type { 진행항목 } from "../lib/sse";
 import { 데모종료, 데모중, 이메일기억, 기억된이메일, 이메일잊기, 팀이름기억, 기억된팀이름 } from "../lib/session";
 import { 초안전부지우기 } from "../lib/inquiry-store";
 import { 선택사업, 사업저장, 사업선택지, 목록에맞추기, 기본사업 } from "../lib/program";
-import { 협약쓰기, 원, 날짜표기, 기간표기, 디데이표기, 지금협약, 협약기억, 협약잊기, 기억된협약, 서버협약읽기, 서버협약조회, 빈협약, type 협약정보 } from "../lib/profile";
+import { 협약쓰기, 원, 날짜표기, 디데이표기, 지금협약, 협약기억, 협약잊기, 기억된협약, 서버협약읽기, 서버협약조회, 빈협약, type 협약정보 } from "../lib/profile";
 import { SendButton } from "./send-button";
 import "./detail-refinement.css";
+import "./home-v4.css";
 
 const won = (value: number) => `${value.toLocaleString("ko-KR")}원`;
 const scheduleStateLabel = (state: ScheduleItem["state"]) =>
@@ -3496,6 +3497,58 @@ function Login({
   );
 }
 
+/** 「1,200만」 처럼 만 원 단위로 줄입니다. 만 원 미만은 원 단위 그대로. */
+function 만원표기(n: number): string {
+  return Math.abs(n) >= 10000 ? `${Math.round(n / 10000).toLocaleString("ko-KR")}만` : won(n);
+}
+
+/** 오늘이 든 주의 월요일~일요일 (YYYY-MM-DD, 현지 시간). */
+function 이번주날짜(오늘: string): string[] {
+  const [y, m, d] = 오늘.split("-").map(Number);
+  const 기준 = new Date(y, m - 1, d);
+  기준.setDate(d - ((기준.getDay() + 6) % 7));
+  return Array.from({ length: 7 }, (_, i) => {
+    const n = new Date(기준.getFullYear(), 기준.getMonth(), 기준.getDate() + i);
+    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+  });
+}
+
+type 홈할일 = { 제목: string; 설명: string; 종류: "late" | "risk" | "soon" | "warn"; 이동: AppRoute };
+
+/**
+ * v032: 배너에 올릴 할 일 순서. 기한 지남 → 불가 지출 → 가까운 마감 → 확인 필요 지출.
+ *    배너는 맨 앞 하나만 크게 보이고, 나머지는 「그다음」 한 줄과 개수로만 알립니다.
+ */
+function 홈할일목록(plans: ExpensePlan[], schedules: ScheduleItem[], 오늘: string): 홈할일[] {
+  const 계획이름 = (id: string) => plans.find((p) => p.id === id)?.name;
+  const 남은일정 = schedules
+    .filter((s) => s.state !== "완료" && !!s.date)
+    .sort((x, y) => x.date.localeCompare(y.date));
+  const 일정할일 = (s: ScheduleItem, 종류: "late" | "soon"): 홈할일 => ({
+    제목: 계획이름(s.planId) ? `${계획이름(s.planId)} — ${s.title}` : s.title,
+    설명: 종류 === "late" ? `${월일표기(s.date)} 기한이 지났어요` : `${월일표기(s.date)}까지 · ${s.type}`,
+    종류,
+    이동: { page: "schedule" },
+  });
+  const 계획할일 = (p: ExpensePlan, 종류: "risk" | "warn"): 홈할일 => ({
+    제목: `${p.name} — ${displayPlanStatus(p.status)}`,
+    설명:
+      종류 === "risk"
+        ? "사업비로 집행할 수 없어요. 계획을 바꾸거나 삭제하세요."
+        : p.status === "재점검 필요"
+          ? "수정한 내용으로 다시 점검해야 해요."
+          : p.nextAction || "결제 전에 확인할 조건이 있어요.",
+    종류,
+    이동: { page: "plan-detail", id: p.id },
+  });
+  return [
+    ...남은일정.filter((s) => s.date < 오늘).map((s) => 일정할일(s, "late")),
+    ...plans.filter((p) => p.status === "위험").map((p) => 계획할일(p, "risk")),
+    ...남은일정.filter((s) => s.date >= 오늘).map((s) => 일정할일(s, "soon")),
+    ...plans.filter((p) => p.status === "확인 필요" || p.status === "재점검 필요").map((p) => 계획할일(p, "warn")),
+  ];
+}
+
 function HomePage({
   plans,
   schedules,
@@ -3506,278 +3559,221 @@ function HomePage({
   plans: ExpensePlan[];
   schedules: ScheduleItem[];
   go: (route: AppRoute) => void;
-  /** 계획·일정 응답을 받았는가. 받기 전에 「일정이 없습니다」라고 하면 틀린 말입니다. */
+  /** 계획·일정 응답을 받았는가. 받기 전에 「할 일이 없습니다」라고 하면 틀린 말입니다. */
   자료받음: boolean;
   일정실패: boolean;
 }) {
   const 사업 = use사업();
-  // 주의: 홈에 하드코딩되어 있던 기관명·사업기간·D-day 를 실제 값으로 바꿉니다.
-  //    마이페이지와 다른 값이 보이던 자리입니다.
   const 기관 = use기관();
   const 협약 = use협약();
-  // 주의: 사용자가 입력한 협약이 없으면 남은 기간을 말할 수 없습니다(예시 모드는 시연용으로 보여 줍니다).
-  const 남음 = 협약.예시 && API켜짐() ? "" : 디데이표기(협약.종료일);
-  const counts = {
-    all: plans.length,
-    safe: plans.filter((p) => p.status === "특이사항 없음").length,
-    warn: plans.filter((p) => p.status === "확인 필요").length,
-    risk: plans.filter((p) => p.status === "위험").length,
-  };
-  const totalAmount = plans.reduce((sum, plan) => sum + plan.amount, 0);
-  // 주의: 홈은 「지금 확인해주세요」라 '위험 먼저'가 맞습니다. 다만 그 안에서의 차례가
-  //    지출 계획 목록과 달라 같은 계획이 두 화면에서 서로 다른 순서로 보였습니다.
-  //    목록의 기본 정렬(최근 수정순)을 2차 기준으로 써서 둘을 맞춥니다.
-  const attentionPlans = plans
-    .filter((p) => p.status !== "특이사항 없음")
+  const 팀이름 = use팀이름();
+  // 주의: 사용자가 입력한 협약이 없으면 남은 기간·예산을 말할 수 없습니다(예시 모드는 시연용으로 보여 줍니다).
+  const 협약있음 = !(협약.예시 && API켜짐());
+  const 남음 = 협약있음 ? 디데이표기(협약.종료일) : "";
+  const 오늘 = 오늘날짜();
+  const 할일 = 홈할일목록(plans, schedules, 오늘);
+  const [첫할일, 다음할일] = 할일;
+
+  // 사업비: 총액 = 정부지원 + 자기부담 현금(현물은 돈이 나가지 않아 뺍니다).
+  //    집행 완료 = 실제 지출을 등록한 계획, 계획 중 = 아직 결제 전인 계획(불가 판정은 쓸 수 없는 돈이라 뺍니다).
+  const 총액 = 협약있음 ? 협약.정부지원 + 협약.자기부담 : 0;
+  const 집행 = plans
+    .filter((p) => p.executionStatus === "결제 완료")
+    .reduce((합, p) => 합 + (p.actualAmount || p.amount), 0);
+  const 계획 = plans
+    .filter((p) => p.executionStatus !== "결제 완료" && p.status !== "위험")
+    .reduce((합, p) => 합 + p.amount, 0);
+  const 남은예산 = 총액 - 집행 - 계획;
+  const 비율 = (n: number) => (총액 > 0 ? Math.min(100, Math.max(0, (n / 총액) * 100)) : 0);
+  const 집행비율 = 비율(집행);
+  const 계획끝 = Math.min(100, 집행비율 + 비율(계획));
+
+  const 확인할지출 = plans
+    .filter((p) => p.status === "위험" || p.status === "확인 필요" || p.status === "재점검 필요")
     .sort(
       (a, b) =>
         Number(b.status === "위험") - Number(a.status === "위험") ||
         b.updatedAt.localeCompare(a.updatedAt, "ko"),
     );
-  // 주의: '다가오는' 일정만 날짜순으로 보여줍니다. 예전에는 받은 순서 그대로 앞 5건이라
-  //    완료한 일·지난 일이 섞여 나왔습니다. 날짜 없는 할일은 캘린더 항목이 아니라 뺍니다.
-  const 오늘 = 오늘날짜();
-  // 주의: 예시 일정은 날짜가 고정이라 지난 날짜를 빼면 예시 모드 홈이 늘 비어 보입니다.
-  const 다가오는일정 = schedules
-    .filter((item) => item.state !== "완료" && !!item.date && (!API켜짐() || item.date >= 오늘))
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(0, 5);
-  const 기한지남수 = API켜짐()
-    ? schedules.filter((item) => item.state !== "완료" && !!item.date && item.date < 오늘).length
-    : 0;
+  const 불가수 = 확인할지출.filter((p) => p.status === "위험").length;
+
+  const 주간 = 이번주날짜(오늘);
+  const 요일 = ["월", "화", "수", "목", "금", "토", "일"];
+  const 남은일정 = schedules.filter((s) => s.state !== "완료" && !!s.date);
 
   return (
-    <div className="page home-v3">
-      <header className="home-v3-heading">
+    <div className="page home-v4">
+      <header className="home-v4-head">
         <div>
-          <span>
-            안녕하세요! <b>체쿠메이트님.</b>
-          </span>
-          <h1>지출 계획을 점검하고 필요한 준비를 미리 확인해보세요.</h1>
+          <h1>안녕하세요, {팀이름 || "체쿠메이트"}님</h1>
+          <p>
+            {사업} · {기관}
+          </p>
         </div>
-        <button
-          className="primary home-v3-new"
-          onClick={() => go({ page: "plan-new" })}
-        >
+        <button className="primary" onClick={() => go({ page: "plan-new" })}>
           <Icon name="plus" />새 지출 계획
         </button>
       </header>
-      <div className="home-v3-overview">
-        <section className="home-v3-project">
-          <div className="home-v3-project-top">
-            <span>진행 중인 사업</span>
-            {남음 && (
-              <div>
-                <small>{남음 === "종료" ? "협약 상태" : "사업 종료까지"}</small>
-                <b>{남음}</b>
-              </div>
-            )}
-          </div>
-          <h2>{사업}</h2>
-          <p>{기관} · 사업비 집행</p>
-          <dl>
-            <div>
-              <Icon name="calendar" size={16} />
+
+      {/* ① 지금 할 일 — 하나만 크게. 부담을 줄이려고 나머지는 개수로만 알립니다. */}
+      <section className={`home-v4-next ${자료받음 && !첫할일 ? "is-clear" : ""}`}>
+        <div>
+          <small>{!자료받음 ? "불러오는 중" : 첫할일 ? "지금 하나만 하면 돼요" : "할 일이 없어요"}</small>
+          <h2>{!자료받음 ? "할 일을 확인하고 있어요." : 첫할일 ? 첫할일.제목 : "모두 준비됐어요"}</h2>
+          <p>
+            {!자료받음
+              ? "잠시만 기다려 주세요."
+              : 첫할일
+                ? 첫할일.설명
+                : "새 지출이 생기면 결제 전에 AI 점검부터 받아 보세요."}
+          </p>
+          {다음할일 && (
+            <div className="home-v4-next-sub">
               <span>
-                <dt>사업기간</dt>
-                <dd>{기간표기(협약.시작일, 협약.종료일)}{협약.예시 ? " (예시)" : ""}</dd>
+                그다음: <b>{다음할일.제목}</b>
               </span>
-            </div>
-            <div>
-              <Icon name="rules" size={16} />
               <span>
-                <dt>적용 기준</dt>
-                <dd>기관 최신 집행 안내 확인</dd>
+                남은 할 일 <b>{할일.length}개</b>
               </span>
             </div>
-          </dl>
-        </section>
-        <section className="home-v3-status home-status-reference">
-          <header>
-            <div>
-              <h2>전체 지출 계획 현황</h2>
-              <p>
-                전체 {counts.all}건 · 예상금액 {won(totalAmount)}
-              </p>
-            </div>
-            <button
-              className="text-button"
-              onClick={() => go({ page: "plans" })}
-            >
-              전체 보기 <Icon name="arrow" size={17} />
-            </button>
-          </header>
-          <div className="home-v3-metrics">
-            <div>
-              <span className="home-metric-label">
-                <i>
-                  <Icon name="plans" size={23} />
-                </i>
-                전체
-              </span>
-              <b>
-                {counts.all}
-                <em>건</em>
-              </b>
-            </div>
-            <div className="warn">
-              <span className="home-metric-label">
-                <i>
-                  <Icon name="fileAlert" size={23} />
-                </i>
-                확인 필요
-              </span>
-              <b>
-                {counts.warn}
-                <em>건</em>
-              </b>
-            </div>
-            <div className="risk">
-              <span className="home-metric-label">
-                <i>
-                  <Icon name="alert" size={23} />
-                </i>
-                위험
-              </span>
-              <b>
-                {counts.risk}
-                <em>건</em>
-              </b>
-            </div>
-            <div className="safe">
-              <span className="home-metric-label">
-                <i>
-                  <Icon name="check" size={23} />
-                </i>
-                특이사항 없음
-              </span>
-              <b>
-                {counts.safe}
-                <em>건</em>
-              </b>
-            </div>
+          )}
+        </div>
+        {자료받음 && (
+          <button onClick={() => go(첫할일 ? 첫할일.이동 : { page: "plan-new" })}>
+            {첫할일 ? "시작하기" : "새 지출 계획"} <Icon name="arrow" size={16} />
+          </button>
+        )}
+      </section>
+
+      {/* ② 이번 주 — 월~일. 지난 날에 남은 일정은 빨간색(기한 지남). */}
+      <section className="home-v4-week-wrap">
+        <header>
+          <h2>이번 주</h2>
+          <button className="text-button" onClick={() => go({ page: "schedule" })}>
+            캘린더 <Icon name="arrow" size={15} />
+          </button>
+        </header>
+        {일정실패 ? (
+          <p className="schedule-detail-empty">일정을 불러오지 못했습니다. 새로고침해 주세요.</p>
+        ) : (
+          <div className="home-v4-week">
+            {주간.map((날, i) => {
+              const 그날 = 남은일정.filter((s) => s.date === 날);
+              return (
+                <button
+                  key={날}
+                  className={`home-v4-day ${날 === 오늘 ? "is-today" : ""}`}
+                  onClick={() => go({ page: "schedule" })}
+                >
+                  <span className="home-v4-day-head">
+                    {요일[i]}
+                    {날 === 오늘 && " · 오늘"}
+                    <b>{Number(날.slice(8))}</b>
+                  </span>
+                  {그날.slice(0, 3).map((s) => (
+                    <span
+                      key={s.id}
+                      title={s.title}
+                      className={`home-v4-ev ${날 < 오늘 ? "late" : s.state === "준비 필요" ? "need" : "plan"}`}
+                    >
+                      {날 < 오늘 && "지남 · "}
+                      {s.title}
+                    </span>
+                  ))}
+                  {그날.length > 3 && <small>+{그날.length - 3}개</small>}
+                </button>
+              );
+            })}
           </div>
-        </section>
-      </div>
-      <div className="home-v3-main">
-        <section className="home-v3-panel home-v3-attention">
+        )}
+      </section>
+
+      <div className="home-v4-bottom">
+        {/* ③ 사업비 현황 — 협약 금액이 있어야 그릴 수 있습니다. */}
+        <section className="home-v4-card home-v4-budget">
           <header>
-            <div>
-              <h2>지금 확인해주세요</h2>
-              <p>결제 전에 확인이 필요한 지출입니다.</p>
-            </div>
-            <button
-              className="outline small home-v3-panel-cta"
-              onClick={() => go({ page: "plans" })}
-            >
-              전체 지출 계획 보기
-            </button>
+            <h2>사업비 현황</h2>
+            {총액 > 0 && <span>총 {만원표기(총액)}원</span>}
           </header>
-          <div className="home-v3-plan-list">
-            {attentionPlans.slice(0, 5).map((plan) => (
-              <button
-                className="home-v3-plan-row"
-                key={plan.id}
-                onClick={() => go({ page: "plan-detail", id: plan.id })}
+          {총액 > 0 ? (
+            <div className="home-v4-chart">
+              <div
+                className="home-v4-donut"
+                style={{
+                  background: `conic-gradient(var(--brand) 0 ${집행비율}%, #8cc3b3 ${집행비율}% ${계획끝}%, #eef0ef ${계획끝}% 100%)`,
+                }}
               >
-                <span>
-                  <b className="home-v3-plan-title">
-                    <i
-                      className={
-                        plan.status === "위험"
-                          ? "risk"
-                          : plan.status === "확인 필요"
-                            ? "warn"
-                            : "safe"
-                      }
-                    />
-                    {plan.name}
-                  </b>
+                <div>
+                  <small>{남은예산 < 0 ? "예산 초과" : "남은 예산"}</small>
+                  <b>{만원표기(Math.abs(남은예산))}</b>
+                  <small>{남은예산 < 0 ? "계획을 줄여 주세요" : `${Math.round(비율(남은예산))}%`}</small>
+                </div>
+              </div>
+              <ul>
+                <li>
+                  <i className="spent" />
+                  집행 완료<b>{만원표기(집행)}</b>
+                </li>
+                <li>
+                  <i className="planned" />
+                  계획 중<b>{만원표기(계획)}</b>
+                </li>
+                <li>
+                  <i />
+                  남은 예산<b>{만원표기(Math.max(0, 남은예산))}</b>
+                </li>
+              </ul>
+            </div>
+          ) : (
+            <div className="home-v4-budget-empty">
+              <p>협약 금액을 입력하면 남은 예산을 보여 드려요.</p>
+              <button className="outline small" onClick={() => go({ page: "rules" })}>
+                마이페이지에서 입력
+              </button>
+            </div>
+          )}
+          {남음 && (
+            <div className="home-v4-dday">
+              <span>{남음 === "종료" ? "협약 상태" : "사업 종료까지"}</span>
+              <b>{남음}</b>
+            </div>
+          )}
+        </section>
+
+        {/* ④ 확인할 지출 — 날짜가 없어 이번 주 칸에 안 나오는 지출도 여기서 보입니다. */}
+        <section className="home-v4-card home-v4-attention">
+          <header>
+            <h2>확인할 지출</h2>
+            <span>
+              {확인할지출.length > 0 && (
+                <small>
+                  {불가수 > 0 && `${displayPlanStatus("위험")} ${불가수} · `}확인 필요 {확인할지출.length - 불가수}
+                </small>
+              )}
+              <button className="text-button" onClick={() => go({ page: "plans" })}>
+                전체 보기 <Icon name="arrow" size={15} />
+              </button>
+            </span>
+          </header>
+          {!자료받음 ? (
+            <p className="schedule-detail-empty">지출 계획을 불러오는 중입니다.</p>
+          ) : 확인할지출.length === 0 ? (
+            <p className="schedule-detail-empty">확인이 필요한 지출이 없어요.</p>
+          ) : (
+            확인할지출.slice(0, 4).map((plan) => (
+              <button key={plan.id} className="home-v4-row" onClick={() => go({ page: "plan-detail", id: plan.id })}>
+                <span className="home-v4-row-text">
+                  <b>{plan.name}</b>
                   <small>
-                    {plan.category || "비목 미정"} · {won(plan.amount)}
+                    {(plan.status === "위험" ? plan.aiSummary : plan.nextAction || plan.aiSummary) || plan.category}
+                    {" · "}
+                    {won(plan.amount)}
                   </small>
                 </span>
                 <Status value={plan.status} />
               </button>
-            ))}
-          </div>
-          <footer>
-            <Icon name="bell" size={16} />
-            <span>{자료받음 ? `확인이 필요한 지출이 ${attentionPlans.length}건 있어요.` : "지출 계획을 불러오는 중입니다."}</span>
-          </footer>
-        </section>
-        <section className="home-v3-panel home-v3-schedule">
-          <header>
-            <div>
-              <h2>다가오는 일정</h2>
-              <p>주요 일정과 준비가 필요한 내용을 확인하세요.</p>
-            </div>
-            <button
-              className="outline small home-v3-panel-cta"
-              onClick={() => go({ page: "schedule" })}
-            >
-              <Icon name="calendar" size={15} />
-              전체 캘린더 보기
-            </button>
-          </header>
-          <div className="home-v3-timeline">
-            {기한지남수 > 0 && (
-              <button
-                type="button"
-                className="home-overdue-line"
-                onClick={() => go({ page: "schedule" })}
-              >
-                <Icon name="bell" size={15} />
-                <b>기한 지난 일정 {기한지남수}건</b>
-                <span>확인하기</span>
-              </button>
-            )}
-            {다가오는일정.length === 0 && (
-              <p className="schedule-detail-empty">
-                {!자료받음
-                  ? "일정을 불러오는 중입니다."
-                  : 일정실패
-                    ? "일정을 불러오지 못했습니다. 새로고침해 주세요."
-                    : "다가오는 일정이 없습니다."}
-              </p>
-            )}
-            {다가오는일정.map((item) => (
-              <button
-                className={`home-v3-schedule-row ${
-                  item.state === "완료"
-                    ? "is-done"
-                    : item.state === "준비 필요"
-                      ? "is-need"
-                      : "is-planned"
-                }`}
-                key={item.id}
-                onClick={() => go({ page: "schedule" })}
-              >
-                <span className="timeline-marker">
-                  <i />
-                </span>
-                <time>
-                  <b>{item.date ? item.date.slice(5).replace("-", ".") : "미정"}</b>
-                  <small>{item.type}</small>
-                </time>
-                <span>
-                  <b>{item.title}{item.작성자 && <span className="item-author"> · {item.작성자}</span>}</b>
-                  <small>{plans.find((p) => p.id === item.planId)?.name}</small>
-                </span>
-                <em
-                  className={
-                    item.state === "완료"
-                      ? "done"
-                      : item.state === "준비 필요"
-                        ? "need"
-                        : "planned"
-                  }
-                >
-                  {scheduleStateLabel(item.state)}
-                </em>
-              </button>
-            ))}
-          </div>
+            ))
+          )}
         </section>
       </div>
     </div>
