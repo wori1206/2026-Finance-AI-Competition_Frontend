@@ -8708,11 +8708,13 @@ function SchedulePage({
     );
   const calendarStart = new Date(연, 표시월 - 1, 1).getDay();
   const calendarDays = new Date(연, 표시월, 0).getDate();
+  // v051: 위쪽 건수는 이번 달(오늘이 속한 달) 일정만 셉니다. 지난달에 못 끝낸 일정은 「기한 지난 일정」이 따로 보입니다.
+  const 이번달일정 = upcoming.filter((s) => s.date.slice(0, 7) === 오늘문자.slice(0, 7));
   const stats = {
-    all: upcoming.length,
-    need: upcoming.filter((s) => s.state === "준비 필요").length,
-    planned: upcoming.filter((s) => s.state === "집행 예정").length,
-    done: upcoming.filter((s) => s.state === "완료").length,
+    all: 이번달일정.length,
+    need: 이번달일정.filter((s) => s.state === "준비 필요").length,
+    planned: 이번달일정.filter((s) => s.state === "집행 예정").length,
+    done: 이번달일정.filter((s) => s.state === "완료").length,
   };
   const upcomingGroups = [
     ...plans
