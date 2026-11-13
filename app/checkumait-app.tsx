@@ -48,8 +48,9 @@ import "./detail-v033.css";
 import "./new-plan-v033.css";
 
 const won = (value: number) => `${value.toLocaleString("ko-KR")}원`;
+/** 일정 상태의 화면 이름. 저장 값(`집행 예정`·`준비 필요`)은 서버와 맞춰 그대로 둡니다. */
 const scheduleStateLabel = (state: ScheduleItem["state"]) =>
-  state === "준비 필요" ? "준비 일정" : state;
+  state === "준비 필요" ? "준비 중" : state === "집행 예정" ? "집행 일정" : state;
 
 const iconPaths: Record<string, React.ReactNode> = {
   home: (
@@ -403,7 +404,7 @@ function use적용규정(사업명: string): 적용규정항목[] {
 const 빈기준문서: L3현재문서요약 = { 파일명: null, 안내: null, 등록일: null, ocr: false, 실패목록: [], 처리중목록: [], 확인대기목록: [], 조회실패: false };
 
 /**
- * 마이페이지 「주관기관 세부 안내」 — 이 기관에 지금 적용 중인 L3 문서.
+ * 마이페이지 「주관기관 세부 지침」 — 이 기관에 지금 적용 중인 L3 문서.
  *
  * 주의: 2026-09-07 — `GET /api/l3/current` 신설(서버 커밋 `7fcd665`). 게스트는 org 가
  *    없어 서버가 늘 빈 목록을 줍니다 — 그래서 이 훅은 로그인된 마이페이지에서만
@@ -431,7 +432,7 @@ function use현재기준문서(재조회?: unknown): L3현재문서요약 {
 }
 
 /**
- * 기준 문서(L3)를 서버가 읽는 동안 띄우는 창. 온보딩 「설정 완료」와 마이페이지 「파일 교체」가 같이 씁니다.
+ * 기준 문서(L3)를 서버가 읽는 동안 띄우는 창. 온보딩 「설정 완료」와 마이페이지 「파일 등록」가 같이 씁니다.
  *
  * 주의: 판정 모달(`AiCheckingOverlay`)과 '같은 클래스' 를 씁니다 — 프로토타입 디자인이 이미
  *    그 모양이라, 새 스타일을 만들면 한 서비스에 로딩 모양이 두 가지가 됩니다.
@@ -594,7 +595,7 @@ type L3확인 = {
 /**
  * 읽기는 했지만 세부기준이 맞는지 불확실한 문서를 쓸지 묻는 창. 온보딩과 마이페이지가 같이 씁니다.
  *
- * 고르기 전에는 판정에 쓰지 않습니다. ×로 닫으면 마이페이지 「주관기관 세부 안내」에서 다시 고를 수 있습니다.
+ * 고르기 전에는 판정에 쓰지 않습니다. ×로 닫으면 마이페이지 「주관기관 세부 지침」에서 다시 고를 수 있습니다.
  */
 function L3확인창({
   확인,
@@ -676,7 +677,7 @@ const 연결_공통 = "__공통";
 const 연결값 = (ids: string[] | null): string => (ids === null ? 연결_고르지않음 : ids.length === 0 ? 연결_공통 : ids.join("|"));
 
 /**
- * 기관 세부기준의 조문마다 어느 비목에 해당하는지 확인하는 창(2026-11-07, P4-5). 마이페이지 「주관기관 세부 안내」에서 엽니다.
+ * 기관 세부기준의 조문마다 어느 비목에 해당하는지 확인하는 창(2026-11-07, P4-5). 마이페이지 「주관기관 세부 지침」에서 엽니다.
  *
  * 서버 추천이 기본으로 골라져 있고(「저장」하면 그대로 확인), 조마다 고치거나 「고르지 않음」으로 둘 수 있습니다.
  * 고르지 않은 조문은 지금처럼 모든 판정에 함께 들어갑니다. 「나중에」는 아무것도 저장하지 않습니다.
@@ -852,7 +853,7 @@ async function 기준문서처리(파일: File): Promise<L3처리> {
         파일명: 파일.name,
         제목: "처리 결과를 확인하지 못했습니다",
         부제: "문서는 올라갔지만 다 읽었는지 확인하지 못했습니다.",
-        메시지: `${오류사유(e)} 잠시 뒤 마이페이지 「주관기관 세부 안내」에서 결과를 확인해 주세요.`,
+        메시지: `${오류사유(e)} 잠시 뒤 마이페이지 「주관기관 세부 지침」에서 결과를 확인해 주세요.`,
       },
     };
   }
@@ -8741,7 +8742,7 @@ function SchedulePage({
             <Icon name="clipboardCheck" />
           </span>
           <span>
-            <small>준비 일정</small>
+            <small>준비 중</small>
             <b>
               {stats.need}
               <em>건</em>
@@ -8753,7 +8754,7 @@ function SchedulePage({
             <Icon name="clock" />
           </span>
           <span>
-            <small>집행 예정</small>
+            <small>집행 일정</small>
             <b>
               {stats.planned}
               <em>건</em>
@@ -8860,11 +8861,11 @@ function SchedulePage({
               <footer className="schedule-v2-legend">
                 <span>
                   <i className="planned" />
-                  집행 예정
+                  집행 일정
                 </span>
                 <span>
                   <i className="need" />
-                  준비 일정
+                  준비 중
                 </span>
                 <span>
                   <i className="done" />
@@ -8937,6 +8938,9 @@ function SchedulePage({
                   ? "일정을 불러오지 못했습니다. 새로고침해 주세요."
                   : "앞으로 남은 일정이 없습니다."}
             </p>
+          )}
+          {upcomingView === "all" && visibleUpcoming.length > 0 && (
+            <p className="upcoming-list-caption">체크하면 처리 완료</p>
           )}
           {upcomingView === "all" ? visibleUpcoming.map((item) => {
             const activeIndex = activeUpcoming.findIndex(
@@ -9394,8 +9398,8 @@ function ScheduleFormModal({
                       })
                     }
                   >
-                    <option value="집행 예정">집행 예정</option>
-                    <option value="준비 필요">준비 일정</option>
+                    <option value="집행 예정">집행 일정</option>
+                    <option value="준비 필요">준비 중</option>
                     <option>완료</option>
                   </select>
                 </label>
@@ -9493,11 +9497,11 @@ function ScheduleDetailModal({
             onChange={toggleComplete}
           />
           <span>
-            <b>일정 완료</b>
+            <b>처리 완료</b>
             <small>
               {item.state === "완료"
-                ? "완료된 일정입니다. 체크를 해제하면 미완료 상태로 돌아갑니다."
-                : "일정을 마쳤다면 체크해 완료 상태로 변경하세요."}
+                ? "처리를 마친 일정입니다. 체크를 해제하면 미완료 상태로 돌아갑니다."
+                : "처리를 마쳤다면 체크해 완료 상태로 변경하세요."}
             </small>
           </span>
         </label>
@@ -10108,10 +10112,10 @@ function MyPage({
       <section className="card rule-library" id="institution-criteria">
         <header className="card-head">
           <div>
-            <h2>주관기관 세부 안내</h2>
+            <h2>주관기관 세부 지침</h2>
             <p>
-              금액 기준·승인 절차·제출 양식은 기관의 최신 안내를 함께
-              적용합니다.
+              주관기관에서 받은 세부 지침·운영 가이드 문서(PDF·HWP)를 올려 주세요.
+              금액 기준·승인 절차·제출 양식을 판정에 함께 적용합니다.
             </p>
           </div>
           {/* 주의: 고르자마자 바꾸지 않습니다 — 이 문서는 판정 기준이라 한 번 묻습니다.
@@ -10132,7 +10136,7 @@ function MyPage({
               }}
             />
             <Icon name="upload" size={14} />
-            파일 교체
+            파일 등록
           </label>
         </header>
         <article>
