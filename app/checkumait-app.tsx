@@ -5462,6 +5462,10 @@ function NewPlanPage({
   const [조사확인단계, set조사확인단계] = useState(false);
   // v047: 공개 정보를 못 찾았을 때 받는 한 문장 품목 설명(선택).
   const [품목설명, set품목설명] = useState("");
+  // v048: 서버가 분류를 못 찾았을 때(상태 분류없음) 다음에 할 일 · 안내 문장 · 다시 물을 품목 정보와 그 답.
+  const [분류없음, set분류없음] = useState<{ 다음행동: string; 안내: string } | null>(null);
+  const [재조사후보, set재조사후보] = useState<조사후보[]>([]);
+  const [재조사답, set재조사답] = useState<Record<string, 조사답변>>({});
   // ── 서버 연동 상태 ──
   // 주의: 예전에는 첫 후보 하나만 들고 있었습니다(`서버추천: string`). 서버는 후보를
   //    '여러 개' 줄 수 있고 그때는 배지도 여러 개 붙어야 하므로 배열로 들고 갑니다.
@@ -5550,6 +5554,9 @@ function NewPlanPage({
     set조사답({});
     set조사확인단계(false);
     set품목설명("");
+    set분류없음(null);
+    set재조사후보([]);
+    set재조사답({});
     setCategory((v) => (v && v === 자동선택비목.current ? "" : v));
     자동선택비목.current = null;
   }, [name, purpose, amount, 부가세]);
@@ -5566,6 +5573,9 @@ function NewPlanPage({
     set서버질문([]);
     set질문세트(null);
     set질문답변({});
+    set분류없음(null);
+    set재조사후보([]);
+    set재조사답({});
   };
 
   // 주의: 이 사업의 비목 목록에 없는 후보는 화면에 칸이 없어 무엇이 골렸는지 보이지 않으므로 뺍니다.
@@ -5901,7 +5911,8 @@ function NewPlanPage({
       웹조사,
       ...(거래처.trim() ? { 거래처: 거래처.trim() } : {}),
       ...(판매주소값 ? { 판매URL: 판매주소값 } : {}),
-      ...(조사확인단계 ? { 조사ID, 조사답변: Object.values(조사답), ...(!조사후보들.length && 품목설명.trim() ? { 품목설명: 품목설명.trim() } : {}) } : {}),
+      ...(조사확인단계 ? { 조사ID, 조사답변: Object.values(조사답), ...(품목설명.trim() ? { 품목설명: 품목설명.trim() } : {}) } : {}),
+      ...(조사확인단계 && 재조사후보.length ? { 재조사답변: Object.values(재조사답) } : {}),
     }, (항목) => { if (살아있음) { 진행Ref.current = 진행추가(진행Ref.current, 항목); set진행항목들(진행Ref.current); } }).then((r) => {
       if (!살아있음) return;
       // 주의: id(Q1…)는 묶음마다 다시 매겨져 옛 답이 다른 질문의 답으로 나가면 안 됩니다.
@@ -5909,6 +5920,28 @@ function NewPlanPage({
       set서버질문(r.질문);
       set조사ID(r.조사ID);
       if (r.분류) { 서버분류Ref.current = r.분류; set서버분류(r.분류); set분류안내(r.분류안내 ?? ""); }
+      // v048: 분류를 못 찾음. 다음행동대로 다시 묻거나(재조사 카드 · 설명 칸 · 다시 시도) 분류 없이 판정합니다.
+      if (r.상태 === "분류없음") {
+        서버분류Ref.current = null;
+        set서버분류(null);
+        if (r.다음행동 === "판정") {
+          set분류없음(null);
+          if (r.분류안내) 진행Ref.current = 진행추가(진행Ref.current, { id: "분류안내", 단계: "분류", 상태: "완료", 문장: r.분류안내, 출처: [] });
+          void submit(r.조사ID, Object.values(조사답), null).finally(() => setQuestionsLoading(false));
+          return;
+        }
+        set분류없음({ 다음행동: r.다음행동 ?? "다시시도", 안내: r.분류안내 ?? "" });
+        if (r.다음행동 === "재조사확인") {
+          set재조사후보(r.재조사후보 ?? []);
+          set재조사답((이전) => Object.fromEntries((r.재조사후보 ?? []).flatMap((c) => (이전[c.id] ? [[c.id, 이전[c.id]]] : []))));
+        }
+        set조사확인단계(true);
+        set연동오류(null);
+        setStep(3);
+        setQuestionsLoading(false);
+        return;
+      }
+      set분류없음(null);
       if (!조사확인단계) {
         set조사후보들(r.조사후보 ?? []);
         set직접확인들(r.사용자확인 ?? []);
@@ -5955,6 +5988,13 @@ function NewPlanPage({
         return;
       }
       만료재시도.current = false;
+      // v048: 품목 확인 뒤 요청이 실패(상태 실패 · 처리 중 오류)하면 판정으로 넘기지 않고 이 화면에 머물러 같은 요청을 다시 보내게 합니다.
+      //    답한 내용 · 조사ID 는 그대로 둡니다(서버는 이때 질문 결과를 저장하지 않음).
+      if (새경로 && 조사확인단계 && !진행중) {
+        set조사오류("확인할 내용을 받지 못했어요. 다시 확인해 주세요.");
+        setQuestionsLoading(false);
+        return;
+      }
       set정규화조사ID(undefined);
       set조사ID(undefined);
       set조사확인단계(false);
@@ -6233,9 +6273,28 @@ function NewPlanPage({
                   : `${category} 규정에서 확인할 사항입니다.`}
             </p>
             {조사확인단계 && !!진행항목들.length && <작업로그 className="research-stream" 항목들={진행항목들} 진행중={false} 시작={진행시작} 기본문장="공개 정보 검색을 마쳤어요." 끝문장="공개 정보 검색을 마쳤어요." />}
-            {조사확인단계 && !!조사후보들.length && <조사확인 후보={조사후보들} 답={조사답} 변경={(v) => set조사답((이전) => ({ ...이전, [v.id]: v }))} />}
+            {/* v048: 분류를 못 찾았을 때. 안내 문장 아래에 다시 물을 품목 정보 · 설명 칸 · 다시 시도 중 하나를 보입니다. */}
+            {조사확인단계 && 조사오류 && (
+              <div role="alert">
+                <p>{조사오류}</p>
+              </div>
+            )}
+            {조사확인단계 && 분류없음 && 분류없음.안내 && (
+              <p className="research-notice">
+                <Icon name="alert" size={15} />
+                <span>{분류없음.안내}</span>
+              </p>
+            )}
+            {조사확인단계 && 분류없음?.다음행동 === "재조사확인" && !!재조사후보.length && <조사확인 후보={재조사후보} 답={재조사답} 변경={(v) => set재조사답((이전) => ({ ...이전, [v.id]: v }))} />}
+            {조사확인단계 && 분류없음?.다음행동 === "설명입력" && (
+              <label className="research-correct">
+                품목 설명
+                <input maxLength={1000} value={품목설명} onChange={(e) => set품목설명(e.target.value)} placeholder="예: 팀원 5명이 쓰는 디자인 협업 도구 연간 구독이에요." />
+              </label>
+            )}
+            {조사확인단계 && !분류없음 && !!조사후보들.length && <조사확인 후보={조사후보들} 답={조사답} 변경={(v) => set조사답((이전) => ({ ...이전, [v.id]: v }))} />}
             {/* v047: 검색 실패 · 찾은 것 없음은 오류가 아닙니다. 한 문장 설명 칸만 보이고 비워도 됩니다. */}
-            {조사확인단계 && !조사후보들.length && (
+            {조사확인단계 && !분류없음 && !조사후보들.length && (
               <section className="research-results">
                 <p>확인된 공개 정보가 없어요.</p>
                 <label className="research-correct">
@@ -6309,7 +6368,9 @@ function NewPlanPage({
             저장중 ||
             (step === 0 ? !원문.trim() : !필수입력됨) ||
             (step >= 2 && !category && !새경로) ||
-            (step === 3 && (서버질문.some((q) => !질문답변[q.id]) || (조사확인단계 && 조사후보들.some((c) => !조사답[c.id] || (조사답[c.id].답 === "직접입력" && !조사답[c.id].정정?.trim())))))
+            (step === 3 && (서버질문.some((q) => !질문답변[q.id]) || (조사확인단계 && 조사후보들.some((c) => !조사답[c.id] || (조사답[c.id].답 === "직접입력" && !조사답[c.id].정정?.trim()))) ||
+              (분류없음?.다음행동 === "재조사확인" && 재조사후보.some((c) => !재조사답[c.id] || (재조사답[c.id].답 === "직접입력" && !재조사답[c.id].정정?.trim()))) ||
+              (분류없음?.다음행동 === "설명입력" && !품목설명.trim())))
           }
           onClick={() => {
             if (step === 0) {
@@ -6329,7 +6390,7 @@ function NewPlanPage({
             ? (API켜짐() ? "AI 점검하기" : "다음")
             : step === 2
               ? (조사오류 ? "다시 확인" : "AI 점검하기")
-              : 조사확인단계 ? "규정 확인하기" : "결과 확인하기"}
+              : 조사확인단계 ? (분류없음?.다음행동 === "다시시도" ? "다시 시도" : "규정 확인하기") : "결과 확인하기"}
         </button>
       </footer>
       {(categoryLoading || questionsLoading || 정리중) && (
