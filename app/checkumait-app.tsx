@@ -1457,6 +1457,20 @@ export default function CheckumaitApp() {
   const [판정기록들, set판정기록들] = useState<Record<string, 판정기록>>({});
   // v049: 새 지출 계획은 한 번에 한 건. 정리 · 검색 · 분류 중이거나 답이 필요한 동안은 다른 화면으로 가도 숨겨 둔 채 이어 갑니다.
   const [새계획알림, set새계획알림] = useState<{ 진행중: boolean; 문장: string } | null>(null);
+  // v050: 분류가 없는 계획(임시저장 · 분류를 끝내 못 찾은 계획)은 새 지출 계획 페이지를 그 값으로 채워 점검합니다.
+  //    새 계획을 만들지 않고 그 계획에 판정을 붙입니다. 키를 바꿔 새로 엽니다.
+  const [시작계획, set시작계획] = useState<ExpensePlan | null>(null);
+  const [새계획키, set새계획키] = useState(0);
+  const 임시점검 = (plan: ExpensePlan) => {
+    if (새계획알림) {
+      notify("진행 중인 새 지출 계획이 있어요. 먼저 마쳐 주세요.");
+      go({ page: "plan-new" });
+      return;
+    }
+    set시작계획(plan);
+    set새계획키((k) => k + 1);
+    go({ page: "plan-new" });
+  };
   const 점검중인가 = (id: string) => 작업Ref.current.some((j) => j.계획.id === id && !j.결과);
   /** 계획을 넣거나 바꿉니다. 화면에만 씌운 「점검 중」은 저장하지 않습니다. */
   const 계획반영 = (계획: ExpensePlan) => {
@@ -2096,6 +2110,7 @@ export default function CheckumaitApp() {
         )}
         {route.page === "plans" && (
           <PlansPage
+            임시점검={임시점검}
             plans={화면계획}
             판정시작={판정시작}
             지출일변경={지출일변경}
@@ -2120,6 +2135,9 @@ export default function CheckumaitApp() {
         )}
         {(route.page === "plan-new" || 새계획알림) && (
           <NewPlanPage
+            key={새계획키}
+            시작계획={시작계획}
+            시작계획받음={() => set시작계획(null)}
             숨김={route.page !== "plan-new"}
             알림={set새계획알림}
             판정시작={판정시작}
@@ -2149,6 +2167,7 @@ export default function CheckumaitApp() {
         )}
         {route.page === "plan-detail" && (
           <PlanDetail
+            임시점검={임시점검}
             plan={화면계획.find((plan) => plan.id === route.id)}
             작업내역={판정기록들[route.id]}
             allPlans={화면계획}
@@ -4138,139 +4157,6 @@ function 직접확인안내({ 항목들, 결과화면 = false }: { 항목들: { 
   return <section className="research-settings"><b>직접 확인할 사항</b><p>{결과화면 ? "공개 정보만으로는 알 수 없는 내용이에요. 집행 전에 직접 확인해 주세요." : "공개 정보만으로는 알 수 없는 내용이에요. 다음 규정 질문에서 해당 내용을 물으면 답해 주세요."}</p><ul>{항목들.map((v, i) => <li key={`${v.항목}-${i}`}>{v.질문}</li>)}</ul></section>;
 }
 
-/** 검색창 글을 서버 값으로 나눕니다. 첫 http(s) 주소는 `판매URL`, 나머지 낱말은 `공개검색어` 입니다. */
-function 검색입력나누기(글: string): { 공개검색어?: string; 판매URL?: string } {
-  const 낱말 = 글.trim().split(/\s+/).filter(Boolean);
-  const 위치 = 낱말.findIndex((w) => /^https?:\/\/\S+$/i.test(w));
-  // 주소가 여럿이면 첫 주소만 읽고, 나머지 주소는 검색어에 넣지 않습니다(서버가 주소가 섞인 검색어를 받지 않음).
-  const 나머지 = 낱말.filter((w) => !/^https?:\/\//i.test(w)).join(" ");
-  return { 공개검색어: 나머지 || undefined, 판매URL: 위치 >= 0 ? 낱말[위치] : undefined };
-}
-
-/** 눌러서 채워 보는 검색 예시. 서버로 보내는 값은 사용자가 「검색」을 눌렀을 때의 검색창 글뿐입니다. */
-const 검색예시 = ["ChatGPT Plus", "아두이노 우노 R3", "노션 플러스"];
-
-/**
- * 공개 정보 검색 칸. 켜면 검색창 하나가 열리고, 제품명이든 판매 페이지 주소든 여기에 적습니다.
- * 검색 중에는 서버가 보내는 작업을 바로 아래에 차례로 보여 줍니다.
- * 주의: 외부 검색 서비스에는 이 검색창의 글(검색어와 주소)만 쓰입니다(서버 `web_research`). 다른 값을 보낸다고 쓰지 않습니다.
- */
-function 공개검색설정({
-  사용,
-  설정,
-  검색어,
-  검색어변경,
-  검색하기,
-  검색막힘 = false,
-  검색중 = false,
-  진행 = [],
-  시작,
-  오류,
-  검색없이계속,
-}: {
-  사용: boolean;
-  설정: (v: boolean) => void;
-  /** 검색창의 글 그대로. 보낼 때 `검색입력나누기` 로 나눕니다. */
-  검색어: string;
-  검색어변경: (v: string) => void;
-  /** 검색 버튼 · Enter. 없으면 버튼을 그리지 않습니다. */
-  검색하기?: () => void;
-  /** 검색어 밖의 이유(비목 미선택 등)로 아직 보낼 수 없을 때 */
-  검색막힘?: boolean;
-  검색중?: boolean;
-  진행?: 진행항목[];
-  시작?: number;
-  오류?: string;
-  검색없이계속?: () => void;
-}) {
-  const id = useId();
-  const 검색가능 = !!검색하기 && !검색중 && !검색막힘 && !!검색어.trim();
-  const 나눔 = 검색입력나누기(검색어);
-  const 읽을사이트 = 나눔.판매URL ? 사이트이름({ 제목: "", url: 나눔.판매URL }) : "";
-  return (
-    <section className={`research-search ${사용 ? "is-on" : ""}`} aria-labelledby={`${id}-title`}>
-      <header>
-        <span className="research-search-icon" aria-hidden="true"><Icon name="sparkSolid" size={16} /></span>
-        <div>
-          <h3 id={`${id}-title`}>AI 공개 정보 검색 <em>선택</em></h3>
-          <p>제품·판매처·가격·결제 방법 같은 공개 정보를 AI가 찾아 출처와 함께 보여 드려요.</p>
-        </div>
-        <label className="research-switch">
-          <input
-            type="checkbox"
-            role="switch"
-            aria-label="AI 공개 정보 검색 사용"
-            checked={사용}
-            disabled={검색중}
-            onChange={(e) => 설정(e.target.checked)}
-          />
-          <span aria-hidden="true">{사용 ? "켜짐" : "꺼짐"}</span>
-        </label>
-      </header>
-      {사용 && (
-        <>
-          <div className={`research-search-box ${검색중 ? "is-busy" : ""}`}>
-            <span className="research-search-spark" aria-hidden="true">
-              {검색중 ? <span className="work-log-spinner" /> : <Icon name="sparkSolid" size={16} />}
-            </span>
-            <input
-              type="search"
-              maxLength={2400}
-              value={검색어}
-              readOnly={검색중}
-              aria-label="검색할 제품명이나 판매 페이지 주소"
-              aria-describedby={`${id}-help`}
-              placeholder="제품명이나 판매 페이지 주소를 입력하세요"
-              onChange={(e) => 검색어변경(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.nativeEvent.isComposing && 검색가능) {
-                  e.preventDefault();
-                  검색하기?.();
-                }
-              }}
-            />
-            {검색하기 && (
-              <button type="button" className="research-search-go" disabled={!검색가능} onClick={검색하기} aria-label={검색중 ? "검색 중" : "검색"}>
-                {검색중 ? "검색 중" : <><Icon name="search" size={15} />검색</>}
-              </button>
-            )}
-          </div>
-          {!검색중 && !오류 && !검색어.trim() && (
-            <div className="research-examples" aria-label="검색 예시">
-              {검색예시.map((예) => (
-                <button type="button" key={예} onClick={() => 검색어변경(예)}>{예}</button>
-              ))}
-            </div>
-          )}
-          {읽을사이트 && !검색중 && (
-            <p className="research-url-note">
-              <Icon name="paperclip" size={13} />
-              {나눔.공개검색어 ? `「${나눔.공개검색어}」 검색과 함께 ${읽을사이트} 페이지도 읽어요.` : `검색 없이 ${읽을사이트} 페이지만 읽어요.`}
-            </p>
-          )}
-          <p id={`${id}-help`} className="research-search-help">검색창에 적은 글만 외부 검색에 쓰여요. 이름·연락처 같은 개인 정보는 적지 마세요.</p>
-          {(검색중 || !!오류) && (
-            <작업로그
-              className="research-stream"
-              항목들={진행}
-              진행중={검색중}
-              시작={시작}
-              기본문장="검색을 준비하고 있어요."
-              실패={오류}
-              펼침기본
-            />
-          )}
-          {오류 && 검색없이계속 && (
-            <div className="research-error-actions">
-              <button type="button" className="outline" onClick={검색없이계속}>검색 없이 계속</button>
-            </div>
-          )}
-        </>
-      )}
-    </section>
-  );
-}
-
 /** 페이지가 앱 최상단에 맡기는 판정 한 건. 페이지를 옮겨도 판정이 끊기지 않게 최상단이 들고 있습니다. */
 type 판정시작입력 = {
   계획: ExpensePlan;
@@ -4554,9 +4440,9 @@ function PlanRecheckQuestionsModal({
   const [받은, set받은] = useState<{ 키: string; 결과: 질문결과 } | null>(null);
   const [답, set답] = useState<Record<string, string>>({});
   const [칸값, set칸값] = useState<Record<string, string>>({});
-  const [검색시작, set검색시작] = useState(false);
-  const [웹조사, set웹조사] = useState(false);
-  const [공개검색어, set공개검색어] = useState("");
+  // v050: 분류가 저장된 계획은 공개 검색 없이(웹조사: false) 저장된 분류로 판정용 조사 · 질문만 받습니다. 열자마자 시작합니다.
+  const [검색시작, set검색시작] = useState(() => API켜짐() && Boolean(plan.category));
+  const 웹조사 = false;
   const [진행항목들, set진행항목들] = useState<진행항목[]>([]);
   const 진행Ref = useRef<진행항목[]>([]);
   const [조사답, set조사답] = useState<Record<string, 조사답변>>({});
@@ -4592,7 +4478,7 @@ function PlanRecheckQuestionsModal({
       금액: n ? (typeof n.금액 === "number" ? n.금액 : null) : (상세 ? 상세.금액 ?? 0 : plan.amount),
       용도: n ? (typeof n.용도 === "string" ? n.용도 : "") : (상세 ? 상세.용도 ?? "" : plan.purpose),
       질문원문: n ? [n.질문원문, n.질문, n._원문].find((v): v is string => typeof v === "string" && !!v) : (상세?.질문원문 ?? undefined),
-      웹조사, ...(웹조사 ? 검색입력나누기(공개검색어) : {}),
+      웹조사,
       ...(규정요청 ? { 조사ID: 조사확인ID, 조사답변: Object.values(조사답) } : {}),
       }, (항목) => { if (살아있음) { 진행Ref.current = 진행추가(진행Ref.current, 항목); set진행항목들(진행Ref.current); } });
     }).then((결과) => {
@@ -4640,7 +4526,7 @@ function PlanRecheckQuestionsModal({
           <button type="button" onClick={close} aria-label="닫기">×</button>
         </header>
         <div className="plan-recheck-questions">
-          {!plan.category && (
+          {!plan.category && !서버모드 && (
             <Question
               label="이 지출의 비목을 골라 주세요."
               options={[...비목선택지]}
@@ -4648,25 +4534,10 @@ function PlanRecheckQuestionsModal({
               onChange={(값) => { set선택비목(값); set검색시작(false); set규정요청(false); set받은(null); set조사답({}); }}
             />
           )}
-          {서버모드 && (!검색시작 || 검색중) && (
-            <공개검색설정
-              사용={웹조사}
-              설정={set웹조사}
-              검색어={공개검색어}
-              검색어변경={set공개검색어}
-              검색하기={확인시작}
-              검색막힘={!category}
-              검색중={검색중}
-              진행={진행항목들}
-              시작={진행시작}
-              오류={웹조사 && 조사오류 ? 조사오류 : undefined}
-              검색없이계속={() => { set조사오류(""); set웹조사(false); set검색시작(true); }}
-            />
-          )}
           {조사오류 && !웹조사 && <p role="alert">{조사오류}</p>}
           {받는중 && !검색중 && <작업로그 항목들={진행항목들} 진행중 시작={진행시작} 기본문장="확인할 내용을 준비하고 있어요." 펼침기본 />}
           {지금결과?.상태 === "조사확인" && !!진행항목들.length && <작업로그 className="research-stream" 항목들={진행항목들} 진행중={false} 시작={진행시작} 기본문장="공개 정보 검색을 마쳤어요." 끝문장="공개 정보 검색을 마쳤어요." />}
-          {지금결과?.상태 === "조사확인" && !!지금결과.조사후보?.length && <조사확인 후보={지금결과.조사후보} 답={조사답} 검색어={검색입력나누기(공개검색어).공개검색어} 변경={(v) => set조사답((이전) => ({ ...이전, [v.id]: v }))} />}
+          {지금결과?.상태 === "조사확인" && !!지금결과.조사후보?.length && <조사확인 후보={지금결과.조사후보} 답={조사답} 변경={(v) => set조사답((이전) => ({ ...이전, [v.id]: v }))} />}
           {지금결과?.상태 === "조사확인" && !지금결과.조사후보?.length && <p>확인된 공개 정보가 없어요. 입력한 내용으로 계속 점검할 수 있어요.</p>}
           {지금결과?.상태 === "조사확인" && !!지금결과.부족정보?.length && <p>더 확인이 필요한 공개 정보: {지금결과.부족정보.map(유형표기).join(" · ")}</p>}
           {지금결과?.상태 === "조사확인" && <직접확인안내 항목들={지금결과.사용자확인 ?? []} />}
@@ -4691,7 +4562,7 @@ function PlanRecheckQuestionsModal({
           <button className="outline" onClick={close}>취소</button>
           <button
             className="primary"
-            disabled={!category || 받는중 || (웹조사 && !공개검색어.trim()) || 서버질문.some((q) => !답[답키(q)]) || (지금결과?.상태 === "조사확인" && !!지금결과.조사후보?.some((c) => !조사답[c.id]))}
+            disabled={!category || 받는중 || 서버질문.some((q) => !답[답키(q)]) || (지금결과?.상태 === "조사확인" && !!지금결과.조사후보?.some((c) => !조사답[c.id]))}
             onClick={() => {
               if (서버모드 && !검색시작) { 확인시작(); return; }
               if (지금결과?.상태 === "조사확인") {
@@ -4806,6 +4677,7 @@ function 서버모드수정(이전: ExpensePlan, 입력: ExpensePlan): { 계획:
 }
 
 function PlansPage({
+  임시점검,
   plans,
   schedules,
   go,
@@ -4819,6 +4691,8 @@ function PlansPage({
 }: {
   판정시작: (작업: 판정시작입력) => boolean;
   지출일변경: (plan: ExpensePlan, 새날짜: string) => void;
+  /** v050: 분류가 없는 계획을 새 지출 계획 페이지로 점검합니다. */
+  임시점검?: (plan: ExpensePlan) => void;
   plans: ExpensePlan[];
   schedules: ScheduleItem[];
   go: (route: AppRoute) => void;
@@ -5119,7 +4993,9 @@ function PlansPage({
               disabled={selected.length !== 1 || plans.some((plan) => plan.id === selected[0] && plan.status === "점검 중")}
               onClick={() => {
                 const target = plans.find((plan) => plan.id === selected[0]);
-                if (target) setQuestionPlan(target);
+                // v050: 분류가 없는 계획은 비목을 고르는 창 대신 새 지출 계획 페이지로 점검합니다.
+                if (target && API켜짐() && !target.category && 임시점검) 임시점검(target);
+                else if (target) setQuestionPlan(target);
               }}
             >
               <Icon name="spark" size={15} />
@@ -5429,7 +5305,12 @@ function NewPlanPage({
   판정시작,
   숨김 = false,
   알림,
+  시작계획,
+  시작계획받음,
 }: {
+  /** v050: 분류가 없는 저장된 계획. 그 값으로 칸을 채워 「이렇게 확인했어요」 다음부터 점검하고, 판정을 그 계획에 붙입니다. */
+  시작계획?: ExpensePlan | null;
+  시작계획받음?: () => void;
   /** v049: 다른 화면에 있는 동안 숨겨 둡니다. 요청과 입력값은 그대로 이어 갑니다. */
   숨김?: boolean;
   /** v049: 작업 중 · 답이 필요함을 최상단 알림 줄에 알립니다. null 이면 이어 둘 것이 없습니다. */
@@ -5441,29 +5322,35 @@ function NewPlanPage({
 }) {
   // v033: 0 = 한 문장 입력 → 1 = 이렇게 확인했어요 → 2 = 비목 → 3 = 추가 확인
   // v045: 새 경로 사업(정리 응답에 `품목확인` 이 있음)은 2 를 건너뜁니다. 비목은 서버가 정하고 안내만 합니다.
-  const [step, setStep] = useState(0);
+  // v050: 처음 그릴 때 받은 계획을 들고 있습니다(최상단 값은 받은 뒤 비움).
+  const [기존계획] = useState<ExpensePlan | null>(() => 시작계획 ?? null);
+  useEffect(() => {
+    if (기존계획) 시작계획받음?.();
+  }, [기존계획, 시작계획받음]);
+  const [step, setStep] = useState(() => (기존계획 ? 1 : 0));
   const [원문, set원문] = useState("");
   const [정리중, set정리중] = useState(false);
   const [정리됨, set정리됨] = useState(false);
   // 한 문장으로 정리한 결과. 「이렇게 확인했어요」에서 값을 고치지 않았으면 비목 단계에서 정규화를 다시 부르지 않습니다.
   const 정리결과 = useRef<{ name: string; purpose: string; amount: string; r: 정규화출력 } | null>(null);
-  const [name, setName] = useState("");
-  const [purpose, setPurpose] = useState("");
-  const [amount, setAmount] = useState("");
+  const [name, setName] = useState(() => 기존계획?.name ?? "");
+  const [purpose, setPurpose] = useState(() => 기존계획?.purpose ?? "");
+  const [amount, setAmount] = useState(() => (기존계획?.amount ? String(Math.round(기존계획.amount)) : ""));
   // 주의: 기본은 「모르겠어요」입니다. 고르지 않은 값을 포함으로 두면 한도 비교가 틀린 기준으로 돕니다.
   //    모름이고 비교에 필요하면 서버가 3단계에 부가세 확인 질문을 더합니다.
   // v033: 처음 입력에서 부가세 칸을 뺐습니다(시안). 필요하면 서버가 추가 확인 단계에서 묻습니다.
   const [부가세] = useState<부가세구분>("모름");
   // 주의: 비워 둡니다. 예전 기본값(2026-09-30)은 이미 지난 날이었고, 사용자가 안 고치면 그대로
   //    집행예정일로 저장되어 할일 기한까지 지난 날짜로 계산됐습니다.
-  const [date, setDate] = useState("");
+  const [date, setDate] = useState(() => (/^\d{4}-\d{2}-\d{2}/.test(기존계획?.plannedDate ?? "") ? 기존계획!.plannedDate.slice(0, 10) : ""));
   // 주의: 비워 둡니다. 초기값을 두면 사용자가 고르지 않은 비목이 추천처럼 보이고 그 비목으로 판정됩니다.
   const [category, setCategory] = useState("");
   const [feeSubtype, setFeeSubtype] = useState("멘토링");
-  const [categoryLoading, setCategoryLoading] = useState(false);
+  // v050: 기존 계획으로 열면 바로 칸 정리 → 분류 · 확인 질문을 시작합니다.
+  const [categoryLoading, setCategoryLoading] = useState(() => Boolean(기존계획) && API켜짐());
   const [questionsLoading, setQuestionsLoading] = useState(false);
   // v046: 공개 검색은 켜고 끄지 않습니다. 거래처 · 판매 페이지 주소는 선택 칸입니다.
-  const [거래처, set거래처] = useState("");
+  const [거래처, set거래처] = useState(() => (기존계획?.vendor && 기존계획.vendor !== "거래처 미정" ? 기존계획.vendor : ""));
   const [판매주소, set판매주소] = useState("");
   const 판매주소값 = /^https?:\/\/\S+$/i.test(판매주소.trim()) ? 판매주소.trim() : "";
   const [진행항목들, set진행항목들] = useState<진행항목[]>([]);
@@ -5889,6 +5776,11 @@ function NewPlanPage({
   const submit = (받은조사ID?: string, 받은조사답?: 조사답변[], 받은질문세트?: string | null) => {
     if (!API켜짐()) {
       점검시작(buildPlan(false), undefined, 받은조사ID, 받은조사답, 받은질문세트);
+      return Promise.resolve();
+    }
+    // v050: 기존 계획을 점검하면 계획을 새로 만들지 않고 그 계획에 판정을 붙입니다.
+    if (기존계획) {
+      점검시작(기존계획, 기존계획.id, 받은조사ID, 받은조사답, 받은질문세트);
       return Promise.resolve();
     }
     set저장중(true);
@@ -6410,7 +6302,7 @@ function NewPlanPage({
         )}
         {/* 주의: 계획 수정이 서버에 저장되지 않아, 비어 있는 채로 임시저장하면 채울 방법이 없고
             0원·빈 목적으로 판정될 수 있습니다. 필수 항목을 채워야 저장합니다. */}
-        <button className="outline draft-save" onClick={saveDraft} disabled={categoryLoading || questionsLoading || 저장중 || !필수입력됨}>
+        <button className="outline draft-save" onClick={saveDraft} hidden={Boolean(기존계획)} disabled={categoryLoading || questionsLoading || 저장중 || !필수입력됨}>
           임시저장
         </button>
         <button
@@ -7216,6 +7108,7 @@ function 결과평가칸({
 }
 
 function PlanDetail({
+  임시점검,
   plan,
   작업내역,
   allPlans,
@@ -7231,6 +7124,8 @@ function PlanDetail({
   back,
   notify,
 }: {
+  /** v050: 분류가 없는 계획을 새 지출 계획 페이지로 점검합니다. */
+  임시점검?: (plan: ExpensePlan) => void;
   plan?: ExpensePlan;
   /** 이 화면을 연 동안 마친 마지막 판정의 작업 내역. 없으면 그리지 않습니다. */
   작업내역?: 판정기록;
@@ -7252,6 +7147,11 @@ function PlanDetail({
   const [editing, setEditing] = useState(false);
   const [recheckPrompt, setRecheckPrompt] = useState(false);
   const [recheckQuestions, setRecheckQuestions] = useState(false);
+  // v050: 분류가 없는 계획은 새 지출 계획 페이지로 점검합니다. 분류가 있으면 지금 창(질문 · 입력 칸만)입니다.
+  const 점검열기 = () => {
+    if (plan && API켜짐() && !plan.category && 임시점검) 임시점검(plan);
+    else setRecheckQuestions(true);
+  };
   const [detailMenuOpen, setDetailMenuOpen] = useState(false);
   const [scheduleGroup, setScheduleGroup] = useState<
     "aiChecks" | "evidence" | null
@@ -7395,7 +7295,7 @@ function PlanDetail({
           </button>
           <div className="detail-actions">
             {(plan.status === "재점검 필요" || plan.status === "점검 전") && (
-              <button className="primary" onClick={() => setRecheckQuestions(true)}>
+              <button className="primary" onClick={점검열기}>
                 <Icon name="spark" size={15} />
                 {plan.status === "재점검 필요" ? "재점검하기" : "AI 점검하기"}
               </button>
@@ -7585,7 +7485,7 @@ function PlanDetail({
               </div>
             </div>
             {plan.코드판정 && (
-              <코드판정카드 판정={plan.코드판정} 부가세={plan.부가세구분} 문의처={plan.문의처} 다시점검={() => setRecheckQuestions(true)} />
+              <코드판정카드 판정={plan.코드판정} 부가세={plan.부가세구분} 문의처={plan.문의처} 다시점검={점검열기} />
             )}
             {/* v031: 한 줄 결론(AI 해설)을 조건 목록보다 먼저 보입니다. */}
             <div className="ai-explanation">
@@ -7948,7 +7848,7 @@ function PlanDetail({
             <p>점검에 사용된 내용이 변경되어 AI 재점검이 필요합니다.</p>
             <footer>
               <button className="outline" onClick={() => setRecheckPrompt(false)}>나중에 하기</button>
-              <button className="primary" onClick={() => { setRecheckPrompt(false); setRecheckQuestions(true); }}>지금 재점검</button>
+              <button className="primary" onClick={() => { setRecheckPrompt(false); 점검열기(); }}>지금 재점검</button>
             </footer>
           </section>
         </div>
