@@ -1181,8 +1181,9 @@ const FEE_QUESTIONS: Record<string, CheckQuestion[]> = {
 /** 판정을 받은 계획의 상태인가(점검 전 · 점검 중 · 재점검 필요가 아니다). 점검에 쓰인 입력이 바뀌면 이 계획만 재점검 대상이 된다. */
 const 점검한상태 = (value: PlanStatus): value is Exclude<PlanStatus, "점검 전" | "점검 중" | "재점검 필요"> =>
   value !== "점검 전" && value !== "점검 중" && value !== "재점검 필요";
+// v034: 화면에 보이는 판정 이름은 서버 판정 값과 같게 「가능 · 확인 필요 · 불가」입니다. 내부 상태 값은 그대로 둡니다.
 const displayPlanStatus = (value: PlanStatus) =>
-  value === "점검 전" || value === "재점검 필요" ? "점검전" : value;
+  value === "점검 전" || value === "재점검 필요" ? "점검전" : value === "특이사항 없음" ? "가능" : value === "위험" ? "불가" : value;
 
 /** v033: 판정 카드 색. 불가 = risk, 확인 필요 = warn, 가능 = safe, 그 밖(점검 전 등) = draft */
 function 판정색(value: PlanStatus): "risk" | "warn" | "safe" | "draft" {
@@ -4844,27 +4845,27 @@ function PlansPage({
             <b>{counts.warn}건</b>
           </span>
         </button>
-        <button onClick={() => setFilter("위험")}>
+        <button onClick={() => setFilter("불가")}>
           <span className="metric-icon risk">
             <Icon name="alert" />
           </span>
           <span>
-            <small>위험</small>
+            <small>불가</small>
             <b>{counts.risk}건</b>
           </span>
         </button>
-        <button onClick={() => setFilter("특이사항 없음")}>
+        <button onClick={() => setFilter("가능")}>
           <span className="metric-icon safe">
             <Icon name="check" />
           </span>
           <span>
-            <small>특이사항 없음</small>
+            <small>가능</small>
             <b>{counts.safe}건</b>
           </span>
         </button>
       </section>
       <nav className="plans-v2-tabs" aria-label="지출 상태 필터">
-        {(["전체", "점검전", "점검 중", "확인 필요", "위험", "특이사항 없음"] as const).map(
+        {(["전체", "점검전", "점검 중", "확인 필요", "불가", "가능"] as const).map(
           (label) => (
             <button
               className={filter === label ? "active" : ""}
@@ -4920,9 +4921,9 @@ function PlansPage({
                     <option value="">전체 상태</option>
                     <option value="점검전">점검전</option>
                     <option value="점검 중">점검 중</option>
-                    <option value="특이사항 없음">특이사항 없음</option>
+                    <option value="가능">가능</option>
                     <option value="확인 필요">확인 필요</option>
-                    <option value="위험">위험</option>
+                    <option value="불가">불가</option>
                   </select>
                 </label>
                 </div>
@@ -5254,9 +5255,9 @@ function PlansPage({
               </>
             )}
             <div className="bulk-complete-summary">
-              <span><small>특이사항 없음</small><b>{plans.filter((plan) => selected.includes(plan.id) && plan.status === "특이사항 없음").length}건</b></span>
+              <span><small>가능</small><b>{plans.filter((plan) => selected.includes(plan.id) && plan.status === "특이사항 없음").length}건</b></span>
               <span><small>확인 필요</small><b className="warn">{plans.filter((plan) => selected.includes(plan.id) && plan.status === "확인 필요").length}건</b></span>
-              <span><small>위험</small><b className="risk">{plans.filter((plan) => selected.includes(plan.id) && plan.status === "위험").length}건</b></span>
+              <span><small>불가</small><b className="risk">{plans.filter((plan) => selected.includes(plan.id) && plan.status === "위험").length}건</b></span>
             </div>
             <div className="bulk-complete-list">
               {plans.filter((plan) => selected.includes(plan.id)).map((plan) => (
