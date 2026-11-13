@@ -5445,8 +5445,10 @@ function NewPlanPage({
   const [feeSubtype, setFeeSubtype] = useState("멘토링");
   const [categoryLoading, setCategoryLoading] = useState(false);
   const [questionsLoading, setQuestionsLoading] = useState(false);
-  const [웹조사, set웹조사] = useState(false);
-  const [공개검색어, set공개검색어] = useState("");
+  // v046: 공개 검색은 켜고 끄지 않습니다. 거래처 · 판매 페이지 주소는 선택 칸입니다.
+  const [거래처, set거래처] = useState("");
+  const [판매주소, set판매주소] = useState("");
+  const 판매주소값 = /^https?:\/\/\S+$/i.test(판매주소.trim()) ? 판매주소.trim() : "";
   const [진행항목들, set진행항목들] = useState<진행항목[]>([]);
   const 진행Ref = useRef<진행항목[]>([]);
   const [진행시작, set진행시작] = useState<number>();
@@ -5485,7 +5487,7 @@ function NewPlanPage({
   const [칸값, set칸값] = useState<Record<string, string>>({});
   const [서버풀이, set서버풀이] = useState<용어풀이항목[]>([]);
   // 지금 들고 있는 질문이 어떤 비목으로 받은 것인지 둡니다. 품목·목적·금액을 고치면 질문 자체가 비워집니다.
-  const 질문키 = `${category}|${feeSubtype}|${선택분류?.표시문 ?? ""}|${웹조사}|${공개검색어}`;
+  const 질문키 = `${category}|${feeSubtype}|${선택분류?.표시문 ?? ""}|${거래처.trim()}|${판매주소값}`;
   const [받은질문키, set받은질문키] = useState<string | null>(null);
   const [저장중, set저장중] = useState(false);
   const [연동오류, set연동오류] = useState<string | null>(null);
@@ -5548,6 +5550,20 @@ function NewPlanPage({
     자동선택비목.current = null;
   }, [name, purpose, amount, 부가세]);
 
+  // v046: 거래처 · 판매 주소는 조사 요청키에 들어가 바뀌면 앞서 받은 조사가 맞지 않습니다. 정리는 다시 하지 않습니다.
+  const 조사버리기 = () => {
+    set정규화조사ID(undefined);
+    set조사ID(undefined);
+    set조사후보들([]);
+    set직접확인들([]);
+    set부족정보들([]);
+    set조사답({});
+    set조사확인단계(false);
+    set서버질문([]);
+    set질문세트(null);
+    set질문답변({});
+  };
+
   // 주의: 이 사업의 비목 목록에 없는 후보는 화면에 칸이 없어 무엇이 골렸는지 보이지 않으므로 뺍니다.
   const 표시후보 = 서버분류후보.filter((c) => 비목선택지.includes(c.비목));
   const 분류경로 = 표시후보.length > 0;
@@ -5556,6 +5572,9 @@ function NewPlanPage({
   const 품목확인있음 = (값: Record<string, unknown> | null | undefined) =>
     API켜짐() && typeof 값?.["품목확인"] === "object" && 값?.["품목확인"] !== null;
   const 새경로 = 품목확인있음(서버정규화);
+  // v046: 지출 항목이 규정의 품목 이름 · 별칭과 같을 때만 품목 조사를 건너뜁니다. 그 밖에는 늘 검색합니다.
+  const 별칭일치 = (서버정규화?.["품목확인"] as { 별칭일치?: unknown } | undefined)?.별칭일치 === true;
+  const 웹조사 = API켜짐() && !별칭일치;
   /** 비목 칸을 눌렀을 때. 그 비목의 후보가 있으면 맨 앞 후보를, 없으면 세목 없이 비목만 고릅니다. */
   const 비목고르기 = (비목: string) => {
     setCategory(비목);
@@ -5658,6 +5677,7 @@ function NewPlanPage({
       금액: Number(amount.replace(/,/g, "")) || 0,
       용도: purpose,
       집행예정일: date || undefined,
+      거래처: 거래처.trim() || undefined,
       사업명: 현재사업(),
       부가세구분: 부가세,
     })
@@ -5697,6 +5717,7 @@ function NewPlanPage({
       setAmount(금액);
       setPurpose(용도);
       if (typeof 날 === "string") setDate(날);
+      if (typeof 값["거래처"] === "string" && 값["거래처"].trim()) set거래처(값["거래처"].trim());
       정리결과.current = r ? { name: 품목, purpose: 용도, amount: 금액, r } : null;
       set정리됨(Boolean(r));
       setStep(1);
@@ -5777,6 +5798,7 @@ function NewPlanPage({
       용도: purpose,
       제목: name,
       집행예정일: date || undefined,
+      거래처: 거래처.trim() || undefined,
       // v045: 새 경로는 서버가 정한 비목입니다(분류를 끝내 못 찾았으면 비움).
       // 주의: 화면 9 에서 '사용자가 확정한' 비목입니다. 서버가 enum 10종으로 검증합니다.
       //    1단계에서 임시저장하면 아직 비목을 고르지 않았으므로 보내지 않습니다 — 보내면 초기값이
@@ -5872,7 +5894,9 @@ function NewPlanPage({
       용도: 서버정규화 ? (typeof 서버정규화.용도 === "string" ? 서버정규화.용도 : "") : purpose,
       질문원문: typeof 질문원문 === "string" && 질문원문 ? 질문원문 : undefined,
       조사ID: (받은질문키 && 받은질문키 !== 질문키) || 만료재시도.current ? undefined : 정규화조사ID,
-      웹조사, ...(웹조사 ? 검색입력나누기(공개검색어) : {}),
+      웹조사,
+      ...(거래처.trim() ? { 거래처: 거래처.trim() } : {}),
+      ...(판매주소값 ? { 판매URL: 판매주소값 } : {}),
       ...(조사확인단계 ? { 조사ID, 조사답변: Object.values(조사답) } : {}),
     }, (항목) => { if (살아있음) { 진행Ref.current = 진행추가(진행Ref.current, 항목); set진행항목들(진행Ref.current); } }).then((r) => {
       if (!살아있음) return;
@@ -5939,7 +5963,7 @@ function NewPlanPage({
       set서버칸([]);
       set받은질문키(null);
       setStep(새경로 ? 1 : 2);
-      set조사오류(진행중 ? "앞서 보낸 확인이 아직 진행 중이에요. 잠시 후 다시 확인해 주세요." : 상태코드 === 503 ? "규정을 확인하지 못했어요. 잠시 후 다시 확인해 주세요." : 조사확인단계 ? "규정 질문을 받지 못했어요. 검색 없이 계속하거나 다시 확인해 주세요." : 웹조사 ? "공개 정보를 확인하지 못했어요. 입력한 내용으로 계속 점검하거나 나중에 다시 시도해 주세요." : "확인할 내용을 받지 못했어요. 다시 확인해 주세요.");
+      set조사오류(진행중 ? "앞서 보낸 확인이 아직 진행 중이에요. 잠시 후 다시 확인해 주세요." : 상태코드 === 503 ? "규정을 확인하지 못했어요. 잠시 후 다시 확인해 주세요." : 조사확인단계 ? "규정 질문을 받지 못했어요. 다시 확인해 주세요." : 웹조사 ? "공개 정보를 확인하지 못했어요. 잠시 후 다시 확인해 주세요." : "확인할 내용을 받지 못했어요. 다시 확인해 주세요.");
       setQuestionsLoading(false);
     });
     return () => {
@@ -6049,11 +6073,27 @@ function NewPlanPage({
                 <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
                 <small className="field-help">아직 정하지 않았다면 비워두셔도 돼요.</small>
               </label>
+              {API켜짐() && (
+                <>
+                  <label className="full">
+                    <span className="field-label">거래처</span>
+                    <input maxLength={200} value={거래처} onChange={(e) => { set거래처(e.target.value); 조사버리기(); }} placeholder="예: 쿠팡, 피그마" />
+                    <small className="field-help">정해졌다면 적어 주세요. 판매자 정보와 이용 조건을 함께 확인해요.</small>
+                  </label>
+                  <label className="full">
+                    <span className="field-label">판매 페이지 주소</span>
+                    <input type="url" maxLength={2048} value={판매주소} onChange={(e) => { set판매주소(e.target.value); 조사버리기(); }} placeholder="https://" />
+                    <small className="field-help">{판매주소.trim() && !판매주소값 ? "http:// 또는 https:// 로 시작하는 주소를 적어 주세요." : "있다면 적어 주세요. 그 페이지의 내용도 함께 확인해요."}</small>
+                  </label>
+                </>
+              )}
             </div>
-            {/* v025 → v033: 공개 정보 검색은 「이렇게 확인했어요」에서 켜고 검색어를 적습니다. 검색은 비목이 정해진 뒤
-                「AI 점검하기」 때 확인 질문 요청과 함께 나갑니다(같은 요청). */}
+            {/* v046: 공개 검색은 켜고 끄지 않습니다. 「AI 점검하기」를 누르면 지출 항목 · 사용 목적으로 늘 검색합니다. */}
             {API켜짐() && (
-              <공개검색설정 사용={웹조사} 설정={set웹조사} 검색어={공개검색어} 검색어변경={set공개검색어} />
+              <div className="info-note">
+                <Icon name="search" />
+                지출 항목과 사용 목적으로 공개 정보를 검색해요. 이름·연락처 같은 개인 정보는 적지 마세요.
+              </div>
             )}
             {/* v045: 새 경로는 2단계가 없어 분류 · 질문 요청이 실패하면 여기로 돌아옵니다. */}
             {조사오류 && (
@@ -6157,23 +6197,9 @@ function NewPlanPage({
                 </div>
               </section>
             )}
-            {API켜짐() && 웹조사 && (
-              <div className="auto-check-note public-search-note">
-                <Icon name="search" />
-                <span>
-                  <b>공개 정보 검색: {공개검색어}</b>
-                  「AI 점검하기」를 누르면 함께 찾아요. 바꾸려면 「이전」을 눌러 주세요.
-                </span>
-              </div>
-            )}
             {조사오류 && (
               <div role="alert">
                 <p>{조사오류}</p>
-                {웹조사 && (
-                  <button type="button" className="outline small" onClick={() => { set웹조사(false); setQuestionsLoading(true); }}>
-                    검색 없이 계속
-                  </button>
-                )}
               </div>
             )}
           </>
@@ -6203,7 +6229,7 @@ function NewPlanPage({
                   : `${category} 규정에서 확인할 사항입니다.`}
             </p>
             {조사확인단계 && !!진행항목들.length && <작업로그 className="research-stream" 항목들={진행항목들} 진행중={false} 시작={진행시작} 기본문장="공개 정보 검색을 마쳤어요." 끝문장="공개 정보 검색을 마쳤어요." />}
-            {조사확인단계 && !!조사후보들.length && <조사확인 후보={조사후보들} 답={조사답} 검색어={검색입력나누기(공개검색어).공개검색어} 변경={(v) => set조사답((이전) => ({ ...이전, [v.id]: v }))} />}
+            {조사확인단계 && !!조사후보들.length && <조사확인 후보={조사후보들} 답={조사답} 변경={(v) => set조사답((이전) => ({ ...이전, [v.id]: v }))} />}
             {조사확인단계 && !조사후보들.length && <p>확인된 공개 정보가 없어요. 입력한 내용으로 계속 점검할 수 있어요.</p>}
             {조사확인단계 && !!부족정보들.length && <p>더 확인이 필요한 공개 정보: {부족정보들.map(유형표기).join(" · ")}</p>}
             {조사확인단계 && <직접확인안내 항목들={직접확인들} />}
@@ -6269,9 +6295,7 @@ function NewPlanPage({
             정리중 ||
             저장중 ||
             (step === 0 ? !원문.trim() : !필수입력됨) ||
-            (step === 1 && 웹조사 && !공개검색어.trim()) ||
             (step >= 2 && !category && !새경로) ||
-            (step === 2 && 웹조사 && !공개검색어.trim()) ||
             (step === 3 && (서버질문.some((q) => !질문답변[q.id]) || (조사확인단계 && 조사후보들.some((c) => !조사답[c.id]))))
           }
           onClick={() => {
@@ -6313,7 +6337,7 @@ function NewPlanPage({
               {정리중
                 ? "입력하신 내용을 정리하고 있어요"
                 : 검색중
-                  ? "공개 정보를 검색하고 있어요."
+                  ? "해당 품목에 대해서 검색하고 있어요."
                   : questionsLoading
                     ? "필요한 확인 항목을 찾고 있어요"
                     : "맞는 비목을 찾고 있어요"}
