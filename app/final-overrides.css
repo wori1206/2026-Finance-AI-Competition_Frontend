@@ -949,7 +949,7 @@ input[type="checkbox"],input[type="radio"]{border-color:var(--color-border-contr
   line-height:1.6;
 }
 
-/* ── 「판단불가」 문의 초안 아코디언 (AI 점검 결과 · 적용 근거 아래) ──────────
+/* ── 「확인 필요」 문의 초안 아코디언 (AI 점검 결과 · 적용 근거 아래) ──────────
    주의: 접어 둡니다. 판정을 보러 온 사람에게 메일 본문이 먼저 펼쳐져 있으면
       「AI 점검 결과」가 안 읽힙니다. 필요한 사람만 폅니다. */
 .ai-result-frame details.ai-inquiry{
