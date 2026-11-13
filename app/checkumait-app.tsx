@@ -5468,6 +5468,8 @@ function NewPlanPage({
   const 판매주소값 = /^https?:\/\/\S+$/i.test(판매주소.trim()) ? 판매주소.trim() : "";
   const [진행항목들, set진행항목들] = useState<진행항목[]>([]);
   const 진행Ref = useRef<진행항목[]>([]);
+  // v049: 검색 결과 화면 위쪽에 보이는 검색 기록(끝난 그대로 둠). 「규정 확인하기」 뒤 새 작업은 아래 작업 줄에만 쌓습니다.
+  const [검색기록, set검색기록] = useState<진행항목[]>([]);
   const [진행시작, set진행시작] = useState<number>();
   const [조사오류, set조사오류] = useState("");
   const [조사ID, set조사ID] = useState<string | undefined>();
@@ -5916,7 +5918,7 @@ function NewPlanPage({
     // ── 서버에서 확인 질문 받기 ──
     let 살아있음 = true;
     set조사오류("");
-    if (!조사확인단계) { 진행Ref.current = []; set진행항목들([]); set진행시작(Date.now()); }
+    if (!조사확인단계) { 진행Ref.current = []; set진행항목들([]); set검색기록([]); set진행시작(Date.now()); }
     const 질문원문 = 서버정규화?.["질문원문"];
     void 질문가져오기({
       사업명: 현재사업(),
@@ -5961,6 +5963,7 @@ function NewPlanPage({
           set재조사답((이전) => Object.fromEntries((r.재조사후보 ?? []).flatMap((c) => (이전[c.id] ? [[c.id, 이전[c.id]]] : []))));
         }
         set조사확인단계(true);
+        set검색기록(진행Ref.current);
         set연동오류(null);
         setStep(3);
         setQuestionsLoading(false);
@@ -5984,6 +5987,7 @@ function NewPlanPage({
         ...추가입력초기값(r.추가입력, typeof 수치 === "object" && 수치 !== null ? (수치 as Record<string, unknown>) : undefined),
         ...지금,
       }));
+      if (r.상태 === "조사확인") set검색기록(진행Ref.current);
       if (r.질문.length || r.추가입력.length || r.상태 === "조사확인") {
         set받은질문키(질문키);
         set연동오류(null);
@@ -6311,7 +6315,7 @@ function NewPlanPage({
                   ? `${feeSubtype} 기준에서 확인할 사항입니다.`
                   : `${category} 규정에서 확인할 사항입니다.`}
             </p>
-            {조사확인단계 && !!진행항목들.length && <작업로그 className="research-stream" 항목들={진행항목들} 진행중={false} 시작={진행시작} 펼침기본 기본문장="공개 정보 검색을 마쳤어요." 끝문장="공개 정보 검색을 마쳤어요." />}
+            {조사확인단계 && !!검색기록.length && <작업로그 className="research-stream" 항목들={검색기록} 진행중={false} 시작={진행시작} 펼침기본 기본문장="공개 정보 검색을 마쳤어요." 끝문장="공개 정보 검색을 마쳤어요." />}
             {/* v048: 분류를 못 찾았을 때. 안내 문장 아래에 다시 물을 품목 정보 · 설명 칸 · 다시 시도 중 하나를 보입니다. */}
             {조사확인단계 && 조사오류 && (
               <div role="alert">
@@ -6382,7 +6386,7 @@ function NewPlanPage({
       {(categoryLoading || questionsLoading || 정리중) && (
         <작업로그
           className="new-plan-progress"
-          항목들={정리중 ? [] : 진행항목들}
+          항목들={정리중 ? [] : 조사확인단계 ? 진행항목들.filter((v) => !검색기록.some((x) => x.id === v.id)) : 진행항목들}
           진행중
           시작={진행시작}
           펼침기본={!정리중}
