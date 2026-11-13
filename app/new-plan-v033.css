@@ -50,6 +50,9 @@ body .app-shell .new-plan-page-v033 .confirm-question-options{display:flex!impor
 body .app-shell .new-plan-page-v033 .confirm-question-options button{flex:0 0 140px;height:48px;margin:0!important;border:1px solid #dfe4e1!important;border-radius:8px!important}
 body .app-shell .new-plan-page-v033 .confirm-question-options button.active{border-color:var(--brand)!important;background:var(--brand-soft)!important;color:var(--brand)!important}
 
+/* v049: 정리 · 검색 · 분류 작업 줄(팝업 대신 입력 칸 아래) */
+body .app-shell .new-plan-page-v033 .new-plan-progress{margin-top:28px}
+
 /* 정리 중 창의 현재 작업 한 줄 */
 .new-plan-current-task{display:block;margin:4px 0 12px;color:var(--brand);font-size:13px}
 
