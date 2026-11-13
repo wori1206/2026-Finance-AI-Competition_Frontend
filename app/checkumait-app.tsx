@@ -4073,21 +4073,22 @@ function 조사확인({ 후보, 답, 변경, 검색어 }: { 후보: 조사후보
       {후보.map((항목) => (
         <조사카드 key={항목.id} 항목={항목}>
           <div className="research-answer" role="group" aria-label={`${유형표기(항목.유형)} 정보가 맞는지 확인`}>
-            {(["맞아요", "아니에요", "모르겠어요"] as const).map((선택) => (
+            {/* v047: 서버 값은 「맞아요」 · 「직접입력」 두 가지입니다. 화면 글자는 「직접 입력하기」. */}
+            {([["맞아요", "맞아요"], ["직접입력", "직접 입력하기"]] as const).map(([값, 라벨]) => (
               <button
                 type="button"
-                key={선택}
-                aria-pressed={답[항목.id]?.답 === 선택}
-                onClick={() => 변경({ id: 항목.id, 답: 선택, 정정: 선택 === "아니에요" ? 답[항목.id]?.정정 : undefined })}
+                key={값}
+                aria-pressed={답[항목.id]?.답 === 값}
+                onClick={() => 변경({ id: 항목.id, 답: 값, 정정: 값 === "직접입력" ? 답[항목.id]?.정정 : undefined })}
               >
-                {선택}
+                {라벨}
               </button>
             ))}
           </div>
-          {답[항목.id]?.답 === "아니에요" && (
+          {답[항목.id]?.답 === "직접입력" && (
             <label className="research-correct">
-              실제 내용을 적어 주세요 (선택)
-              <input maxLength={500} value={답[항목.id]?.정정 ?? ""} onChange={(e) => 변경({ id: 항목.id, 답: "아니에요", 정정: e.target.value })} />
+              어떤 제품·서비스인지 한 문장으로 알려 주세요.
+              <input maxLength={1000} value={답[항목.id]?.정정 ?? ""} onChange={(e) => 변경({ id: 항목.id, 답: "직접입력", 정정: e.target.value })} />
             </label>
           )}
         </조사카드>
@@ -5459,6 +5460,8 @@ function NewPlanPage({
   const [부족정보들, set부족정보들] = useState<string[]>([]);
   const [조사답, set조사답] = useState<Record<string, 조사답변>>({});
   const [조사확인단계, set조사확인단계] = useState(false);
+  // v047: 공개 정보를 못 찾았을 때 받는 한 문장 품목 설명(선택).
+  const [품목설명, set품목설명] = useState("");
   // ── 서버 연동 상태 ──
   // 주의: 예전에는 첫 후보 하나만 들고 있었습니다(`서버추천: string`). 서버는 후보를
   //    '여러 개' 줄 수 있고 그때는 배지도 여러 개 붙어야 하므로 배열로 들고 갑니다.
@@ -5546,6 +5549,7 @@ function NewPlanPage({
     set부족정보들([]);
     set조사답({});
     set조사확인단계(false);
+    set품목설명("");
     setCategory((v) => (v && v === 자동선택비목.current ? "" : v));
     자동선택비목.current = null;
   }, [name, purpose, amount, 부가세]);
@@ -5897,7 +5901,7 @@ function NewPlanPage({
       웹조사,
       ...(거래처.trim() ? { 거래처: 거래처.trim() } : {}),
       ...(판매주소값 ? { 판매URL: 판매주소값 } : {}),
-      ...(조사확인단계 ? { 조사ID, 조사답변: Object.values(조사답) } : {}),
+      ...(조사확인단계 ? { 조사ID, 조사답변: Object.values(조사답), ...(!조사후보들.length && 품목설명.trim() ? { 품목설명: 품목설명.trim() } : {}) } : {}),
     }, (항목) => { if (살아있음) { 진행Ref.current = 진행추가(진행Ref.current, 항목); set진행항목들(진행Ref.current); } }).then((r) => {
       if (!살아있음) return;
       // 주의: id(Q1…)는 묶음마다 다시 매겨져 옛 답이 다른 질문의 답으로 나가면 안 됩니다.
@@ -6230,7 +6234,16 @@ function NewPlanPage({
             </p>
             {조사확인단계 && !!진행항목들.length && <작업로그 className="research-stream" 항목들={진행항목들} 진행중={false} 시작={진행시작} 기본문장="공개 정보 검색을 마쳤어요." 끝문장="공개 정보 검색을 마쳤어요." />}
             {조사확인단계 && !!조사후보들.length && <조사확인 후보={조사후보들} 답={조사답} 변경={(v) => set조사답((이전) => ({ ...이전, [v.id]: v }))} />}
-            {조사확인단계 && !조사후보들.length && <p>확인된 공개 정보가 없어요. 입력한 내용으로 계속 점검할 수 있어요.</p>}
+            {/* v047: 검색 실패 · 찾은 것 없음은 오류가 아닙니다. 한 문장 설명 칸만 보이고 비워도 됩니다. */}
+            {조사확인단계 && !조사후보들.length && (
+              <section className="research-results">
+                <p>확인된 공개 정보가 없어요.</p>
+                <label className="research-correct">
+                  어떤 제품·서비스인지 한 문장으로 알려 주시면 분류에 함께 써요. (선택)
+                  <input maxLength={1000} value={품목설명} onChange={(e) => set품목설명(e.target.value)} placeholder="예: 팀원 5명이 쓰는 디자인 협업 도구 연간 구독이에요." />
+                </label>
+              </section>
+            )}
             {조사확인단계 && !!부족정보들.length && <p>더 확인이 필요한 공개 정보: {부족정보들.map(유형표기).join(" · ")}</p>}
             {조사확인단계 && <직접확인안내 항목들={직접확인들} />}
             <div className="question-list">
@@ -6255,10 +6268,10 @@ function NewPlanPage({
                     />
                   ))}
             </div>
-            {(!API켜짐() || 조사확인단계) && <div className="info-note">
+            {!API켜짐() && <div className="info-note">
               <Icon name="spark" />
               {/* 주의: 예시 모드는 판정을 부르지 않아 답이 어디에도 쓰이지 않으므로 그 사실을 그대로 둡니다. */}
-              {조사확인단계 ? "모르면 모르겠어요를 선택해 주세요." : API켜짐()
+              {API켜짐()
                 ? 서버질문.length
                   ? "답변을 반영해 판정합니다. 모르면 모르겠어요를 눌러 주세요."
                   : "채운 값을 반영해 판정합니다. 모르면 비워 두세요."
@@ -6296,7 +6309,7 @@ function NewPlanPage({
             저장중 ||
             (step === 0 ? !원문.trim() : !필수입력됨) ||
             (step >= 2 && !category && !새경로) ||
-            (step === 3 && (서버질문.some((q) => !질문답변[q.id]) || (조사확인단계 && 조사후보들.some((c) => !조사답[c.id]))))
+            (step === 3 && (서버질문.some((q) => !질문답변[q.id]) || (조사확인단계 && 조사후보들.some((c) => !조사답[c.id] || (조사답[c.id].답 === "직접입력" && !조사답[c.id].정정?.trim())))))
           }
           onClick={() => {
             if (step === 0) {
