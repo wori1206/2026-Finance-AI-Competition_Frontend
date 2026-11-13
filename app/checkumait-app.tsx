@@ -5423,6 +5423,7 @@ function NewPlanPage({
   save: (plan: ExpensePlan, temporary?: boolean, 점검오류?: string) => void;
 }) {
   // v033: 0 = 한 문장 입력 → 1 = 이렇게 확인했어요 → 2 = 비목 → 3 = 추가 확인
+  // v045: 새 경로 사업(정리 응답에 `품목확인` 이 있음)은 2 를 건너뜁니다. 비목은 서버가 정하고 안내만 합니다.
   const [step, setStep] = useState(0);
   const [원문, set원문] = useState("");
   const [정리중, set정리중] = useState(false);
@@ -5466,6 +5467,14 @@ function NewPlanPage({
   // 주의: `선택분류` 가 null 이면 세목 없이 `category` 비목으로만 판정합니다.
   const [서버분류후보, set서버분류후보] = useState<분류값[]>([]);
   const [선택분류, set선택분류] = useState<분류값 | null>(null);
+  // v045: 서버가 정한 분류(새 경로)와 안내 문장. 판정 요청 · 계획 저장에 그대로 씁니다.
+  const [서버분류, set서버분류] = useState<분류값 | null>(null);
+  // 주의: 질문이 없으면 분류를 받은 바로 그 자리에서 저장 · 판정합니다. 상태는 다음 화면 그리기 전에 안 바뀌어서 ref 로도 듭니다.
+  const 서버분류Ref = useRef<분류값 | null>(null);
+  const [분류안내, set분류안내] = useState("");
+  // 조사 세션이 만료(400)되거나 입력이 바뀌었다(409)고 하면 조사ID 없이 한 번만 처음부터 다시 묻습니다.
+  const [다시요청, set다시요청] = useState(0);
+  const 만료재시도 = useRef(false);
   // 「AI 점검하기」 때 서버에서 받은 확인 질문입니다. 예시 모드에서는 쓰지 않습니다.
   const [서버질문, set서버질문] = useState<확인질문[]>([]);
   const [질문세트, set질문세트] = useState<string | null>(null);
@@ -5520,6 +5529,9 @@ function NewPlanPage({
     set서버후보([]);
     set서버분류후보([]);
     set선택분류(null);
+    set서버분류(null);
+    서버분류Ref.current = null;
+    set분류안내("");
     set서버질문([]);
     set질문세트(null);
     set질문답변({});
@@ -5540,6 +5552,10 @@ function NewPlanPage({
   const 표시후보 = 서버분류후보.filter((c) => 비목선택지.includes(c.비목));
   const 분류경로 = 표시후보.length > 0;
   const 고른비목후보 = 표시후보.filter((c) => c.비목 === category);
+  /** v045: 서버가 비목을 정하는 사업인가. 정리 응답의 `품목확인` 으로 압니다(옛 경로 사업 · 옛 서버에는 없음). */
+  const 품목확인있음 = (값: Record<string, unknown> | null | undefined) =>
+    API켜짐() && typeof 값?.["품목확인"] === "object" && 값?.["품목확인"] !== null;
+  const 새경로 = 품목확인있음(서버정규화);
   /** 비목 칸을 눌렀을 때. 그 비목의 후보가 있으면 맨 앞 후보를, 없으면 세목 없이 비목만 고릅니다. */
   const 비목고르기 = (비목: string) => {
     setCategory(비목);
@@ -5552,6 +5568,13 @@ function NewPlanPage({
    *    코드의 한도 비교는 `추가입력값` 만 읽으므로(`orchestrate.py::게이트_입력`) 이 값이 비교에 쓰이지는 않습니다.
    */
   const 저장할정규화 = () => {
+    const 기본 = 정규화기본();
+    if (!기본 || !새경로) return 기본;
+    // v045: 세목은 서버 분류 값, 사용일자는 화면의 예상 지출일(비우면 null)입니다.
+    const 분류 = 서버분류Ref.current;
+    return { ...기본, 사용일자: date || null, ...(분류?.세목 ? { 확정세목: 분류.세목 } : {}) };
+  };
+  const 정규화기본 = () => {
     if (!서버정규화 || typeof 서버정규화["수치"] !== "object" || 서버정규화["수치"] === null) return 서버정규화;
     const 수치: Record<string, unknown> = { ...(서버정규화["수치"] as Record<string, unknown>) };
     for (const 칸 of 서버칸) delete 수치[칸.키];
@@ -5606,6 +5629,14 @@ function NewPlanPage({
         }
   }
 
+  /** v045: 새 경로의 「AI 점검하기」. 비목 단계 없이 분류 · 확인 질문을 받습니다. */
+  function 질문받기시작() {
+    만료재시도.current = false;
+    set조사확인단계(false);
+    set조사ID(undefined);
+    setQuestionsLoading(true);
+  }
+
   useEffect(() => {
     if (!categoryLoading) return;
 
@@ -5631,17 +5662,21 @@ function NewPlanPage({
       부가세구분: 부가세,
     })
       .then((r) => {
-        if (!살아있음) return;
+        if (!살아있음) return false;
         정규화반영(r);
+        return 품목확인있음(r.정규화);
       })
       .catch((e: unknown) => {
-        if (!살아있음) return;
+        if (!살아있음) return false;
         set연동오류(e instanceof Error ? e.message : "정리에 실패했습니다");
+        return false;
       })
-      .finally(() => {
+      .then((서버가분류) => {
         if (!살아있음) return;
-        setStep(2);          // 실패해도 다음 단계로 — 사용자가 직접 고르면 됩니다
         setCategoryLoading(false);
+        // v045: 새 경로는 비목 단계 없이 바로 분류 · 확인 질문을 받습니다. 정리가 실패하면 예전처럼 직접 고릅니다.
+        if (서버가분류) 질문받기시작();
+        else setStep(2);
       });
     return () => {
       살아있음 = false;
@@ -5690,7 +5725,8 @@ function NewPlanPage({
     const 앞 = 정리결과.current;
     if (API켜짐() && 앞 && 앞.name === name && 앞.purpose === purpose && 앞.amount === amount) {
       정규화반영(앞.r);
-      setStep(2);
+      if (품목확인있음(앞.r.정규화)) 질문받기시작();
+      else setStep(2);
       return;
     }
     setCategoryLoading(true);
@@ -5741,10 +5777,11 @@ function NewPlanPage({
       용도: purpose,
       제목: name,
       집행예정일: date || undefined,
+      // v045: 새 경로는 서버가 정한 비목입니다(분류를 끝내 못 찾았으면 비움).
       // 주의: 화면 9 에서 '사용자가 확정한' 비목입니다. 서버가 enum 10종으로 검증합니다.
       //    1단계에서 임시저장하면 아직 비목을 고르지 않았으므로 보내지 않습니다 — 보내면 초기값이
       //    확정비목으로 저장되고, 나중 판정이 그 비목으로 강제됩니다.
-      확정비목: step >= 2 && category ? category.split(" · ")[0] : undefined,
+      확정비목: 새경로 ? 서버분류Ref.current?.비목 ?? undefined : step >= 2 && category ? category.split(" · ")[0] : undefined,
       정규화: 저장할정규화() ?? undefined,
     });
 
@@ -5759,7 +5796,7 @@ function NewPlanPage({
       제목: "AI가 지출계획을 작성하고 있어요.",
       대체입력: {
         사업명: 현재사업(),
-        확정비목: category.split(" · ")[0],
+        확정비목: 새경로 ? 서버분류Ref.current?.비목 ?? "" : category.split(" · ")[0],
         정규화: 저장할정규화(),
         제목: name,
         용도: purpose,
@@ -5773,7 +5810,7 @@ function NewPlanPage({
       조사답변: 받은조사답 ?? Object.values(조사답),
       이전진행: 진행Ref.current,
       추가입력값: 추가입력값만들기(서버칸, 칸값),
-      확정세목: 선택분류?.세목 ?? null,
+      확정세목: 새경로 ? 서버분류Ref.current?.세목 ?? null : 선택분류?.세목 ?? null,
       부가세구분: 부가세,
       끝남: (판정된계획, 오류) => {
         if (오류) {
@@ -5822,23 +5859,28 @@ function NewPlanPage({
     const 질문원문 = 서버정규화?.["질문원문"];
     void 질문가져오기({
       사업명: 현재사업(),
-      확정비목: category.split(" · ")[0],
-      확정세목: 선택분류?.세목 ?? null,
+      // v045: 새 경로는 비목 · 세목 · 세부유형을 보내지 않습니다. 서버가 분류합니다.
+      ...(새경로 ? {} : {
+        확정비목: category.split(" · ")[0],
+        확정세목: 선택분류?.세목 ?? null,
+        // 주의: 세부 유형 칸은 분류 후보가 없을 때만 보입니다. 안 보이는 기본값(멘토링)을 서버로 보내면 안 됩니다.
+        세부유형: category === "지급수수료" && !분류경로 ? feeSubtype : null,
+      }),
       부가세구분: 부가세,
-      // 주의: 세부 유형 칸은 분류 후보가 없을 때만 보입니다. 안 보이는 기본값(멘토링)을 서버로 보내면 안 됩니다.
-      세부유형: category === "지급수수료" && !분류경로 ? feeSubtype : null,
       품목: 서버정규화 ? (typeof 서버정규화.품목 === "string" ? 서버정규화.품목 : "") : name,
       금액: 서버정규화 ? (typeof 서버정규화.금액 === "number" ? 서버정규화.금액 : null) : Number(amount.replace(/,/g, "")) || 0,
       용도: 서버정규화 ? (typeof 서버정규화.용도 === "string" ? 서버정규화.용도 : "") : purpose,
       질문원문: typeof 질문원문 === "string" && 질문원문 ? 질문원문 : undefined,
-      조사ID: 받은질문키 && 받은질문키 !== 질문키 ? undefined : 정규화조사ID,
+      조사ID: (받은질문키 && 받은질문키 !== 질문키) || 만료재시도.current ? undefined : 정규화조사ID,
       웹조사, ...(웹조사 ? 검색입력나누기(공개검색어) : {}),
       ...(조사확인단계 ? { 조사ID, 조사답변: Object.values(조사답) } : {}),
     }, (항목) => { if (살아있음) { 진행Ref.current = 진행추가(진행Ref.current, 항목); set진행항목들(진행Ref.current); } }).then((r) => {
       if (!살아있음) return;
       // 주의: id(Q1…)는 묶음마다 다시 매겨져 옛 답이 다른 질문의 답으로 나가면 안 됩니다.
+      만료재시도.current = false;
       set서버질문(r.질문);
       set조사ID(r.조사ID);
+      if (r.분류) { 서버분류Ref.current = r.분류; set서버분류(r.분류); set분류안내(r.분류안내 ?? ""); }
       if (!조사확인단계) {
         set조사후보들(r.조사후보 ?? []);
         set직접확인들(r.사용자확인 ?? []);
@@ -5863,12 +5905,28 @@ function NewPlanPage({
         setQuestionsLoading(false);
         return;
       }
+      // v045: 질문 없이 바로 판정하면 분류 안내 문장을 판정 진행의 맨 위 줄로 보입니다.
+      if (r.분류안내) 진행Ref.current = 진행추가(진행Ref.current, { id: "분류안내", 단계: "분류", 상태: "완료", 문장: r.분류안내, 출처: [] });
       // 질문이 없거나 실패·제한 시간 초과. 3단계 없이 바로 판정합니다.
       // 주의: 저장이 끝날 때까지 로딩 창을 둡니다. 먼저 닫으면 2단계 화면이 잠깐 비쳤다가 판정 창이 뜹니다.
       set받은질문키(null);
       void submit(r.조사ID, 조사확인단계 ? Object.values(조사답) : [], r.질문세트).finally(() => setQuestionsLoading(false));
     }).catch((오류: unknown) => {
       if (!살아있음) return;
+      const 상태코드 = 오류 && typeof 오류 === "object" && "status" in 오류 ? 오류.status : undefined;
+      const 진행중 = 상태코드 === 409 && 오류 instanceof Error && /진행 중/.test(오류.message);
+      // v045: 조사 세션 만료(400) · 입력 변경(409)은 조사ID 없이 처음부터 한 번 더 묻습니다. 진행 중(409)은 다시 보내지 않습니다.
+      if (새경로 && !만료재시도.current && (상태코드 === 400 || (상태코드 === 409 && !진행중))) {
+        만료재시도.current = true;
+        set조사ID(undefined);
+        set조사확인단계(false);
+        set조사답({});
+        set조사후보들([]);
+        if (상태코드 === 400) set연동오류("확인한 내용이 만료됐어요. 처음부터 다시 확인할게요.");
+        set다시요청((n) => n + 1);
+        return;
+      }
+      만료재시도.current = false;
       set정규화조사ID(undefined);
       set조사ID(undefined);
       set조사확인단계(false);
@@ -5880,15 +5938,15 @@ function NewPlanPage({
       set질문세트(null);
       set서버칸([]);
       set받은질문키(null);
-      setStep(2);
-      set조사오류(오류 && typeof 오류 === "object" && "status" in 오류 && 오류.status === 503 ? "규정을 확인하지 못했어요. 잠시 후 다시 확인해 주세요." : 조사확인단계 ? "규정 질문을 받지 못했어요. 검색 없이 계속하거나 다시 확인해 주세요." : 웹조사 ? "공개 정보를 확인하지 못했어요. 입력한 내용으로 계속 점검하거나 나중에 다시 시도해 주세요." : "확인할 내용을 받지 못했어요. 다시 확인해 주세요.");
+      setStep(새경로 ? 1 : 2);
+      set조사오류(진행중 ? "앞서 보낸 확인이 아직 진행 중이에요. 잠시 후 다시 확인해 주세요." : 상태코드 === 503 ? "규정을 확인하지 못했어요. 잠시 후 다시 확인해 주세요." : 조사확인단계 ? "규정 질문을 받지 못했어요. 검색 없이 계속하거나 다시 확인해 주세요." : 웹조사 ? "공개 정보를 확인하지 못했어요. 입력한 내용으로 계속 점검하거나 나중에 다시 시도해 주세요." : "확인할 내용을 받지 못했어요. 다시 확인해 주세요.");
       setQuestionsLoading(false);
     });
     return () => {
       살아있음 = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [questionsLoading]);
+  }, [questionsLoading, 다시요청]);
 
   // v025: 검색 칸이 STEP 1 로 옮겨 가서, 검색 중에도 진행 창에서 작업을 보여 줍니다.
   const 검색중 = questionsLoading && 웹조사 && !조사확인단계;
@@ -5996,6 +6054,12 @@ function NewPlanPage({
                 「AI 점검하기」 때 확인 질문 요청과 함께 나갑니다(같은 요청). */}
             {API켜짐() && (
               <공개검색설정 사용={웹조사} 설정={set웹조사} 검색어={공개검색어} 검색어변경={set공개검색어} />
+            )}
+            {/* v045: 새 경로는 2단계가 없어 분류 · 질문 요청이 실패하면 여기로 돌아옵니다. */}
+            {조사오류 && (
+              <div role="alert">
+                <p>{조사오류}</p>
+              </div>
             )}
           </>
         )}
@@ -6119,8 +6183,15 @@ function NewPlanPage({
             <h2 className="additional-check-title new-plan-big">{조사확인단계 ? "공개 정보를 확인해 주세요" : "몇 가지만 추가로 확인할게요"}</h2>
             {!조사확인단계 && (
               <p className="new-plan-summary">
-                {[name, amount ? won(Number(amount)) : "", 선택분류?.표시문 ?? category].filter(Boolean).join(" · ")}
+                {[name, amount ? won(Number(amount)) : "", 새경로 ? (분류안내 ? "" : 서버분류?.표시문) : 선택분류?.표시문 ?? category].filter(Boolean).join(" · ")}
               </p>
+            )}
+            {/* v045: 서버가 정한 분류는 안내만 합니다. 고르는 칸 · 확인 버튼은 없습니다. */}
+            {!조사확인단계 && 새경로 && 분류안내 && (
+              <div className="auto-check-note classification-note">
+                <Icon name="check" />
+                <span><b>{분류안내}</b></span>
+              </div>
             )}
             <p className="section-copy additional-check-copy" hidden={!조사확인단계 && API켜짐()}>
               {조사확인단계
@@ -6180,7 +6251,7 @@ function NewPlanPage({
           <button
             className="outline"
             disabled={categoryLoading || questionsLoading || 정리중}
-            onClick={() => setStep(step - 1)}
+            onClick={() => setStep(새경로 && step === 3 ? 1 : step - 1)}
           >
             이전
           </button>
@@ -6199,7 +6270,7 @@ function NewPlanPage({
             저장중 ||
             (step === 0 ? !원문.trim() : !필수입력됨) ||
             (step === 1 && 웹조사 && !공개검색어.trim()) ||
-            (step >= 2 && !category) ||
+            (step >= 2 && !category && !새경로) ||
             (step === 2 && 웹조사 && !공개검색어.trim()) ||
             (step === 3 && (서버질문.some((q) => !질문답변[q.id]) || (조사확인단계 && 조사후보들.some((c) => !조사답[c.id]))))
           }
@@ -6218,7 +6289,7 @@ function NewPlanPage({
           {step === 0
             ? "AI로 정리하기"
             : step === 1
-            ? "다음"
+            ? (API켜짐() ? "AI 점검하기" : "다음")
             : step === 2
               ? (조사오류 ? "다시 확인" : "AI 점검하기")
               : 조사확인단계 ? "규정 확인하기" : "결과 확인하기"}
