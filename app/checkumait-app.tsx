@@ -5672,7 +5672,7 @@ function NewPlanPage({
       return () => window.clearTimeout(timer);
     }
     let 살아있음 = true;
-    정규화하기({ 질문: 원문.trim(), 품목: "", 금액: 0, 용도: "", 사업명: 현재사업(), 부가세구분: 부가세 })
+    정규화하기({ 질문: 원문.trim(), 사업명: 현재사업(), 부가세구분: 부가세 })
       .then((r) => 살아있음 && 칸채우기(r))
       .catch((e: unknown) => {
         if (!살아있음) return;
