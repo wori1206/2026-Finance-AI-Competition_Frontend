@@ -210,7 +210,7 @@ export type 판정입력 = {
 export function 판정SSE(
   입력: 판정입력,
   on: SSE핸들러,
-  옵션?: { mock?: "가능" | "조건부" | "불가" | "판단불가"; signal?: AbortSignal },
+  옵션?: { mock?: "가능" | "확인 필요" | "불가" | "근거부족" | "조건부" | "판단불가"; signal?: AbortSignal },
 ) {
   return SSE(
     "/api/judge",

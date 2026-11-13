@@ -16,6 +16,7 @@ export function 판정을상태로(판정: 판정값): PlanStatus {
   switch (판정) {
     case "가능":
       return "특이사항 없음";
+    case "확인 필요":
     case "조건부":
       return "확인 필요";
     case "판단불가":
@@ -36,6 +37,8 @@ export function 판정설명(판정: 판정값): string {
       return "조건을 충족하면 집행할 수 있습니다. 아래 항목을 먼저 확인하세요.";
     case "판단불가":
       return "규정만으로는 결론을 낼 수 없습니다. 주관기관 문의가 필요합니다.";
+    case "확인 필요":
+      return "아래 확인 항목과 근거 조항을 먼저 확인해 주세요. 분명하지 않으면 주관기관 담당자에게 물어봐 주세요.";
     case "불가":
       return "규정에 어긋날 가능성이 높습니다. 집행 전에 반드시 확인하세요.";
     default:
@@ -59,6 +62,8 @@ export function 판정제목(판정: 판정값 | undefined, 비목: string): str
       return `${앞}기준에서 확인할 조건이 있습니다.`;
     case "판단불가":
       return `${앞}기준만으로는 결론을 낼 수 없습니다.`;
+    case "확인 필요":
+      return `${앞}기준에서 확인할 점이 있습니다.`;
     case "불가":
       return `${앞}기준에 어긋날 가능성이 높습니다.`;
     default:
@@ -89,6 +94,10 @@ export function 조건칸상태(p: { 조건?: string[]; 기한조건?: string[];
 
 export function 행동문구(판정: 판정값 | undefined, 온톨로지경로 = false, 문의처: string | null | undefined = null, 칸상태: 조건칸상태값 = "보임"): string | null {
   switch (판정) {
+    case "확인 필요":
+      // 주의: 서버 3값의 확인 필요는 조건부·판단불가를 합친 값이라, 채울 조건이라고 단정하지 않는 온톨로지 문구를 씁니다.
+      온톨로지경로 = true;
+    // falls through
     case "조건부":
       if (칸상태 === "해당") return `답하신 대로면 아래 안 되는 경우에 해당해요. 집행하기 전에 ${문의처 || "주관기관에"} 확인하세요.`;
       if (칸상태 === "금지") return "아래 안 되는 경우에 해당하지 않는지 먼저 확인한 뒤 집행하세요.";
@@ -518,7 +527,7 @@ export function 상세를계획으로(d: 계획상세): ExpensePlan {
      */
     문의초안:
       (typeof 상세?.문의초안 === "string" ? 상세.문의초안 : null) ??
-      (d.판정 === "판단불가" ? 초안읽기(d.plan_id) : null),
+      (d.판정 === "판단불가" || d.판정 === "확인 필요" ? 초안읽기(d.plan_id) : null),
     사용자답변: 사용자답변정리(d.사용자답변),
     ...정규화저장값(d.정규화),
     분류: 분류정리(상세?.분류),

@@ -15,8 +15,9 @@ import { 초안보관 } from "./inquiry-store";
 import type { 기준문서정보, ChecklistItem, RuleItem } from "./types";
 import type { ExpensePlan } from "./types";
 import type { 판정값, 답변항목, 사용자답변항목, 부가세구분, 분류값, 코드판정값, 용어풀이항목, 확인한조건항목 } from "./server-types";
+import { 판정목록 } from "./server-types";
 
-export type Mock판정 = "가능" | "조건부" | "불가" | "판단불가";
+export type Mock판정 = "가능" | "확인 필요" | "불가" | "근거부족" | "조건부" | "판단불가";
 
 export type 판정중계 = {
   /** 진행 설명 문구. 「관련 조항을 찾는 중」 같은 것 */
@@ -208,7 +209,7 @@ export async function 판정실행(
           중계.활동?.();
           break;
         case "판정":
-          판정 = ["가능", "조건부", "불가", "판단불가"].includes(String(v["판정"])) ? v["판정"] as 판정값 : null;
+          판정 = 판정목록.includes(String(v["판정"])) ? v["판정"] as 판정값 : null;
           요약 = 문자(v["요약"]);
           if (판정) 중계.판정?.({
             판정,
@@ -283,7 +284,7 @@ export async function 판정실행(
   }
 
   if (서버오류) throw new Error(서버오류);
-  if (!["가능", "조건부", "불가", "판단불가"].includes(판정 ?? "")) {
+  if (!판정목록.includes(판정 ?? "")) {
     throw new Error("서버에서 점검 결과를 받지 못했습니다. 다시 확인해 주세요.");
   }
 
@@ -307,7 +308,7 @@ export async function 판정실행(
    *    안 맞는 문의 글이 화면에 남습니다. 여기서 잘라냅니다.
    */
   const 최종초안: string | null =
-    최종판정 === "판단불가" ? (문의초안 ?? 바탕.문의초안 ?? null) : null;
+    최종판정 === "판단불가" || 최종판정 === "확인 필요" ? (문의초안 ?? 바탕.문의초안 ?? null) : null;
 
   /**
    * 주의: 서버가 이번 판정을 '저장하지 않았거나'(일시 장애의 판단불가 등) 저장 뒤 상세를 다시 읽지
