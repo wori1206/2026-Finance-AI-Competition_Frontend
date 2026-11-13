@@ -164,7 +164,11 @@ export type 특수관계 = { 친족거래: boolean; 전직임직원업체: boole
 
 const 특수관계_기본값: 특수관계 = { 친족거래: false, 전직임직원업체: false };
 
-export type 정규화입력 = {
+export type 정규화입력 =
+  | { 질문: string; 사업명?: string; 부가세구분?: 부가세구분; 특수관계?: 특수관계 }   // 한 문장 경로: 폼 키를 보내지 않음
+  | 칸정규화입력;
+type 칸정규화입력 = {
+  질문?: never;
   품목: string; 금액: number; 용도: string;              // 폼 경로 필수 3종
   집행예정일?: string; 거래처?: string; 추가설명?: string;
   사업명?: string;

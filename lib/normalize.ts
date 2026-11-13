@@ -12,9 +12,16 @@ import { 정규화SSE } from "./sse";
 import { 분류정리 } from "./adapt";
 import type { 비목후보, 심층질문항목, 부가세구분, 분류값 } from "./server-types";
 
-export type 정규화입력값 = {
-  /** v033: 한 문장 입력. 있으면 서버가 자연어 경로로 품목·금액·용도를 뽑습니다(아래 칸은 무시). */
-  질문?: string;
+/**
+ * 한 문장 입력(v033)과 칸 입력 두 가지입니다.
+ * 주의: 한 문장 요청에 품목·금액·용도 키를 같이 보내면(빈 값·0 포함) 서버가 422 로 거절합니다(v042).
+ */
+export type 정규화입력값 =
+  | { 질문: string; 사업명?: string; 부가세구분?: 부가세구분 }
+  | 칸정규화입력값;
+
+type 칸정규화입력값 = {
+  질문?: never;
   품목: string;
   금액: number;
   용도: string;
