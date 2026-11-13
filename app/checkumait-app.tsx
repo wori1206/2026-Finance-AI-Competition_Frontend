@@ -8583,6 +8583,9 @@ function SchedulePage({
     (item) => item.state !== "완료" && !지났나(item),
   );
   const activeUpcoming = visibleUpcoming.slice(0, 3);
+  // v038: 캘린더에서 날짜를 고르면 오른쪽 목록이 그날 일정(완료·지난 것 포함)으로 바뀝니다.
+  const [고른날, set고른날] = useState<string | null>(null);
+  const 오른쪽목록 = 고른날 ? schedules.filter((item) => item.date === 고른날) : visibleUpcoming;
   const [미정펼침, set미정펼침] = useState(false);
   const [날짜입력, set날짜입력] = useState<{ id: string; 값: string } | null>(null);
   const 날짜미정 = schedules.filter((item) => !item.date && item.state !== "완료");
@@ -8836,9 +8839,21 @@ function SchedulePage({
                   return (
                     <div
                       key={i}
-                      className={`${날짜문자 && 날짜문자 === 오늘문자 ? "today" : ""} ${!valid ? "outside" : ""}`}
+                      className={`${날짜문자 && 날짜문자 === 오늘문자 ? "today" : ""} ${!valid ? "outside" : ""} ${날짜문자 && 날짜문자 === 고른날 ? "picked" : ""}`}
+                      onClick={valid ? () => set고른날(날짜문자 === 고른날 ? null : 날짜문자) : undefined}
                     >
-                      <span>{valid ? day : ""}</span>
+                      <span>
+                        {valid && (
+                          <button
+                            type="button"
+                            className="day-pick"
+                            aria-pressed={날짜문자 === 고른날}
+                            aria-label={`${표시월}월 ${day}일 일정 보기`}
+                          >
+                            {day}
+                          </button>
+                        )}
+                      </span>
                       {items.slice(0, 2).map((item) => (
                         <button
                           key={item.id}
@@ -8849,7 +8864,10 @@ function SchedulePage({
                                 ? "done"
                                 : "planned"
                           }
-                          onClick={() => setViewing(item)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setViewing(item);
+                          }}
                         >
                           {item.title}
                         </button>
@@ -8905,7 +8923,12 @@ function SchedulePage({
         </section>
         <aside className="schedule-v2-upcoming">
           <header>
-            <h2>다가오는 일정</h2>
+            <h2>{고른날 ? `${월일표기(고른날)} 일정` : "다가오는 일정"}</h2>
+            {고른날 ? (
+              <button type="button" className="outline small" onClick={() => set고른날(null)}>
+                전체 보기
+              </button>
+            ) : (
             <div className="upcoming-view-switch" aria-label="다가오는 일정 보기 방식">
               <button
                 type="button"
@@ -8929,20 +8952,23 @@ function SchedulePage({
                 지출계획별
               </button>
             </div>
+            )}
           </header>
-          {upcomingView === "all" && visibleUpcoming.length === 0 && (
+          {(고른날 || upcomingView === "all") && 오른쪽목록.length === 0 && (
             <p className="schedule-detail-empty">
-              {!자료받음
+              {고른날
+                ? "이 날은 일정이 없습니다."
+                : !자료받음
                 ? "일정을 불러오는 중입니다."
                 : 일정실패
                   ? "일정을 불러오지 못했습니다. 새로고침해 주세요."
                   : "앞으로 남은 일정이 없습니다."}
             </p>
           )}
-          {upcomingView === "all" && visibleUpcoming.length > 0 && (
+          {(고른날 || upcomingView === "all") && 오른쪽목록.length > 0 && (
             <p className="upcoming-list-caption">체크하면 처리 완료</p>
           )}
-          {upcomingView === "all" ? visibleUpcoming.map((item) => {
+          {고른날 || upcomingView === "all" ? 오른쪽목록.map((item) => {
             const activeIndex = activeUpcoming.findIndex(
               (active) => active.id === item.id,
             );
@@ -8954,7 +8980,7 @@ function SchedulePage({
                 <div className="upcoming-main">
                   <input
                     type="checkbox"
-                    checked={false}
+                    checked={item.state === "완료"}
                     aria-label={`${item.title} 완료 처리`}
                     onChange={() => toggleDone(item.id)}
                   />

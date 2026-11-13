@@ -1595,3 +1595,11 @@ input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-ou
 .schedule-info-grid>div{align-items:start}
 .schedule-info-grid>div>label{align-content:start}
 .schedule-info-grid>div>label>small{color:#7a8580;font-size:11px;font-weight:400}
+
+/* v038 캘린더 날짜 고르기 */
+.schedule-v2-grid>div:not(.outside){cursor:pointer}
+.schedule-v2-grid>div:not(.outside):hover{background:#f7faf8}
+.schedule-v2-grid .day-pick{all:unset;cursor:pointer;font:inherit}
+.schedule-v2-grid .day-pick:focus-visible{outline:2px solid var(--brand);outline-offset:2px;border-radius:4px}
+.schedule-v2-grid>div.picked{background:var(--brand-soft);box-shadow:inset 0 0 0 2px var(--brand)}
+.schedule-v2-upcoming>.schedule-detail-empty{margin:0;padding:24px 18px;color:#7a8580;font-size:12px;text-align:center}
