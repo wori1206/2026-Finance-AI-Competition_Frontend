@@ -1462,6 +1462,8 @@ export default function CheckumaitApp() {
   };
   // 계획 id → 마지막 판정의 작업 내역. 결과 화면의 「작업 내역 보기」가 읽습니다. 서버에 저장하지 않습니다.
   const [판정기록들, set판정기록들] = useState<Record<string, 판정기록>>({});
+  // v049: 새 지출 계획은 한 번에 한 건. 정리 · 검색 · 분류 중이거나 답이 필요한 동안은 다른 화면으로 가도 숨겨 둔 채 이어 갑니다.
+  const [새계획알림, set새계획알림] = useState<{ 진행중: boolean; 문장: string } | null>(null);
   const 점검중인가 = (id: string) => 작업Ref.current.some((j) => j.계획.id === id && !j.결과);
   /** 계획을 넣거나 바꿉니다. 화면에만 씌운 「점검 중」은 저장하지 않습니다. */
   const 계획반영 = (계획: ExpensePlan) => {
@@ -1480,7 +1482,7 @@ export default function CheckumaitApp() {
     }
     if (!계획Ref.current.some((p) => p.id === 입력.계획.id)) 계획반영(입력.계획);
     const 키 = 다음작업키.current++;
-    작업바꾸기((이전) => [...이전, { ...입력, 키, 최소화: false }]);
+    작업바꾸기((이전) => [...이전, { ...입력, 키, 최소화: !!입력.접힘, 접은적: !!입력.접힘 }]);
     return true;
   };
   const 판정끝 = (키: number, 판정된계획?: ExpensePlan, 오류?: string, 기록?: 판정기록) => {
@@ -2113,8 +2115,20 @@ export default function CheckumaitApp() {
             update={계획반영}
           />
         )}
-        {route.page === "plan-new" && (
+        {route.page !== "plan-new" && 새계획알림 && (
+          <aside className="judge-pill" role="status" style={{ bottom: 20 + 파일높이 * 작업들.length }}>
+            {새계획알림.진행중 ? <span className="ai-checking-spinner" aria-hidden="true" /> : <Icon name="alert" size={16} />}
+            <span>
+              <b>새 지출 계획</b>
+              <small>{새계획알림.진행중 ? `확인 중 · ${새계획알림.문장}` : "확인할 내용이 있어요"}</small>
+            </span>
+            <button onClick={() => go({ page: "plan-new" })}>열기</button>
+          </aside>
+        )}
+        {(route.page === "plan-new" || 새계획알림) && (
           <NewPlanPage
+            숨김={route.page !== "plan-new"}
+            알림={set새계획알림}
             판정시작={판정시작}
             notify={notify}
             save={(plan, temporary, 점검오류) => {
@@ -4267,6 +4281,8 @@ function 공개검색설정({
 /** 페이지가 앱 최상단에 맡기는 판정 한 건. 페이지를 옮겨도 판정이 끊기지 않게 최상단이 들고 있습니다. */
 type 판정시작입력 = {
   계획: ExpensePlan;
+  /** v049: 숨겨 둔 새 지출 계획에서 시작하면 지금 화면을 가리지 않게 접힌 채로 시작합니다. */
+  접힘?: boolean;
   planId?: string;
   count: number;
   제목?: string;
@@ -4477,6 +4493,7 @@ function AiCheckingOverlay({
       </header>
       <작업로그
         className="judge-run-log"
+        펼침기본
         앞단계이름="점검 전 확인"
         이번단계이름="AI 점검"
         항목들={진행항목들}
@@ -5417,7 +5434,13 @@ const 작성예시 = [
 function NewPlanPage({
   save,
   판정시작,
+  숨김 = false,
+  알림,
 }: {
+  /** v049: 다른 화면에 있는 동안 숨겨 둡니다. 요청과 입력값은 그대로 이어 갑니다. */
+  숨김?: boolean;
+  /** v049: 작업 중 · 답이 필요함을 최상단 알림 줄에 알립니다. null 이면 이어 둘 것이 없습니다. */
+  알림?: (상태: { 진행중: boolean; 문장: string } | null) => void;
   판정시작: (작업: 판정시작입력) => boolean;
   notify: (message: string) => void;
   /** `점검오류` 는 계획은 저장됐지만 판정이 실패했을 때의 사유입니다. */
@@ -5452,6 +5475,8 @@ function NewPlanPage({
   const 판매주소값 = /^https?:\/\/\S+$/i.test(판매주소.trim()) ? 판매주소.trim() : "";
   const [진행항목들, set진행항목들] = useState<진행항목[]>([]);
   const 진행Ref = useRef<진행항목[]>([]);
+  // v049: 검색 결과 화면 위쪽에 보이는 검색 기록(끝난 그대로 둠). 「규정 확인하기」 뒤 새 작업은 아래 작업 줄에만 쌓습니다.
+  const [검색기록, set검색기록] = useState<진행항목[]>([]);
   const [진행시작, set진행시작] = useState<number>();
   const [조사오류, set조사오류] = useState("");
   const [조사ID, set조사ID] = useState<string | undefined>();
@@ -5483,6 +5508,13 @@ function NewPlanPage({
   const [분류안내, set분류안내] = useState("");
   // 조사 세션이 만료(400)되거나 입력이 바뀌었다(409)고 하면 조사ID 없이 한 번만 처음부터 다시 묻습니다.
   const [다시요청, set다시요청] = useState(0);
+  // v049: 판정으로 넘겼는가. 넘긴 뒤에는 이 화면을 이어 둘 필요가 없습니다.
+  const 넘김 = useRef(false);
+  // 주의: 판정은 요청을 시작할 때 만든 함수에서 시작합니다. 그 사이 다른 화면으로 갔는지는 ref 로 읽습니다.
+  const 숨김Ref = useRef(숨김);
+  useEffect(() => {
+    숨김Ref.current = 숨김;
+  }, [숨김]);
   const 만료재시도 = useRef(false);
   // 「AI 점검하기」 때 서버에서 받은 확인 질문입니다. 예시 모드에서는 쓰지 않습니다.
   const [서버질문, set서버질문] = useState<확인질문[]>([]);
@@ -5825,8 +5857,10 @@ function NewPlanPage({
   const 저장 = (계획: ExpensePlan, 임시?: boolean, 점검오류?: string) => save(계획, 임시, 점검오류);
 
   const 점검시작 = (계획: ExpensePlan, planId?: string, 받은조사ID?: string, 받은조사답?: 조사답변[], 받은질문세트?: string | null) => {
+    넘김.current = true;
     판정시작({
       계획,
+      접힘: 숨김Ref.current,
       count: 1,
       planId,
       제목: "AI가 지출계획을 작성하고 있어요.",
@@ -5891,7 +5925,7 @@ function NewPlanPage({
     // ── 서버에서 확인 질문 받기 ──
     let 살아있음 = true;
     set조사오류("");
-    if (!조사확인단계) { 진행Ref.current = []; set진행항목들([]); set진행시작(Date.now()); }
+    if (!조사확인단계) { 진행Ref.current = []; set진행항목들([]); set검색기록([]); set진행시작(Date.now()); }
     const 질문원문 = 서버정규화?.["질문원문"];
     void 질문가져오기({
       사업명: 현재사업(),
@@ -5936,6 +5970,7 @@ function NewPlanPage({
           set재조사답((이전) => Object.fromEntries((r.재조사후보 ?? []).flatMap((c) => (이전[c.id] ? [[c.id, 이전[c.id]]] : []))));
         }
         set조사확인단계(true);
+        set검색기록(진행Ref.current);
         set연동오류(null);
         setStep(3);
         setQuestionsLoading(false);
@@ -5959,6 +5994,7 @@ function NewPlanPage({
         ...추가입력초기값(r.추가입력, typeof 수치 === "object" && 수치 !== null ? (수치 as Record<string, unknown>) : undefined),
         ...지금,
       }));
+      if (r.상태 === "조사확인") set검색기록(진행Ref.current);
       if (r.질문.length || r.추가입력.length || r.상태 === "조사확인") {
         set받은질문키(질문키);
         set연동오류(null);
@@ -6038,8 +6074,18 @@ function NewPlanPage({
       })
       .finally(() => set저장중(false));
   };
+  const 작업중 = 정리중 || categoryLoading || questionsLoading || 저장중;
+  // v049: 최상단 알림 줄에 지금 상태를 알립니다. 판정으로 넘긴 뒤에는 판정 알림이 맡습니다.
+  const 알릴문장 = 최근항목(진행항목들)?.문장 ?? "";
+  useEffect(() => {
+    if (!알림) return;
+    if (넘김.current) 알림(null);
+    else if (작업중) 알림({ 진행중: true, 문장: 알릴문장 || "입력하신 내용을 확인하고 있어요." });
+    else 알림(step === 3 ? { 진행중: false, 문장: "" } : null);
+  }, [알림, 작업중, step, 알릴문장]);
+  useEffect(() => () => 알림?.(null), [알림]);
   return (
-    <div className="page narrow new-plan-page-v033">
+    <div className="page narrow new-plan-page-v033" style={숨김 ? { display: "none" } : undefined}>
       <header className="detail-top new-plan-header">
         <div>
           <h1>새 지출 계획</h1>
@@ -6054,6 +6100,7 @@ function NewPlanPage({
             <p className="section-copy">무엇을 하려는지, 예산은 어느 정도인지 편하게 적어주세요.</p>
             <textarea
               className="new-plan-sentence"
+              readOnly={작업중}
               value={원문}
               maxLength={2000}
               onChange={(e) => set원문(e.target.value)}
@@ -6087,6 +6134,7 @@ function NewPlanPage({
                 </span>
                 <input
                   value={name}
+                  readOnly={작업중}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="예: 개발용 노트북 구매"
                 />
@@ -6097,6 +6145,7 @@ function NewPlanPage({
                 </span>
                 <input
                   inputMode="numeric"
+                  readOnly={작업중}
                   value={amount ? Number(amount).toLocaleString("ko-KR") : ""}
                   onChange={(e) => setAmount(e.target.value.replace(/[^0-9]/g, ""))}
                   placeholder="0"
@@ -6108,25 +6157,26 @@ function NewPlanPage({
                 </span>
                 <textarea
                   value={purpose}
+                  readOnly={작업중}
                   onChange={(e) => setPurpose(e.target.value)}
                   placeholder="사업 수행에 왜 필요한지 작성해주세요."
                 />
               </label>
               <label className="full">
                 <span className="field-label">예상 지출일</span>
-                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+                <input type="date" readOnly={작업중} value={date} onChange={(e) => setDate(e.target.value)} />
                 <small className="field-help">아직 정하지 않았다면 비워두셔도 돼요.</small>
               </label>
               {API켜짐() && (
                 <>
                   <label className="full">
                     <span className="field-label">거래처</span>
-                    <input maxLength={200} value={거래처} onChange={(e) => { set거래처(e.target.value); 조사버리기(); }} placeholder="예: 쿠팡, 피그마" />
+                    <input maxLength={200} readOnly={작업중} value={거래처} onChange={(e) => { set거래처(e.target.value); 조사버리기(); }} placeholder="예: 쿠팡, 피그마" />
                     <small className="field-help">정해졌다면 적어 주세요. 판매자 정보와 이용 조건을 함께 확인해요.</small>
                   </label>
                   <label className="full">
                     <span className="field-label">판매 페이지 주소</span>
-                    <input type="url" maxLength={2048} value={판매주소} onChange={(e) => { set판매주소(e.target.value); 조사버리기(); }} placeholder="https://" />
+                    <input type="url" maxLength={2048} readOnly={작업중} value={판매주소} onChange={(e) => { set판매주소(e.target.value); 조사버리기(); }} placeholder="https://" />
                     <small className="field-help">{판매주소.trim() && !판매주소값 ? "http:// 또는 https:// 로 시작하는 주소를 적어 주세요." : "있다면 적어 주세요. 그 페이지의 내용도 함께 확인해요."}</small>
                   </label>
                 </>
@@ -6272,7 +6322,7 @@ function NewPlanPage({
                   ? `${feeSubtype} 기준에서 확인할 사항입니다.`
                   : `${category} 규정에서 확인할 사항입니다.`}
             </p>
-            {조사확인단계 && !!진행항목들.length && <작업로그 className="research-stream" 항목들={진행항목들} 진행중={false} 시작={진행시작} 기본문장="공개 정보 검색을 마쳤어요." 끝문장="공개 정보 검색을 마쳤어요." />}
+            {조사확인단계 && !!검색기록.length && <작업로그 className="research-stream" 항목들={검색기록} 진행중={false} 시작={진행시작} 펼침기본 기본문장="공개 정보 검색을 마쳤어요." 끝문장="공개 정보 검색을 마쳤어요." />}
             {/* v048: 분류를 못 찾았을 때. 안내 문장 아래에 다시 물을 품목 정보 · 설명 칸 · 다시 시도 중 하나를 보입니다. */}
             {조사확인단계 && 조사오류 && (
               <div role="alert">
@@ -6339,6 +6389,17 @@ function NewPlanPage({
           </>
         )}
       </section>
+      {/* v049: 정리 · 검색 · 분류 중에는 팝업을 띄우지 않고 이 페이지 입력 칸 아래에 작업 줄을 한 줄씩 쌓습니다. */}
+      {(categoryLoading || questionsLoading || 정리중) && (
+        <작업로그
+          className="new-plan-progress"
+          항목들={정리중 ? [] : 조사확인단계 ? 진행항목들.filter((v) => !검색기록.some((x) => x.id === v.id)) : 진행항목들}
+          진행중
+          시작={진행시작}
+          펼침기본={!정리중}
+          기본문장={정리중 ? "입력하신 내용을 정리하고 있어요" : 검색중 ? "해당 품목에 대해서 검색하고 있어요." : questionsLoading ? "필요한 확인 항목을 찾고 있어요" : "입력한 지출 내용을 살펴보고 있어요."}
+        />
+      )}
       {연동오류 && (
         <p className="section-copy" style={{ color: "var(--red, #c23b3b)" }}>
           {연동오류}
@@ -6393,42 +6454,6 @@ function NewPlanPage({
               : 조사확인단계 ? (분류없음?.다음행동 === "다시시도" ? "다시 시도" : "규정 확인하기") : "결과 확인하기"}
         </button>
       </footer>
-      {(categoryLoading || questionsLoading || 정리중) && (
-        <div className="category-analysis-backdrop">
-          <section
-            className="category-analysis-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="category-analysis-title"
-          >
-            <span className="category-analysis-visual" aria-hidden="true">
-              <span className="category-analysis-spinner" />
-              <Icon name="sparkSolid" size={18} />
-              <i className="analysis-spark analysis-spark-one"><Icon name="sparkSolid" size={8} /></i>
-              <i className="analysis-spark analysis-spark-two"><Icon name="sparkSolid" size={6} /></i>
-            </span>
-            <h2 id="category-analysis-title">
-              {정리중
-                ? "입력하신 내용을 정리하고 있어요"
-                : 검색중
-                  ? "해당 품목에 대해서 검색하고 있어요."
-                  : questionsLoading
-                    ? "필요한 확인 항목을 찾고 있어요"
-                    : "맞는 비목을 찾고 있어요"}
-            </h2>
-            <p>
-              {정리중
-                ? "지출 항목·예상 금액·사용 목적을 정리해요."
-                : questionsLoading
-                  ? "입력 내용과 선택한 비목을 바탕으로 살펴봐요."
-                  : "지출 항목과 사용 목적을 바탕으로 비목을 추천해요."}
-            </p>
-            {questionsLoading && <작업로그 항목들={진행항목들} 진행중 시작={진행시작} 기본문장="확인할 내용을 준비하고 있어요." 펼침기본 />}
-            {정리중 && <span className="new-plan-current-task">빠진 정보가 있는지 확인하고 있어요</span>}
-            <small>잠시만 기다려주세요.</small>
-          </section>
-        </div>
-      )}
     </div>
   );
 }

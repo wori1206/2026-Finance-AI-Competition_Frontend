@@ -59,8 +59,8 @@ export type 질문결과 = {
   재조사후보?: 조사후보[];
 };
 
-// 공개 검색을 포함한 요청 전체의 제한 시간입니다.
-const 제한시간ms = 180000;
+// v049: 요청 전체의 제한 시간이 아니라, 마지막으로 무언가(진행 · keep-alive)를 받은 뒤 아무것도 오지 않은 시간입니다(판정 화면과 같은 방식).
+const 무응답한도ms = 150000;
 // 서버가 받는 질문원문 길이 상한입니다. 넘으면 422 가 나 질문 없이 넘어갑니다.
 const 질문원문상한 = 2000;
 
@@ -155,13 +155,14 @@ export function 추가입력값만들기(칸들: 추가입력칸[], 값들: Reco
   return 보낼값;
 }
 
-async function 질문요청(입력: 질문입력, on진행?: (항목: 진행항목) => void, signal?: AbortSignal): Promise<질문결과> {
+async function 질문요청(입력: 질문입력, on진행?: (항목: 진행항목) => void, signal?: AbortSignal, 활동?: () => void): Promise<질문결과> {
   try {
     let 받은응답: Record<string, unknown> | null = null;
     await SSE("/api/questions", {
       ...입력,
       질문원문: 입력.질문원문?.slice(0, 질문원문상한),
     }, (이름, 값) => {
+      활동?.();
       if (이름 === "진행") { const 항목 = 진행항목정리(값); if (항목) on진행?.(항목); }
       if (이름 === "오류") throw new Error("질문을 받지 못했습니다.");
       if (이름 === "완료" && 값 && typeof 값 === "object") 받은응답 = 값 as Record<string, unknown>;
@@ -208,14 +209,17 @@ async function 질문요청(입력: 질문입력, on진행?: (항목: 진행항�
 }
 
 /**
- * 제한 시간이 지나면 요청을 중단합니다. 공개 검색 실패는 호출자에게 전달합니다.
+ * 서버에서 아무것도 오지 않은 채 무응답 한도가 지나면 요청을 중단합니다. 공개 검색 실패는 호출자에게 전달합니다.
  */
 export async function 질문가져오기(입력: 질문입력, on진행?: (항목: 진행항목) => void): Promise<질문결과> {
   const controller = new AbortController();
-  const 타이머 = window.setTimeout(() => controller.abort(), 제한시간ms);
+  let 마지막 = Date.now();
+  const 타이머 = window.setInterval(() => {
+    if (Date.now() - 마지막 > 무응답한도ms) controller.abort();
+  }, 5000);
   try {
-    return await 질문요청(입력, on진행, controller.signal);
+    return await 질문요청(입력, on진행, controller.signal, () => { 마지막 = Date.now(); });
   } finally {
-    window.clearTimeout(타이머);
+    window.clearInterval(타이머);
   }
 }
