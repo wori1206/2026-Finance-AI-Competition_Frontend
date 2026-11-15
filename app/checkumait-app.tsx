@@ -7537,7 +7537,7 @@ function PlanDetail({
   // 조건 묶음이나 AI 해설에 이미 있는 문장은 결제 전 확인에 다시 적지 않습니다
   const 표시분류 = plan.화면만수정
     ? 비목표기(plan.category)
-    : plan.분류?.표시문 ?? (plan.확정세목 ? `${plan.category} > ${plan.확정세목}` : 비목표기(plan.category));
+    : (plan.분류?.표시문 ? 비목표기(plan.분류.표시문) : null) ?? (plan.확정세목 ? `${비목표기(plan.category)} > ${plan.확정세목}` : 비목표기(plan.category));
   return (
     <div className="page expense-detail-page expense-detail-redesign expense-v5">
       <header className="expense-v5-header">
