@@ -5504,6 +5504,13 @@ function NewPlanPage({
   // v056: 재조사 후보가 거래 유형 확인 문장인가(응답 `재조사.종류` 거래유형). 그러면 하나만 고르는 거래 유형 확인 카드로 보입니다.
   const [재조사종류, set재조사종류] = useState<string | undefined>();
   const 거래유형카드 = 재조사종류 === "거래유형";
+  // v057: 지출 항목이 사려는 것의 이름이 아니라는 서버 안내(입력검증). 있으면 화면 1 에 머물러 지출 항목을 다시 받거나 한 문장 설명을 받습니다.
+  const [입력검증안내, set입력검증안내] = useState<{ 다음행동: "품목재입력" | "설명입력"; 안내: string } | null>(null);
+  // 몇 번째 입력인가(서버 `입력검증_시도`). 지출 아님 응답마다 +1, 지출 · 건너뜀 응답에서 1 로 돌립니다.
+  const 입력검증시도 = useRef(1);
+  // 안내를 받은 지출 항목 글. 지출 항목이 이 글과 달라지면 안내를 지웁니다.
+  const 거절된품목 = useRef<string | null>(null);
+  const 지출항목칸 = useRef<HTMLInputElement>(null);
   // ── 서버 연동 상태 ──
   // 주의: 예전에는 첫 후보 하나만 들고 있었습니다(`서버추천: string`). 서버는 후보를
   //    '여러 개' 줄 수 있고 그때는 배지도 여러 개 붙어야 하므로 배열로 들고 갑니다.
@@ -5607,6 +5614,8 @@ function NewPlanPage({
     set재조사종류(undefined);
     setCategory((v) => (v && v === 자동선택비목.current ? "" : v));
     자동선택비목.current = null;
+    // v057: 지출 항목을 고치면 안내를 지웁니다(시도 횟수는 그대로 두어 다음 정리 요청이 고쳐 쓴 입력임을 알립니다).
+    if (name !== 거절된품목.current) set입력검증안내(null);
   }, [name, purpose, amount, 부가세]);
 
   // v046: 거래처 · 판매 주소는 조사 요청키에 들어가 바뀌면 앞서 받은 조사가 맞지 않습니다. 정리는 다시 하지 않습니다.
@@ -5711,6 +5720,24 @@ function NewPlanPage({
         }
   }
 
+  /**
+   * v057: 정리 응답의 지출 항목 입력 검증을 화면 상태로 옮깁니다. 지출 아님(다음행동 있음)이면 안내를 두고 true 를 돌려줍니다.
+   * 이때 호출자는 다음 단계(검색 · 분류)로 가지 않습니다. 지출 · 건너뜀 · 입력검증 없음이면 시도 횟수를 1 로 돌리고 false 입니다.
+   */
+  function 입력검증반영(r: 정규화출력, 품목글: string): boolean {
+    const 검증 = r.입력검증;
+    if (!검증?.다음행동 || !검증.안내) {
+      입력검증시도.current = 1;
+      거절된품목.current = null;
+      set입력검증안내(null);
+      return false;
+    }
+    입력검증시도.current += 1;
+    거절된품목.current = 품목글;
+    set입력검증안내({ 다음행동: 검증.다음행동, 안내: 검증.안내 });
+    return true;
+  }
+
   /** v045: 새 경로의 「AI 점검하기」. 비목 단계 없이 분류 · 확인 질문을 받습니다. */
   function 질문받기시작() {
     만료재시도.current = false;
@@ -5743,10 +5770,14 @@ function NewPlanPage({
       거래처: 거래처.trim() || undefined,
       사업명: 현재사업(),
       부가세구분: 부가세,
+      // v057: 지출 항목이 아니라는 안내를 받은 뒤 고쳐 쓴 입력이면 몇 번째인지 알립니다(처음이면 서버 기본 1).
+      ...(입력검증시도.current > 1 ? { 입력검증_시도: 입력검증시도.current } : {}),
     })
       .then((r) => {
         if (!살아있음) return false;
         정규화반영(r);
+        // v057: 지출 항목이 아니면 이 화면에 머뭅니다(검색 · 분류 요청 없음). 설명 칸에 이미 적은 설명이 있으면 그 설명으로 바로 진행합니다.
+        if (입력검증반영(r, name)) return r.입력검증?.다음행동 === "설명입력" && 품목설명.trim() ? true : null;
         return 품목확인있음(r.정규화);
       })
       .catch((e: unknown) => {
@@ -5783,6 +5814,8 @@ function NewPlanPage({
       setPurpose(용도);
       if (typeof 날 === "string") setDate(날);
       if (typeof 값["거래처"] === "string" && 값["거래처"].trim()) set거래처(값["거래처"].trim());
+      // v057: 정리한 지출 항목이 사려는 것의 이름이 아니면 「이렇게 확인했어요!」 에서 처음부터 안내와 [고쳐 쓰기] 를 보입니다.
+      if (r) 입력검증반영(r, 품목);
       정리결과.current = r ? { name: 품목, purpose: 용도, amount: 금액, r } : null;
       set정리됨(Boolean(r));
       setStep(1);
@@ -5817,6 +5850,11 @@ function NewPlanPage({
     const 앞 = 정리결과.current;
     if (API켜짐() && 앞 && 앞.name === name && 앞.purpose === purpose && 앞.amount === amount) {
       정규화반영(앞.r);
+      // v057: 정리 결과가 지출 항목이 아니라고 했으면 다음 단계로 가지 않고 안내를 그대로 둡니다.
+      if (앞.r.입력검증?.다음행동) {
+        set입력검증안내(앞.r.입력검증.안내 ? { 다음행동: 앞.r.입력검증.다음행동, 안내: 앞.r.입력검증.안내 } : null);
+        return;
+      }
       if (품목확인있음(앞.r.정규화)) 질문받기시작();
       else setStep(2);
       return;
@@ -5976,6 +6014,8 @@ function NewPlanPage({
       ...(거래처.trim() ? { 거래처: 거래처.trim() } : {}),
       ...(판매주소값 ? { 판매URL: 판매주소값 } : {}),
       ...(조사확인단계 ? { 조사ID, 조사답변: Object.values(조사답), ...(품목설명.trim() ? { 품목설명: 품목설명.trim() } : {}) } : {}),
+      // v057: 지출 항목이 두 번 지출이 아니라고 해 받은 한 문장 설명은 첫 요청에 싣습니다(서버가 품목 조사 · 분류 자료로 씀).
+      ...(!조사확인단계 && 입력검증안내?.다음행동 === "설명입력" && 품목설명.trim() ? { 품목설명: 품목설명.trim() } : {}),
       // v056: 거래 유형 확인 카드는 고른 후보 하나만 보냅니다(재조사답 에 답한 후보만 있음).
       ...(조사확인단계 && 재조사후보.length ? { 재조사답변: Object.values(재조사답) } : {}),
     }, (항목) => { if (살아있음) { 진행Ref.current = 진행추가(진행Ref.current, 항목); set진행항목들(진행Ref.current); } }).then((r) => {
@@ -6118,6 +6158,9 @@ function NewPlanPage({
   const 작업중 = 정리중 || categoryLoading || questionsLoading || 저장중;
   // v056: 지금 거래 유형 확인 카드를 보이고 있다(공개 검색 결과가 아니므로 제목 · 안내 글을 바꿉니다).
   const 거래유형카드확인중 = 조사확인단계 && 분류없음?.다음행동 === "재조사확인" && 거래유형카드 && !!재조사후보.length;
+  // v057: 지출 항목이 아니라는 안내를 받은 그대로다. 주 버튼은 [고쳐 쓰기] 하나뿐입니다(그대로 진행하는 버튼 없음).
+  //    지출 항목을 고치면 위 입력 변경 효과가 안내를 지워 다시 [AI 점검하기] 가 됩니다.
+  const 고쳐쓰기 = 입력검증안내?.다음행동 === "품목재입력";
   // v049: 최상단 알림 줄에 지금 상태를 알립니다. 판정으로 넘긴 뒤에는 판정 알림이 맡습니다.
   const 알릴문장 = 최근항목(진행항목들)?.문장 ?? "";
   useEffect(() => {
@@ -6176,12 +6219,28 @@ function NewPlanPage({
                   지출 항목 <em className="required-mark">*</em>
                 </span>
                 <input
+                  ref={지출항목칸}
                   value={name}
                   readOnly={작업중}
+                  aria-invalid={입력검증안내 ? true : undefined}
+                  aria-describedby={입력검증안내 ? "expense-input-check-notice" : undefined}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="예: 개발용 노트북 구매"
                 />
+                {/* v057: 지출 항목이 사려는 것의 이름이 아니면 칸 바로 아래에 서버 안내를 보입니다(분류없음 안내와 같은 모양). */}
+                {입력검증안내 && (
+                  <p id="expense-input-check-notice" className="research-notice" role="alert">
+                    <Icon name="alert" size={15} />
+                    <span>{입력검증안내.안내}</span>
+                  </p>
+                )}
               </label>
+              {입력검증안내?.다음행동 === "설명입력" && (
+                <label className="research-correct">
+                  품목 설명
+                  <input maxLength={1000} readOnly={작업중} value={품목설명} onChange={(e) => set품목설명(e.target.value)} placeholder="예: 팀원 5명이 쓰는 디자인 협업 도구 연간 구독이에요." />
+                </label>
+              )}
               <label className="full">
                 <span className="field-label">
                   예상 금액 <em className="required-mark">*</em>
@@ -6480,6 +6539,7 @@ function NewPlanPage({
             정리중 ||
             저장중 ||
             (step === 0 ? !원문.trim() : !필수입력됨) ||
+            (step === 1 && 입력검증안내?.다음행동 === "설명입력" && !품목설명.trim()) ||
             (step >= 2 && !category && !새경로) ||
             (step === 3 && (서버질문.some((q) => !질문답변[q.id]) || (조사확인단계 && 조사후보들.some((c) => !조사답[c.id] || (조사답[c.id].답 === "직접입력" && !조사답[c.id].정정?.trim()))) ||
               (분류없음?.다음행동 === "재조사확인" && (거래유형카드
@@ -6492,6 +6552,16 @@ function NewPlanPage({
             if (step === 0) {
               set연동오류(null);
               set정리중(true);
+            } else if (step === 1 && 고쳐쓰기) {
+              // v057: 서버를 부르지 않고 지출 항목 칸으로 돌아가 글 전체를 고르게 합니다.
+              지출항목칸.current?.focus();
+              지출항목칸.current?.select();
+            } else if (step === 1 && 입력검증안내?.다음행동 === "설명입력") {
+              // v057: 설명입력 응답의 정리 · 조사ID 로 바로 품목 조사부터 받습니다. 그 사이 다른 칸을 고쳐 정리가 지워졌으면 다시 정리합니다.
+              set연동오류(null);
+              set조사오류("");
+              if (서버정규화) 질문받기시작();
+              else setCategoryLoading(true);
             } else if (step === 1) {
               확인다음();
             } else if (step === 2) {
@@ -6509,7 +6579,7 @@ function NewPlanPage({
           {step === 0
             ? "AI로 정리하기"
             : step === 1
-            ? (API켜짐() ? "AI 점검하기" : "다음")
+            ? (고쳐쓰기 ? "고쳐 쓰기" : API켜짐() ? "AI 점검하기" : "다음")
             : step === 2
               ? (조사오류 ? "다시 확인" : "AI 점검하기")
               : 조사확인단계 ? (분류없음?.다음행동 === "다시시도" ? "다시 시도" : "규정 확인하기") : "결과 확인하기"}
