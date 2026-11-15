@@ -34,7 +34,8 @@ export type 질문입력 = {
 };
 
 /** `질문` 은 서버가 검사한 화면용 확인 문장(없으면 옛 서버), `질문종류`=기본 이면 유형 이름만 든 기본 문장입니다. 판정에는 `내용`(발췌)만 갑니다. */
-export type 조사후보 = { id: string; 유형: string; 내용: string; 질문?: string; 질문종류?: string; 상태: string; 출처: { 제목: string; url: string; 발췌?: string }[] };
+/** v056: `종류`=거래유형 이면 공개 검색 결과가 아니라 서버가 만든 거래 유형 확인 문장입니다(출처 없음). 화면에 내지 않는 값입니다. */
+export type 조사후보 = { id: string; 유형: string; 내용: string; 질문?: string; 질문종류?: string; 확인문장?: string; 종류?: string; 상태: string; 출처: { 제목: string; url: string; 발췌?: string }[] };
 /** v047: [맞아요] | [직접 입력하기]. 직접입력이면 정정(사용자가 쓴 한 문장 설명)이 꼭 있어야 합니다(서버가 400). */
 export type 조사답변 = { id: string; 답: "맞아요" | "직접입력"; 정정?: string };
 export type 조사결과 = { 상태?: string; 확인한정보?: (조사후보 & { 답?: string; 정정?: string })[]; 업체이용조건?: 조사후보[]; 미확인?: 조사후보[]; 부족정보?: string[]; 사용자확인?: { 항목: string; 질문: string }[] };
@@ -57,6 +58,8 @@ export type 질문결과 = {
   다음행동?: string;
   /** v048: 다음행동 재조사확인 일 때 다시 물을 품목 정보. */
   재조사후보?: 조사후보[];
+  /** v056: 재조사 후보의 종류. 「거래유형」 이면 거래 유형 확인 카드(하나만 고름), 없으면 지금 재조사 카드입니다(화면에 내지 않는 값). */
+  재조사종류?: string;
 };
 
 // v049: 요청 전체의 제한 시간이 아니라, 마지막으로 무언가(진행 · keep-alive)를 받은 뒤 아무것도 오지 않은 시간입니다(판정 화면과 같은 방식).
@@ -203,6 +206,7 @@ async function 질문요청(입력: 질문입력, on진행?: (항목: 진행항�
       ...(문자(응답, "상태") === "분류없음" ? {
         다음행동: 문자(응답, "다음행동") || "다시시도",
         재조사후보: Array.isArray((응답["재조사"] as Record<string, unknown> | undefined)?.후보) ? (응답["재조사"] as { 후보: 조사후보[] }).후보 : [],
+        재조사종류: 응답["재조사"] && typeof 응답["재조사"] === "object" ? 문자(응답["재조사"] as Record<string, unknown>, "종류") || undefined : undefined,
       } : {}) };
   } catch (e) {
     throw e;

@@ -4078,7 +4078,8 @@ const 조사유형이름: Record<string, string> = {
   증빙안내: "증빙 발급 안내",
   업체이용조건: "업체 이용 조건",
 };
-const 유형표기 = (유형: string) => 조사유형이름[유형] ?? "공개 정보";
+// v056: 거래 유형 확인 문장(후보 `종류` 거래유형)은 공개 정보가 아니라 「거래 유형」 으로 표기합니다.
+const 유형표기 = (유형: string, 종류?: string) => (종류 === "거래유형" ? "거래 유형" : 조사유형이름[유형] ?? "공개 정보");
 
 /** 페이지 발췌를 화면용 글로 바꿉니다. 마크다운 기호만 지우고 글자는 바꾸지 않습니다(서버의 발췌 값은 그대로 둡니다). */
 function 발췌글(글: string): string {
@@ -4102,6 +4103,8 @@ function 조사카드({ 항목, children }: { 항목: 조사후보 & { 답?: str
   const 인용 = 발췌글(출처들.find((c) => c.발췌)?.발췌 || 항목.내용 || "");
   const 질문 = 항목.질문?.trim();
   const 발췌바로 = !질문 || 항목.질문종류 === "기본";
+  // v056: 거래 유형 확인 문장은 서버가 쓴 문장이라 출처가 없습니다. 출처 줄(「출처 보기」 · 「출처 주소 없음」)을 그리지 않습니다.
+  const 출처없음 = 항목.종류 === "거래유형" && !!질문;
   const 사이트 = (
     <span className="research-sites">
       {출처들.map((c, i) => (
@@ -4116,9 +4119,9 @@ function 조사카드({ 항목, children }: { 항목: 조사후보 & { 답?: str
   );
   return (
     <article className="research-card">
-      <span className="research-kind">{유형표기(항목.유형)}</span>
+      <span className="research-kind">{유형표기(항목.유형, 항목.종류)}</span>
       {질문 && <p className="research-question">{질문}</p>}
-      {발췌바로 ? (
+      {출처없음 ? null : 발췌바로 ? (
         <>
           {사이트}
           {인용 && <blockquote>{인용}</blockquote>}
@@ -4156,21 +4159,25 @@ function 조사안내({ 결과화면 = false }: { 결과화면?: boolean }) {
   );
 }
 
-function 조사확인({ 후보, 답, 변경, 검색어 }: { 후보: 조사후보[]; 답: Record<string, 조사답변>; 변경: (v: 조사답변) => void; 검색어?: string }) {
+/**
+ * 확인할 후보 목록. `단일선택`(v056 거래 유형 확인 카드)이면 머리글을 `머리글` 로 바꾸고 「검색 결과 N건」 · 공개 정보 안내를 빼며,
+ * 하나만 고릅니다(다른 후보의 답을 지우는 것은 `변경` 을 넘긴 쪽이 합니다).
+ */
+function 조사확인({ 후보, 답, 변경, 검색어, 단일선택 = false, 머리글 }: { 후보: 조사후보[]; 답: Record<string, 조사답변>; 변경: (v: 조사답변) => void; 검색어?: string; 단일선택?: boolean; 머리글?: string }) {
   const 답한수 = 후보.filter((c) => 답[c.id]).length;
   return (
     <section className="research-results">
       <header className="research-results-head">
-        <span className="research-search-icon" aria-hidden="true"><Icon name="search" size={16} /></span>
+        <span className="research-search-icon" aria-hidden="true"><Icon name={단일선택 ? "check" : "search"} size={16} /></span>
         <div>
-          <b>{검색어 ? `「${검색어}」 검색 결과 ${후보.length}건` : `검색 결과 ${후보.length}건`}</b>
-          <small>{답한수 === 후보.length ? "모두 확인했어요" : `${후보.length}건 중 ${답한수}건 확인`}</small>
+          <b>{머리글 ?? (검색어 ? `「${검색어}」 검색 결과 ${후보.length}건` : `검색 결과 ${후보.length}건`)}</b>
+          <small>{단일선택 ? "하나를 골라 주세요" : 답한수 === 후보.length ? "모두 확인했어요" : `${후보.length}건 중 ${답한수}건 확인`}</small>
         </div>
       </header>
-      <조사안내 />
+      {!단일선택 && <조사안내 />}
       {후보.map((항목) => (
         <조사카드 key={항목.id} 항목={항목}>
-          <div className="research-answer" role="group" aria-label={`${유형표기(항목.유형)} 정보가 맞는지 확인`}>
+          <div className="research-answer" role="group" aria-label={`${유형표기(항목.유형, 항목.종류)} 정보가 맞는지 확인`}>
             {/* v047: 서버 값은 「맞아요」 · 「직접입력」 두 가지입니다. 화면 글자는 「직접 입력하기」. */}
             {([["맞아요", "맞아요"], ["직접입력", "직접 입력하기"]] as const).map(([값, 라벨]) => (
               <button
@@ -4197,10 +4204,19 @@ function 조사확인({ 후보, 답, 변경, 검색어 }: { 후보: 조사후보
 
 function 조사결과보기({ 결과 }: { 결과: import("../lib/questions").조사결과 | null | undefined }) {
   if (!결과) return null;
-  const 정보 = Array.isArray(결과.확인한정보) ? 결과.확인한정보.filter((v) => v.유형 !== "업체이용조건") : [];
+  // v056: 거래 유형 확인 카드에서 고른 행(`종류` 거래유형)은 공개 정보가 아니므로 목록에서 빼고 아래 한 줄로 보입니다.
+  const 거래유형행 = Array.isArray(결과.확인한정보) ? 결과.확인한정보.filter((v) => v.종류 === "거래유형" && (v.답 === "맞아요" || !!v.정정?.trim())) : [];
+  const 정보 = Array.isArray(결과.확인한정보) ? 결과.확인한정보.filter((v) => v.유형 !== "업체이용조건" && v.종류 !== "거래유형") : [];
   const 조건 = Array.isArray(결과.업체이용조건) ? 결과.업체이용조건 : [];
-  const 미확인 = Array.isArray(결과.미확인) ? 결과.미확인.filter((v) => v.유형 !== "업체이용조건") : [];
-  if (!정보.length && !조건.length && !미확인.length && !결과.부족정보?.length && !결과.사용자확인?.length) return null;
+  const 미확인 = Array.isArray(결과.미확인) ? 결과.미확인.filter((v) => v.유형 !== "업체이용조건" && v.종류 !== "거래유형") : [];
+  const 거래유형줄 = 거래유형행.map((v, i) => (
+    <p key={`${v.id}-거래유형-${i}`} className="research-answered">
+      {v.답 === "맞아요" ? `내가 고른 거래 유형: ${v.확인문장 || v.내용}` : `직접 적은 내용: ${v.정정}`}
+    </p>
+  ));
+  if (!정보.length && !조건.length && !미확인.length && !결과.부족정보?.length && !결과.사용자확인?.length) {
+    return 거래유형줄.length ? <section className="research-results">{거래유형줄}</section> : null;
+  }
   const 항목 = (v: 조사후보 & { 답?: string; 정정?: string }, i: number) => (
     <조사카드 key={`${v.id}-${i}`} 항목={v}>
       {/* 서버 값 「직접입력」 은 화면에 그대로 내지 않습니다. */}
@@ -4218,8 +4234,9 @@ function 조사결과보기({ 결과 }: { 결과: import("../lib/questions").조
       {정보.map(항목)}
       {!!미확인.length && <><h4>확인되지 않은 정보</h4>{미확인.map(항목)}</>}
       {!!조건.length && <><h4>업체 이용 조건</h4><p>업체가 안내한 내용입니다.</p>{조건.map(항목)}</>}
-      {!!결과.부족정보?.length && <p>더 확인이 필요한 공개 정보: {결과.부족정보.map(유형표기).join(" · ")}</p>}
+      {!!결과.부족정보?.length && <p>더 확인이 필요한 공개 정보: {결과.부족정보.map((v) => 유형표기(v)).join(" · ")}</p>}
       <직접확인안내 항목들={결과.사용자확인 ?? []} 결과화면 />
+      {거래유형줄}
     </section>
   );
 }
@@ -4652,7 +4669,7 @@ function PlanRecheckQuestionsModal({
           {지금결과?.상태 === "조사확인" && !!진행항목들.length && <작업로그 className="research-stream" 항목들={진행항목들} 진행중={false} 시작={진행시작} 기본문장="공개 정보 검색을 마쳤어요." 끝문장="공개 정보 검색을 마쳤어요." />}
           {지금결과?.상태 === "조사확인" && !!지금결과.조사후보?.length && <조사확인 후보={지금결과.조사후보} 답={조사답} 변경={(v) => set조사답((이전) => ({ ...이전, [v.id]: v }))} />}
           {지금결과?.상태 === "조사확인" && !지금결과.조사후보?.length && <p>확인된 공개 정보가 없어요. 입력한 내용으로 계속 점검할 수 있어요.</p>}
-          {지금결과?.상태 === "조사확인" && !!지금결과.부족정보?.length && <p>더 확인이 필요한 공개 정보: {지금결과.부족정보.map(유형표기).join(" · ")}</p>}
+          {지금결과?.상태 === "조사확인" && !!지금결과.부족정보?.length && <p>더 확인이 필요한 공개 정보: {지금결과.부족정보.map((v) => 유형표기(v)).join(" · ")}</p>}
           {지금결과?.상태 === "조사확인" && <직접확인안내 항목들={지금결과.사용자확인 ?? []} />}
           {서버모드 && (
             <추가입력칸목록 칸들={서버칸} 값들={칸값} onChange={(키, v) => set칸값((prev) => ({ ...prev, [키]: v }))} />
@@ -5484,6 +5501,9 @@ function NewPlanPage({
   const [분류없음, set분류없음] = useState<{ 다음행동: string; 안내: string } | null>(null);
   const [재조사후보, set재조사후보] = useState<조사후보[]>([]);
   const [재조사답, set재조사답] = useState<Record<string, 조사답변>>({});
+  // v056: 재조사 후보가 거래 유형 확인 문장인가(응답 `재조사.종류` 거래유형). 그러면 하나만 고르는 거래 유형 확인 카드로 보입니다.
+  const [재조사종류, set재조사종류] = useState<string | undefined>();
+  const 거래유형카드 = 재조사종류 === "거래유형";
   // ── 서버 연동 상태 ──
   // 주의: 예전에는 첫 후보 하나만 들고 있었습니다(`서버추천: string`). 서버는 후보를
   //    '여러 개' 줄 수 있고 그때는 배지도 여러 개 붙어야 하므로 배열로 들고 갑니다.
@@ -5584,6 +5604,7 @@ function NewPlanPage({
     set분류없음(null);
     set재조사후보([]);
     set재조사답({});
+    set재조사종류(undefined);
     setCategory((v) => (v && v === 자동선택비목.current ? "" : v));
     자동선택비목.current = null;
   }, [name, purpose, amount, 부가세]);
@@ -5603,6 +5624,7 @@ function NewPlanPage({
     set분류없음(null);
     set재조사후보([]);
     set재조사답({});
+    set재조사종류(undefined);
   };
 
   // 주의: 이 사업의 비목 목록에 없는 후보는 화면에 칸이 없어 무엇이 골렸는지 보이지 않으므로 뺍니다.
@@ -5954,6 +5976,7 @@ function NewPlanPage({
       ...(거래처.trim() ? { 거래처: 거래처.trim() } : {}),
       ...(판매주소값 ? { 판매URL: 판매주소값 } : {}),
       ...(조사확인단계 ? { 조사ID, 조사답변: Object.values(조사답), ...(품목설명.trim() ? { 품목설명: 품목설명.trim() } : {}) } : {}),
+      // v056: 거래 유형 확인 카드는 고른 후보 하나만 보냅니다(재조사답 에 답한 후보만 있음).
       ...(조사확인단계 && 재조사후보.length ? { 재조사답변: Object.values(재조사답) } : {}),
     }, (항목) => { if (살아있음) { 진행Ref.current = 진행추가(진행Ref.current, 항목); set진행항목들(진행Ref.current); } }).then((r) => {
       if (!살아있음) return;
@@ -5979,6 +6002,7 @@ function NewPlanPage({
         if (r.다음행동 === "재조사확인") {
           set재조사후보(r.재조사후보 ?? []);
           set재조사답((이전) => Object.fromEntries((r.재조사후보 ?? []).flatMap((c) => (이전[c.id] ? [[c.id, 이전[c.id]]] : []))));
+          set재조사종류(r.재조사종류);
         }
         set조사확인단계(true);
         set검색기록(진행Ref.current);
@@ -6087,6 +6111,8 @@ function NewPlanPage({
       .finally(() => set저장중(false));
   };
   const 작업중 = 정리중 || categoryLoading || questionsLoading || 저장중;
+  // v056: 지금 거래 유형 확인 카드를 보이고 있다(공개 검색 결과가 아니므로 제목 · 안내 글을 바꿉니다).
+  const 거래유형카드확인중 = 조사확인단계 && 분류없음?.다음행동 === "재조사확인" && 거래유형카드 && !!재조사후보.length;
   // v049: 최상단 알림 줄에 지금 상태를 알립니다. 판정으로 넘긴 뒤에는 판정 알림이 맡습니다.
   const 알릴문장 = 최근항목(진행항목들)?.문장 ?? "";
   useEffect(() => {
@@ -6312,7 +6338,7 @@ function NewPlanPage({
         )}
         {step === 3 && (
           <>
-            <h2 className="additional-check-title new-plan-big">{조사확인단계 ? "공개 정보를 확인해 주세요" : "몇 가지만 추가로 확인할게요"}</h2>
+            <h2 className="additional-check-title new-plan-big">{조사확인단계 ? (거래유형카드확인중 ? "거래 유형을 확인해 주세요" : "공개 정보를 확인해 주세요") : "몇 가지만 추가로 확인할게요"}</h2>
             {!조사확인단계 && (
               <p className="new-plan-summary">
                 {[name, amount ? won(Number(amount)) : "", 새경로 ? (분류안내 ? "" : 서버분류?.표시문) : 선택분류?.표시문 ?? category].filter(Boolean).join(" · ")}
@@ -6327,7 +6353,7 @@ function NewPlanPage({
             )}
             <p className="section-copy additional-check-copy" hidden={!조사확인단계 && API켜짐()}>
               {조사확인단계
-                ? "검색한 내용이 맞는지 확인해 주세요. 확인한 내용으로 규정 질문을 준비합니다."
+                ? (거래유형카드확인중 ? "고른 설명으로 규정 질문을 준비합니다." : "검색한 내용이 맞는지 확인해 주세요. 확인한 내용으로 규정 질문을 준비합니다.")
                 : API켜짐()
                 ? "입력한 지출에 맞춰 규정에서 확인할 사항을 골랐어요."
                 : category === "지급수수료"
@@ -6347,7 +6373,16 @@ function NewPlanPage({
                 <span>{분류없음.안내}</span>
               </p>
             )}
-            {조사확인단계 && 분류없음?.다음행동 === "재조사확인" && !!재조사후보.length && <조사확인 후보={재조사후보} 답={재조사답} 변경={(v) => set재조사답((이전) => ({ ...이전, [v.id]: v }))} />}
+            {/* v056: 거래 유형 확인 카드는 하나만 고릅니다. 한 후보에 답하면 다른 후보의 답을 지웁니다. */}
+            {조사확인단계 && 분류없음?.다음행동 === "재조사확인" && !!재조사후보.length && (
+              <조사확인
+                후보={재조사후보}
+                답={재조사답}
+                단일선택={거래유형카드}
+                머리글={거래유형카드 ? "거래 유형 확인" : undefined}
+                변경={(v) => set재조사답((이전) => (거래유형카드 ? { [v.id]: v } : { ...이전, [v.id]: v }))}
+              />
+            )}
             {조사확인단계 && 분류없음?.다음행동 === "설명입력" && (
               <label className="research-correct">
                 품목 설명
@@ -6365,7 +6400,7 @@ function NewPlanPage({
                 </label>
               </section>
             )}
-            {조사확인단계 && !!부족정보들.length && <p>더 확인이 필요한 공개 정보: {부족정보들.map(유형표기).join(" · ")}</p>}
+            {조사확인단계 && !!부족정보들.length && <p>더 확인이 필요한 공개 정보: {부족정보들.map((v) => 유형표기(v)).join(" · ")}</p>}
             {조사확인단계 && <직접확인안내 항목들={직접확인들} />}
             <div className="question-list">
               {API켜짐() && (
@@ -6442,7 +6477,10 @@ function NewPlanPage({
             (step === 0 ? !원문.trim() : !필수입력됨) ||
             (step >= 2 && !category && !새경로) ||
             (step === 3 && (서버질문.some((q) => !질문답변[q.id]) || (조사확인단계 && 조사후보들.some((c) => !조사답[c.id] || (조사답[c.id].답 === "직접입력" && !조사답[c.id].정정?.trim()))) ||
-              (분류없음?.다음행동 === "재조사확인" && 재조사후보.some((c) => !재조사답[c.id] || (재조사답[c.id].답 === "직접입력" && !재조사답[c.id].정정?.trim()))) ||
+              (분류없음?.다음행동 === "재조사확인" && (거래유형카드
+                // v056: 거래 유형 확인 카드는 하나를 고르면 됩니다(직접 입력이면 문장이 있어야 함).
+                ? !재조사후보.some((c) => 재조사답[c.id]) || 재조사후보.some((c) => 재조사답[c.id]?.답 === "직접입력" && !재조사답[c.id].정정?.trim())
+                : 재조사후보.some((c) => !재조사답[c.id] || (재조사답[c.id].답 === "직접입력" && !재조사답[c.id].정정?.trim())))) ||
               (분류없음?.다음행동 === "설명입력" && !품목설명.trim())))
           }
           onClick={() => {
