@@ -10,8 +10,8 @@ import type { 기준문서정보,
 } from "../lib/types";
 import type { 서버팀, 비목후보, 답변항목, 확인질문, 사용자답변항목, 판정피드백, 부가세구분, 분류값, 추가입력칸, 용어풀이항목, 코드판정값, 확인한조건항목 } from "../lib/server-types";
 import { API켜짐 } from "../lib/config";
-import { 판정실행, 판정실패오류, 판정실패문장 } from "../lib/judge";
-import { 정규화하기, type 정규화출력 } from "../lib/normalize";
+import { 판정실행, 판정실패오류, 판정실패문장, 새멱등키 } from "../lib/judge";
+import { 다시시도오류, 정규화하기, type 정규화출력 } from "../lib/normalize";
 import { 인증오류 } from "../lib/http";
 import { 계획목록, 계획상세, 비목목록, 계획추가, 계획수정, 규정업로드, 규정처리기다리기, 규정적용, 규정거절, 조문연결저장, L3현재문서목록, 팀조회, 팀만들기, 초대코드재발급, 팀들어가기, 팀나가기, 팀원내보내기, 계획삭제, 일정수정, 피드백저장 } from "../lib/api";
 import type { L3처리결과, L3현재문서 } from "../lib/server-types";
@@ -1507,7 +1507,8 @@ export default function CheckumaitApp() {
     실패작업지우기([입력.계획.id]);
     if (!계획Ref.current.some((p) => p.id === 입력.계획.id)) 계획반영(입력.계획);
     const 키 = 다음작업키.current++;
-    작업바꾸기((이전) => [...이전, { ...입력, 키, 최소화: !!입력.접힘, 접은적: !!입력.접힘 }]);
+    // 멱등키: 이 점검 동안 그대로 둡니다. 「다시 점검」 은 같은 작업을 다시 쓰므로 같은 키를 보냅니다(`다시점검`).
+    작업바꾸기((이전) => [...이전, { ...입력, 키, 멱등키: 새멱등키(), 최소화: !!입력.접힘, 접은적: !!입력.접힘 }]);
     return true;
   };
   const 판정끝 = (키: number, 판정된계획?: ExpensePlan, 오류?: string, 기록?: 판정기록, 다시점검?: boolean) => {
@@ -2160,6 +2161,7 @@ export default function CheckumaitApp() {
               부가세구분={작업.부가세구분}
               조사ID={작업.조사ID}
               조사답변={작업.조사답변}
+              멱등키={작업.멱등키}
               이전진행={작업.이전진행}
               이름={작업.계획.name}
               순번={순번}
@@ -4253,6 +4255,8 @@ type 판정기록 = { 항목들: 진행항목[]; 시작: number; 끝: number; �
 
 type 판정작업 = 판정시작입력 & {
   키: number;
+  /** 판정 행 멱등 키. 시작할 때 만들고 「다시 점검」 에서 그대로 씁니다. 입력을 바꾸면 작업이 지워져 새 키로 시작합니다. */
+  멱등키: string;
   최소화: boolean;
   /** 한 번이라도 접었으면 시작한 페이지가 이미 없을 수 있어 최상단이 끝까지 맡습니다. */
   접은적?: boolean;
@@ -4271,6 +4275,7 @@ function AiCheckingOverlay({
   부가세구분,
   조사ID,
   조사답변,
+  멱등키,
   이전진행,
   제목,
   onComplete,
@@ -4316,6 +4321,8 @@ function AiCheckingOverlay({
   부가세구분?: 부가세구분;
   조사ID?: string;
   조사답변?: 조사답변[];
+  /** 판정 행 멱등 키. 「다시 점검」 은 처음 점검과 같은 값입니다(`lib/judge.ts` 새멱등키). */
+  멱등키?: string;
   이전진행?: 진행항목[];
   /** 기록은 이번 판정에서 받은 작업 내역입니다. 결과 화면의 「작업 내역 보기」가 씁니다. */
   onComplete: (판정된계획?: ExpensePlan, 기록?: 판정기록) => void;
@@ -4384,7 +4391,7 @@ function AiCheckingOverlay({
             진행시각.current = Date.now();
           },
         },
-        { 대체입력, 답변, 질문세트, 추가입력값, 확정세목, 부가세구분, 조사ID, 조사답변 },
+        { 대체입력, 답변, 질문세트, 추가입력값, 확정세목, 부가세구분, 조사ID, 조사답변, 멱등키 },
       );
     }
 
@@ -4579,6 +4586,16 @@ function PlanRecheckQuestionsModal({
       }, (항목) => { if (살아있음) { 진행Ref.current = 진행추가(진행Ref.current, 항목); set진행항목들(진행Ref.current); } });
     }).then((결과) => {
       if (!살아있음) return;
+      // v053: 분류 · 질문 단계가 AI · DB 연결 오류로 끝나면 서버가 분류없음 · 다시시도로 답합니다. 질문 없이 판정으로 넘어가지 않고
+      //    서버 안내와 「다시 확인」 을 보입니다(누르면 처음부터 다시 받습니다).
+      if (결과.상태 === "분류없음" && 결과.다음행동 === "다시시도") {
+        set조사오류(결과.분류안내 || "확인할 내용을 받지 못했어요. 다시 확인해 주세요.");
+        set규정요청(false);
+        set조사확인ID(undefined);
+        set조사답({});
+        set검색시작(false);
+        return;
+      }
       // 물을 것이 없으면 바로 점검합니다. 이 창에서 비목을 고른 경우는 사용자가 시작을 눌러야 합니다.
       if (!결과.질문.length && !결과.추가입력.length && 결과.상태 !== "조사확인" && plan.category) {
         start(undefined, { 답변: [], 질문세트: 결과.질문세트, 추가입력값: {}, 조사ID: 결과.조사ID, 조사답변: 규정요청 ? Object.values(조사답) : [], 이전진행: 진행Ref.current });
@@ -5492,6 +5509,8 @@ function NewPlanPage({
     숨김Ref.current = 숨김;
   }, [숨김]);
   const 만료재시도 = useRef(false);
+  // v053: 품목 조사(공개 정보 확인) 단계가 연결 오류로 끝났다. 「다시 시도」 는 답변 없이 품목 조사부터 다시 요청합니다.
+  const 조사다시시도 = useRef(false);
   // 「AI 점검하기」 때 서버에서 받은 확인 질문입니다. 예시 모드에서는 쓰지 않습니다.
   const [서버질문, set서버질문] = useState<확인질문[]>([]);
   const [질문세트, set질문세트] = useState<string | null>(null);
@@ -5711,11 +5730,13 @@ function NewPlanPage({
       .catch((e: unknown) => {
         if (!살아있음) return false;
         set연동오류(e instanceof Error ? e.message : "정리에 실패했습니다");
-        return false;
+        // v053: 서버 연결 오류가 이어져 정리하지 못했으면 이 화면에 머물러 「다음」 으로 다시 보냅니다.
+        return 다시시도오류(e) ? null : false;
       })
       .then((서버가분류) => {
         if (!살아있음) return;
         setCategoryLoading(false);
+        if (서버가분류 === null) return;
         // v045: 새 경로는 비목 단계 없이 바로 분류 · 확인 질문을 받습니다. 정리가 실패하면 예전처럼 직접 고릅니다.
         if (서버가분류) 질문받기시작();
         else setStep(2);
@@ -5754,6 +5775,12 @@ function NewPlanPage({
       .then((r) => 살아있음 && 칸채우기(r))
       .catch((e: unknown) => {
         if (!살아있음) return;
+        // v053: 서버 연결 오류가 이어져 정리하지 못했으면 문장 입력 화면에 머물러 같은 버튼으로 다시 보냅니다.
+        if (다시시도오류(e)) {
+          set연동오류(e instanceof Error ? e.message : "정리하지 못했습니다");
+          set정리중(false);
+          return;
+        }
         set연동오류(`${e instanceof Error ? e.message : "정리하지 못했습니다"} 칸을 직접 확인해 주세요.`);
         칸채우기(null);
       });
@@ -5946,6 +5973,9 @@ function NewPlanPage({
           return;
         }
         set분류없음({ 다음행동: r.다음행동 ?? "다시시도", 안내: r.분류안내 ?? "" });
+        조사다시시도.current = !조사확인단계 && 웹조사 && (r.다음행동 ?? "다시시도") === "다시시도";
+        // v053: 품목 조사부터 다시 하므로 앞 조사(뒤로 가기 전)의 후보 · 답은 이번 조사의 것이 아닙니다. 남기면 숨긴 후보의 답을 요구해 「다시 시도」 가 막힙니다.
+        if (조사다시시도.current) { set조사후보들([]); set조사답({}); }
         if (r.다음행동 === "재조사확인") {
           set재조사후보(r.재조사후보 ?? []);
           set재조사답((이전) => Object.fromEntries((r.재조사후보 ?? []).flatMap((c) => (이전[c.id] ? [[c.id, 이전[c.id]]] : []))));
@@ -5958,6 +5988,7 @@ function NewPlanPage({
         return;
       }
       set분류없음(null);
+      조사다시시도.current = false;
       if (!조사확인단계) {
         set조사후보들(r.조사후보 ?? []);
         set직접확인들(r.사용자확인 ?? []);
@@ -6422,6 +6453,12 @@ function NewPlanPage({
               확인다음();
             } else if (step === 2) {
               둘째단계다음();
+            } else if (조사확인단계 && 분류없음?.다음행동 === "다시시도" && 조사다시시도.current) {
+              // v053: 품목 조사에서 끝났으면 확인할 후보가 아직 없습니다. 답변 없이 품목 조사부터 다시 요청합니다.
+              조사다시시도.current = false;
+              set분류없음(null);
+              set조사확인단계(false);
+              setQuestionsLoading(true);
             } else if (조사확인단계) setQuestionsLoading(true);
             else submit();
           }}
