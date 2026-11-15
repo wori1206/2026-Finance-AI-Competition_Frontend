@@ -4586,6 +4586,16 @@ function PlanRecheckQuestionsModal({
       }, (항목) => { if (살아있음) { 진행Ref.current = 진행추가(진행Ref.current, 항목); set진행항목들(진행Ref.current); } });
     }).then((결과) => {
       if (!살아있음) return;
+      // v053: 분류 · 질문 단계가 AI · DB 연결 오류로 끝나면 서버가 분류없음 · 다시시도로 답합니다. 질문 없이 판정으로 넘어가지 않고
+      //    서버 안내와 「다시 확인」 을 보입니다(누르면 처음부터 다시 받습니다).
+      if (결과.상태 === "분류없음" && 결과.다음행동 === "다시시도") {
+        set조사오류(결과.분류안내 || "확인할 내용을 받지 못했어요. 다시 확인해 주세요.");
+        set규정요청(false);
+        set조사확인ID(undefined);
+        set조사답({});
+        set검색시작(false);
+        return;
+      }
       // 물을 것이 없으면 바로 점검합니다. 이 창에서 비목을 고른 경우는 사용자가 시작을 눌러야 합니다.
       if (!결과.질문.length && !결과.추가입력.length && 결과.상태 !== "조사확인" && plan.category) {
         start(undefined, { 답변: [], 질문세트: 결과.질문세트, 추가입력값: {}, 조사ID: 결과.조사ID, 조사답변: 규정요청 ? Object.values(조사답) : [], 이전진행: 진행Ref.current });
