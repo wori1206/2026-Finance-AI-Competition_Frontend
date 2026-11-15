@@ -1480,10 +1480,19 @@ export default function CheckumaitApp() {
     go({ page: "plan-new" });
   };
   const 점검중인가 = (id: string) => 작업Ref.current.some((j) => j.계획.id === id && !j.결과);
+  /**
+   * 판정실패로 남겨 둔 작업은 시작할 때의 입력 · 답을 들고 있습니다. 같은 계획을 고치거나 · 새로 점검하거나 · 지우면
+   * 그 입력은 옛 값이므로 작업을 지웁니다. 남겨 두면 「다시 점검」 이 새 판정을 옛 입력의 판정으로 덮어씁니다.
+   */
+  const 실패작업지우기 = (ids: string[]) => {
+    if (!작업Ref.current.some((j) => j.결과?.다시점검 && ids.includes(j.계획.id))) return;
+    작업바꾸기((이전) => 이전.filter((j) => !(j.결과?.다시점검 && ids.includes(j.계획.id))));
+  };
   /** 계획을 넣거나 바꿉니다. 화면에만 씌운 「점검 중」은 저장하지 않습니다. */
   const 계획반영 = (계획: ExpensePlan) => {
     const 이전 = 계획Ref.current;
     const 기존 = 이전.find((p) => p.id === 계획.id);
+    if (기존) 실패작업지우기([계획.id]);
     const 값 = 계획.status === "점검 중" ? { ...계획, status: 기존?.status ?? "점검 전" } : 계획;
     const 다음 = 기존 ? 이전.map((p) => (p.id === 값.id ? 값 : p)) : [값, ...이전];
     계획Ref.current = 다음;
@@ -1495,6 +1504,7 @@ export default function CheckumaitApp() {
       notify("이미 점검 중인 지출 계획입니다.");
       return false;
     }
+    실패작업지우기([입력.계획.id]);
     if (!계획Ref.current.some((p) => p.id === 입력.계획.id)) 계획반영(입력.계획);
     const 키 = 다음작업키.current++;
     작업바꾸기((이전) => [...이전, { ...입력, 키, 최소화: !!입력.접힘, 접은적: !!입력.접힘 }]);
@@ -1882,6 +1892,7 @@ export default function CheckumaitApp() {
     //    서버가 실패하면 '되돌립니다' — 낙관적 삭제 + 롤백.
     const 이전계획 = plans;
     const 이전일정 = schedules;
+    실패작업지우기(targets);
     persistPlans(plans.filter((plan) => !targets.includes(plan.id)));
     persistSchedules(schedules.filter((item) => !targets.includes(item.planId)));
 
