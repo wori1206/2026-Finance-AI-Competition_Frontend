@@ -3890,7 +3890,7 @@ function HomePage({
                 <span className="home-v4-row-text">
                   <b>{plan.name}</b>
                   <small>
-                    {(plan.status === "위험" ? plan.aiSummary : plan.nextAction || plan.aiSummary) || plan.category}
+                    {(plan.status === "위험" ? plan.aiSummary : plan.nextAction || plan.aiSummary) || 비목표기(plan.category)}
                     {" · "}
                     {won(plan.amount)}
                   </small>
@@ -4066,6 +4066,13 @@ function 진행추가(이전: 진행항목[], 항목: 진행항목): 진행항�
   if (위치 < 0) return [...이전, { ...항목, 처음: 지금, 갱신: 지금 }];
   return 이전.map((v, i) => (i === 위치 ? { ...항목, 처음: v.처음 ?? 지금, 갱신: 지금 } : v));
 }
+
+/**
+ * v058: 서버가 모든 비목에 함께 적용되는 규정으로 분류한 지출의 비목 값(규정 정식명, 서버 `_common.모든비목_정식명`).
+ * 「어느 비목?」 으로 읽히지 않게 화면에는 「모든 비목 공통」 으로 보입니다. 저장 · 비교 · 서버로 다시 보내는 값은 그대로 둡니다.
+ */
+const 모든비목_정식명 = "창업기업등 사업비 비목";
+const 비목표기 = (비목: string) => (비목 === 모든비목_정식명 ? "모든 비목 공통" : 비목);
 
 /** 공개 정보 유형(서버 `web_research.KINDS`) → 화면 이름. 모르는 값은 그대로 내보내지 않습니다. */
 const 조사유형이름: Record<string, string> = {
@@ -5031,7 +5038,7 @@ function PlansPage({
                     onChange={(event) => setDetailFilters((value) => ({ ...value, category: event.target.value }))}
                   >
                     <option value="">전체 비목</option>
-                    {categories.map((category) => <option key={category} value={category}>{category}</option>)}
+                    {categories.map((category) => <option key={category} value={category}>{비목표기(category)}</option>)}
                   </select>
                 </label>
                 <label>
@@ -5225,7 +5232,7 @@ function PlansPage({
                     <b>{plan.name}</b>
                     {plan.현재단계 && <small className="plan-current-stage">현재: {plan.현재단계}</small>}
                   </td>
-                  <td>{plan.category || "미정"}</td>
+                  <td>{비목표기(plan.category) || "미정"}</td>
                   <td className="amount-cell"><strong>{won(plan.amount)}</strong></td>
                   <td className="status-cell"><Status value={plan.status} /></td>
                   <td className="action-cell planned-date-cell">
@@ -7529,8 +7536,8 @@ function PlanDetail({
   // 주의: 수정 창에서 화면에만 고친 비목이면 그 값을 그대로 보여 줍니다. 옛 세목을 붙이면 고친 비목과 어긋납니다.
   // 조건 묶음이나 AI 해설에 이미 있는 문장은 결제 전 확인에 다시 적지 않습니다
   const 표시분류 = plan.화면만수정
-    ? plan.category
-    : plan.분류?.표시문 ?? (plan.확정세목 ? `${plan.category} > ${plan.확정세목}` : plan.category);
+    ? 비목표기(plan.category)
+    : plan.분류?.표시문 ?? (plan.확정세목 ? `${plan.category} > ${plan.확정세목}` : 비목표기(plan.category));
   return (
     <div className="page expense-detail-page expense-detail-redesign expense-v5">
       <header className="expense-v5-header">
@@ -7710,7 +7717,7 @@ function PlanDetail({
                     ? "아직 AI 점검을 하지 않았습니다."
                     : 코드판정제목(plan.코드판정, 표시분류) ??
                       판정제목(plan.판정, 표시분류, Boolean(plan.문의초안)) ??
-                      `${plan.category} 기준으로 ${
+                      `${비목표기(plan.category)} 기준으로 ${
                         plan.status === "특이사항 없음"
                           ? "특이사항이 없습니다."
                           : "추가 확인이 필요합니다."
@@ -8384,7 +8391,7 @@ function LegacyPlanDetail({
             </div>
           </header>
           <dl className="compact-expense-info">
-            <Info label="예상 비목" value={plan.category} />
+            <Info label="예상 비목" value={비목표기(plan.category)} />
             <Info label="예상 금액" value={won(plan.amount)} />
             <Info
               label="예상 지출일"
@@ -8409,7 +8416,7 @@ function LegacyPlanDetail({
             <div className="result-summary">
               <div>
                 <b>
-                  {plan.category} 기준으로{" "}
+                  {비목표기(plan.category)} 기준으로{" "}
                   {plan.status === "특이사항 없음"
                     ? "주요 준비가 확인됐습니다."
                     : "추가 확인이 필요합니다."}
@@ -8697,7 +8704,7 @@ function EditPlan({
               onChange={(e) => setPlan({ ...plan, category: e.target.value })}
             >
               {!plan.category && <option value="">비목 선택</option>}
-              {plan.category && !비목선택지.includes(plan.category) && <option>{plan.category}</option>}
+              {plan.category && !비목선택지.includes(plan.category) && <option value={plan.category}>{비목표기(plan.category)}</option>}
               {비목선택지.map((item) => (
                 <option key={item}>{item}</option>
               ))}
@@ -9412,7 +9419,7 @@ function SchedulePage({
                     >
                       <span className="upcoming-plan-name">
                         <b>{group.name}</b>
-                        <small>{group.category || "비목 미정"}</small>
+                        <small>{비목표기(group.category) || "비목 미정"}</small>
                       </span>
                       <span className="upcoming-plan-meta">
                         <small>일정 수</small>
@@ -9815,7 +9822,7 @@ function ScheduleDetailModal({
   edit: () => void;
 }) {
   const related = plan
-    ? `${plan.name} · ${plan.category || "비목 미정"} · ${won(plan.amount)}`
+    ? `${plan.name} · ${비목표기(plan.category) || "비목 미정"} · ${won(plan.amount)}`
     : item.planId === "other"
       ? "기타"
       : "연결된 지출 계획 없음";
@@ -10925,7 +10932,7 @@ function FloatingChat({
           <span>현재 지출</span>
           <b>{current.name}</b>
           <small>
-            {current.category} · {won(current.amount)} · {current.status}
+            {비목표기(current.category)} · {won(current.amount)} · {current.status}
           </small>
         </div>
       )}
