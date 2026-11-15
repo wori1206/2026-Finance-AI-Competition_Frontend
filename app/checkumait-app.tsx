@@ -10,7 +10,7 @@ import type { 기준문서정보,
 } from "../lib/types";
 import type { 서버팀, 비목후보, 답변항목, 확인질문, 사용자답변항목, 판정피드백, 부가세구분, 분류값, 추가입력칸, 용어풀이항목, 코드판정값, 확인한조건항목 } from "../lib/server-types";
 import { API켜짐 } from "../lib/config";
-import { 판정실행 } from "../lib/judge";
+import { 판정실행, 판정실패오류, 판정실패문장 } from "../lib/judge";
 import { 정규화하기, type 정규화출력 } from "../lib/normalize";
 import { 인증오류 } from "../lib/http";
 import { 계획목록, 계획상세, 비목목록, 계획추가, 계획수정, 규정업로드, 규정처리기다리기, 규정적용, 규정거절, 조문연결저장, L3현재문서목록, 팀조회, 팀만들기, 초대코드재발급, 팀들어가기, 팀나가기, 팀원내보내기, 계획삭제, 일정수정, 피드백저장 } from "../lib/api";
@@ -1500,12 +1500,20 @@ export default function CheckumaitApp() {
     작업바꾸기((이전) => [...이전, { ...입력, 키, 최소화: !!입력.접힘, 접은적: !!입력.접힘 }]);
     return true;
   };
-  const 판정끝 = (키: number, 판정된계획?: ExpensePlan, 오류?: string, 기록?: 판정기록) => {
+  const 판정끝 = (키: number, 판정된계획?: ExpensePlan, 오류?: string, 기록?: 판정기록, 다시점검?: boolean) => {
     const 작업 = 작업Ref.current.find((j) => j.키 === 키);
     if (!작업) return;
     if (기록) {
       const 남길값 = { ...기록, 오류 };
       set판정기록들((이전) => ({ ...이전, [작업.계획.id]: 남길값, ...(판정된계획 ? { [판정된계획.id]: 남길값 } : {}) }));
+    }
+    // 판정실패(AI 연결 실패): 작업을 지우지 않고 「다시 점검」 을 보입니다. 입력 · 답은 작업에 그대로 남아 같은 내용으로 다시 부릅니다.
+    //    「닫기」 를 눌러야 시작한 화면에 실패를 알립니다(`판정실패닫기`).
+    if (다시점검) {
+      작업바꾸기((이전) => 이전.map((j) => (j.키 === 키 ? { ...j, 결과: { 오류, 다시점검: true } } : j)));
+      if (작업.최소화) notify(`'${작업.계획.name}' 점검을 마치지 못했습니다. 다시 점검해 주세요.`);
+      탭제목알림("점검 실패 · 써도돼요");
+      return;
     }
     // 점검 중에 지운 계획을 결과로 되살리지 않습니다.
     if (판정된계획 && 계획Ref.current.some((p) => p.id === 판정된계획.id)) 계획반영(판정된계획);
@@ -1526,14 +1534,32 @@ export default function CheckumaitApp() {
     notify(오류 ? `'${작업.계획.name}' 점검을 마치지 못했습니다.` : `'${작업.계획.name}' 점검이 끝났습니다.`);
     탭제목알림(오류 ? "점검 실패 · 써도돼요" : "점검 완료 · 써도돼요");
   };
+  /** 판정실패한 작업을 같은 입력 · 답으로 다시 시작합니다. 키를 바꿔 점검 화면을 새로 그립니다. */
+  const 다시점검 = (키: number) => {
+    const 작업 = 작업Ref.current.find((j) => j.키 === 키);
+    if (!작업) return;
+    if (점검중인가(작업.계획.id)) {
+      notify("이미 점검 중인 지출 계획입니다.");
+      return;
+    }
+    const 새키 = 다음작업키.current++;
+    작업바꾸기((이전) => 이전.map((j) => (j.키 === 키 ? { ...j, 키: 새키, 결과: undefined } : j)));
+  };
+  /** 판정실패 화면을 닫습니다. 시작한 화면이 남아 있으면 지금까지처럼 실패를 알립니다. */
+  const 판정실패닫기 = (작업: 판정작업) => {
+    작업바꾸기((이전) => 이전.filter((j) => j.키 !== 작업.키));
+    if (!작업.접은적) 작업.끝남(undefined, 작업.결과?.오류);
+  };
   const 도는작업있음 = 작업들.some((j) => !j.결과);
   // 점검 화면이 페이지 자리를 차지하고 있는지. 이때 다른 페이지 내용은 숨깁니다(지우지 않아 입력값이 남습니다).
-  const 점검화면중 = 작업들.some((j) => !j.결과 && !j.최소화);
+  //    판정실패 화면도 펼쳐 둔 동안은 같은 자리를 씁니다.
+  const 점검화면중 = 작업들.some((j) => (!j.결과 || j.결과.다시점검) && !j.최소화);
   // 사이드바 · 뒤로 가기로 다른 화면에 가면 점검은 접어 두고 그 화면을 보여 줍니다. 끝나면 아래 알림으로 알립니다.
   const 화면키 = route.page === "plan-detail" ? `plan-detail:${route.id}` : route.page;
   useEffect(() => {
-    if (!작업Ref.current.some((j) => !j.결과 && !j.최소화)) return;
-    작업바꾸기((이전) => 이전.map((j) => (!j.결과 && !j.최소화 ? { ...j, 최소화: true, 접은적: true } : j)));
+    const 펼침 = (j: 판정작업) => (!j.결과 || j.결과.다시점검) && !j.최소화;
+    if (!작업Ref.current.some(펼침)) return;
+    작업바꾸기((이전) => 이전.map((j) => (펼침(j) ? { ...j, 최소화: true, 접은적: true } : j)));
   }, [화면키]);
   useEffect(() => {
     if (!도는작업있음) return;
@@ -2051,7 +2077,32 @@ export default function CheckumaitApp() {
         <DataSourceBanner />
         {/* 판정 중인 작업. 펼친 작업은 페이지 자리에 그려지고(`.judge-run`), 접은 작업과 끝난 작업은 오른쪽 아래 알림입니다. */}
         {작업들.map((작업, 순번) =>
-          작업.결과 ? (
+          작업.결과?.다시점검 && !작업.최소화 ? (
+            <판정실패화면
+              key={작업.키}
+              이름={작업.계획.name}
+              순번={순번}
+              다시점검={() => 다시점검(작업.키)}
+              닫기={() => 판정실패닫기(작업)}
+            />
+          ) : 작업.결과?.다시점검 ? (
+            <aside
+              key={작업.키}
+              className="judge-pill failed"
+              role="status"
+              style={{ bottom: 20 + 파일높이 * 순번 }}
+            >
+              <Icon name="alert" size={18} />
+              <span>
+                <b>{작업.계획.name}</b>
+                <small title={판정실패문장}>{판정실패문장}</small>
+              </span>
+              <button onClick={() => 다시점검(작업.키)}>다시 점검</button>
+              <button aria-label="알림 닫기" onClick={() => 판정실패닫기(작업)}>
+                ×
+              </button>
+            </aside>
+          ) : 작업.결과 ? (
             <aside
               key={작업.키}
               className={`judge-pill ${작업.결과.오류 || 작업.결과.저장안됨 ? "failed" : "done"}`}
@@ -2109,7 +2160,7 @@ export default function CheckumaitApp() {
               }}
               펼치기={() => 작업바꾸기((이전) => 이전.map((j) => (j.키 === 작업.키 ? { ...j, 최소화: false } : j)))}
               onComplete={(판정된계획, 기록) => 판정끝(작업.키, 판정된계획, undefined, 기록)}
-              onFail={(메시지, 기록) => 판정끝(작업.키, undefined, 메시지, 기록)}
+              onFail={(메시지, 기록, 다시점검) => 판정끝(작업.키, undefined, 메시지, 기록, 다시점검)}
             />
           ),
         )}
@@ -4194,7 +4245,8 @@ type 판정작업 = 판정시작입력 & {
   최소화: boolean;
   /** 한 번이라도 접었으면 시작한 페이지가 이미 없을 수 있어 최상단이 끝까지 맡습니다. */
   접은적?: boolean;
-  결과?: { 오류?: string; 저장안됨?: boolean };
+  /** 다시점검 = AI 연결 실패로 판정을 못 냈다(서버 `판정실패`). 같은 입력으로 다시 점검할 수 있게 작업을 남겨 둡니다. */
+  결과?: { 오류?: string; 저장안됨?: boolean; 다시점검?: boolean };
 };
 
 function AiCheckingOverlay({
@@ -4256,7 +4308,8 @@ function AiCheckingOverlay({
   이전진행?: 진행항목[];
   /** 기록은 이번 판정에서 받은 작업 내역입니다. 결과 화면의 「작업 내역 보기」가 씁니다. */
   onComplete: (판정된계획?: ExpensePlan, 기록?: 판정기록) => void;
-  onFail?: (메시지: string, 기록?: 판정기록) => void;
+  /** `다시점검` 은 AI 연결 실패로 판정을 못 냈을 때 true 입니다. 최상단이 「다시 점검」 을 보입니다. */
+  onFail?: (메시지: string, 기록?: 판정기록, 다시점검?: boolean) => void;
 }) {
   const [, setStage] = useState(0);
   const [설명, set설명] = useState("");
@@ -4314,7 +4367,7 @@ function AiCheckingOverlay({
             set진행항목들(진행Ref.current);
           },
           // 주의: 서버는 진행 3개를 처음에 한꺼번에 보내고, 판정이 끝날 때까지는 12초마다
-          //    keep-alive 만 보냅니다. 이걸로 다시 재지 않으면 서버 마감(180초) 안에 끝날
+          //    keep-alive 만 보냅니다. 이걸로 다시 재지 않으면 서버 마감(660초) 안에 끝날
           //    판정도 150초에 「오래 걸립니다」로 끊고, 서버는 그 뒤에 저장합니다.
           활동: () => {
             진행시각.current = Date.now();
@@ -4346,7 +4399,7 @@ function AiCheckingOverlay({
         if (!살아있음) return;
         진행중.current = null;          // 다음 시도는 새로 부를 수 있게
         const 메시지 = e instanceof Error ? e.message : "점검에 실패했습니다";
-        if (onFail) onFail(메시지, 기록());
+        if (onFail) onFail(메시지, 기록(), e instanceof 판정실패오류);
         else onComplete(undefined, 기록());
       });
 
@@ -4401,6 +4454,30 @@ function AiCheckingOverlay({
       </p>
       <div className="judge-run-actions">
         <button type="button" className="outline" onClick={접기}>점검은 두고 다른 화면 보기</button>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * 판정실패 화면. AI 연결이 끝내 실패해 판정을 못 냈을 때 점검 화면 자리에 그립니다.
+ * 판정이 아니므로 판정 배지 · 문의 초안을 보이지 않습니다. 「다시 점검」 은 입력 · 답을 그대로 다시 보냅니다.
+ */
+function 판정실패화면({ 이름, 순번, 다시점검, 닫기 }: { 이름: string; 순번: number; 다시점검: () => void; 닫기: () => void }) {
+  return (
+    <section className="page judge-run" aria-labelledby={`judge-fail-title-${순번}`} role="alert">
+      <header className="judge-run-head">
+        <small>{이름}</small>
+        <h1 id={`judge-fail-title-${순번}`}>{판정실패문장}</h1>
+      </header>
+      <p className="judge-run-note">
+        입력하고 답한 내용은 그대로 두었어요. 다시 점검하면 같은 내용으로 다시 확인해요.
+        <br />
+        이번 점검 결과는 저장되지 않았어요.
+      </p>
+      <div className="judge-run-actions">
+        <button type="button" className="primary" onClick={다시점검}>다시 점검</button>
+        <button type="button" className="outline" onClick={닫기}>닫기</button>
       </div>
     </section>
   );
