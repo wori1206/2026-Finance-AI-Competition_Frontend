@@ -6044,7 +6044,10 @@ function NewPlanPage({
         if (카드) {
           set재조사후보(r.재조사후보 ?? []);
           // v056: 거래 유형 확인 카드는 하나만 고르므로 이번 후보에 남은 답도 하나까지입니다.
-          set재조사답((이전) => Object.fromEntries((r.재조사후보 ?? []).flatMap((c): [string, 조사답변][] => (이전[c.id] ? [[c.id, 이전[c.id]]] : [])).slice(0, 1)));
+          set재조사답((이전) => {
+            const 남길답 = (r.재조사후보 ?? []).flatMap((c): [string, 조사답변][] => (이전[c.id] ? [[c.id, 이전[c.id]]] : []));
+            return Object.fromEntries(남길답.slice(0, 1));
+          });
         }
         set조사확인단계(true);
         set검색기록(진행Ref.current);
