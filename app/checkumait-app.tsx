@@ -6001,7 +6001,12 @@ function NewPlanPage({
         if (조사다시시도.current) { set조사후보들([]); set조사답({}); }
         if (r.다음행동 === "재조사확인") {
           set재조사후보(r.재조사후보 ?? []);
-          set재조사답((이전) => Object.fromEntries((r.재조사후보 ?? []).flatMap((c) => (이전[c.id] ? [[c.id, 이전[c.id]]] : []))));
+          // v056: 후보 종류가 바뀌면 앞 답을 버립니다. 거래 유형 확인 카드는 하나만 고르므로 남길 답도 하나까지입니다.
+          set재조사답((이전) => {
+            if (재조사종류 !== r.재조사종류) return {};
+            const 남길답 = (r.재조사후보 ?? []).flatMap((c): [string, 조사답변][] => (이전[c.id] ? [[c.id, 이전[c.id]]] : []));
+            return Object.fromEntries(r.재조사종류 === "거래유형" ? 남길답.slice(0, 1) : 남길답);
+          });
           set재조사종류(r.재조사종류);
         }
         set조사확인단계(true);
