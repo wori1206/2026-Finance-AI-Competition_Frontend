@@ -123,16 +123,21 @@ export async function 정규화하기(
 ): Promise<정규화출력> {
   let 결과: Record<string, unknown> = {};
   let 오류: string | null = null;
+  let 다음행동: string | undefined;
 
   await 정규화SSE(입력, (이름, 값) => {
     const v = (값 ?? {}) as Record<string, unknown>;
     if (이름 === "진행") 진행?.(typeof v["설명"] === "string" ? v["설명"] : "정리하는 중");
     if (이름 === "결과") 결과 = v;
     // 주의: 실패가 HTTP 500 이 아니라 '오류 이벤트' 로 옵니다. try/catch 로는 안 잡힙니다.
-    if (이름 === "오류") 오류 = typeof v["메시지"] === "string" ? v["메시지"] : "정리에 실패했습니다";
+    if (이름 === "오류") {
+      오류 = typeof v["메시지"] === "string" ? v["메시지"] : "정리에 실패했습니다";
+      // v053: 연결 오류가 서버 재시도 뒤에도 이어지면 「다시시도」 가 옵니다. 화면은 그 단계에 머물러 같은 버튼으로 다시 보냅니다.
+      다음행동 = typeof v["다음행동"] === "string" ? v["다음행동"] : undefined;
+    }
   });
 
-  if (오류) throw new Error(오류);
+  if (오류) throw Object.assign(new Error(오류), { 다음행동 });
 
   return {
     비목후보: 후보정리(결과["비목후보"]),
@@ -141,4 +146,9 @@ export async function 정규화하기(
     질문원문: typeof 결과["질문원문"] === "string" ? (결과["질문원문"] as string) : "",
     심층질문: 심층질문정리(결과["심층질문"]),
   };
+}
+
+/** v053: 서버가 연결 오류 끝에 「다시 시도」 를 안내한 정리 실패인지. 화면은 이때 같은 단계에 머뭅니다. */
+export function 다시시도오류(e: unknown): boolean {
+  return e instanceof Error && (e as Error & { 다음행동?: string }).다음행동 === "다시시도";
 }

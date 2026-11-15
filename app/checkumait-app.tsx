@@ -11,7 +11,7 @@ import type { 기준문서정보,
 import type { 서버팀, 비목후보, 답변항목, 확인질문, 사용자답변항목, 판정피드백, 부가세구분, 분류값, 추가입력칸, 용어풀이항목, 코드판정값, 확인한조건항목 } from "../lib/server-types";
 import { API켜짐 } from "../lib/config";
 import { 판정실행, 판정실패오류, 판정실패문장 } from "../lib/judge";
-import { 정규화하기, type 정규화출력 } from "../lib/normalize";
+import { 다시시도오류, 정규화하기, type 정규화출력 } from "../lib/normalize";
 import { 인증오류 } from "../lib/http";
 import { 계획목록, 계획상세, 비목목록, 계획추가, 계획수정, 규정업로드, 규정처리기다리기, 규정적용, 규정거절, 조문연결저장, L3현재문서목록, 팀조회, 팀만들기, 초대코드재발급, 팀들어가기, 팀나가기, 팀원내보내기, 계획삭제, 일정수정, 피드백저장 } from "../lib/api";
 import type { L3처리결과, L3현재문서 } from "../lib/server-types";
@@ -5492,6 +5492,8 @@ function NewPlanPage({
     숨김Ref.current = 숨김;
   }, [숨김]);
   const 만료재시도 = useRef(false);
+  // v053: 품목 조사(공개 정보 확인) 단계가 연결 오류로 끝났다. 「다시 시도」 는 답변 없이 품목 조사부터 다시 요청합니다.
+  const 조사다시시도 = useRef(false);
   // 「AI 점검하기」 때 서버에서 받은 확인 질문입니다. 예시 모드에서는 쓰지 않습니다.
   const [서버질문, set서버질문] = useState<확인질문[]>([]);
   const [질문세트, set질문세트] = useState<string | null>(null);
@@ -5711,11 +5713,13 @@ function NewPlanPage({
       .catch((e: unknown) => {
         if (!살아있음) return false;
         set연동오류(e instanceof Error ? e.message : "정리에 실패했습니다");
-        return false;
+        // v053: 서버 연결 오류가 이어져 정리하지 못했으면 이 화면에 머물러 「다음」 으로 다시 보냅니다.
+        return 다시시도오류(e) ? null : false;
       })
       .then((서버가분류) => {
         if (!살아있음) return;
         setCategoryLoading(false);
+        if (서버가분류 === null) return;
         // v045: 새 경로는 비목 단계 없이 바로 분류 · 확인 질문을 받습니다. 정리가 실패하면 예전처럼 직접 고릅니다.
         if (서버가분류) 질문받기시작();
         else setStep(2);
@@ -5754,6 +5758,12 @@ function NewPlanPage({
       .then((r) => 살아있음 && 칸채우기(r))
       .catch((e: unknown) => {
         if (!살아있음) return;
+        // v053: 서버 연결 오류가 이어져 정리하지 못했으면 문장 입력 화면에 머물러 같은 버튼으로 다시 보냅니다.
+        if (다시시도오류(e)) {
+          set연동오류(e instanceof Error ? e.message : "정리하지 못했습니다");
+          set정리중(false);
+          return;
+        }
         set연동오류(`${e instanceof Error ? e.message : "정리하지 못했습니다"} 칸을 직접 확인해 주세요.`);
         칸채우기(null);
       });
@@ -5946,6 +5956,7 @@ function NewPlanPage({
           return;
         }
         set분류없음({ 다음행동: r.다음행동 ?? "다시시도", 안내: r.분류안내 ?? "" });
+        조사다시시도.current = !조사확인단계 && 웹조사 && (r.다음행동 ?? "다시시도") === "다시시도";
         if (r.다음행동 === "재조사확인") {
           set재조사후보(r.재조사후보 ?? []);
           set재조사답((이전) => Object.fromEntries((r.재조사후보 ?? []).flatMap((c) => (이전[c.id] ? [[c.id, 이전[c.id]]] : []))));
@@ -5958,6 +5969,7 @@ function NewPlanPage({
         return;
       }
       set분류없음(null);
+      조사다시시도.current = false;
       if (!조사확인단계) {
         set조사후보들(r.조사후보 ?? []);
         set직접확인들(r.사용자확인 ?? []);
@@ -6422,6 +6434,12 @@ function NewPlanPage({
               확인다음();
             } else if (step === 2) {
               둘째단계다음();
+            } else if (조사확인단계 && 분류없음?.다음행동 === "다시시도" && 조사다시시도.current) {
+              // v053: 품목 조사에서 끝났으면 확인할 후보가 아직 없습니다. 답변 없이 품목 조사부터 다시 요청합니다.
+              조사다시시도.current = false;
+              set분류없음(null);
+              set조사확인단계(false);
+              setQuestionsLoading(true);
             } else if (조사확인단계) setQuestionsLoading(true);
             else submit();
           }}
