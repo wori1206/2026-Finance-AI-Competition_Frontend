@@ -975,6 +975,14 @@ const 비목이름들 = [...EXPENSE_CATEGORIES].sort((a, b) => b.length - a.leng
 const 비목경로들 = createContext<readonly string[]>([]);
 const 정규식글 = (글: string) => 글.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+/** v069: 글을 문장으로 나눠 두 문장씩 묶습니다(마침표 · 물음표 · 느낌표 뒤 공백 기준). 「1.5배」 처럼 공백 없는 마침표는 나누지 않습니다. */
+const 두문장씩 = (글: string): string[] => {
+  const 문장 = 글.split(/(?<=[.?!])\s+/).filter(Boolean);
+  const 묶음: string[] = [];
+  for (let i = 0; i < 문장.length; i += 2) 묶음.push(문장.slice(i, i + 2).join(" "));
+  return 묶음;
+};
+
 /** v065: AI 가 쓴 글 속 비목 이름(또는 아는 분류 경로)을 칩으로 보입니다. 문의 초안처럼 복사해 보내는 글에는 쓰지 않습니다. */
 function CategoryChips({ 글 }: { 글: string }) {
   const 경로들 = useContext(비목경로들).filter((v) => v.includes(" > "));
@@ -6544,7 +6552,7 @@ function NewPlanPage({
       {/* v067: 점검 페이지가 뜨기 전(정리 · 검색 · 분류 · 질문 준비)에도 AI 가 도는 중임을 버튼 바로 위에 알립니다. */}
       {(categoryLoading || questionsLoading || 정리중) && (
         <div className="new-plan-running" role="status">
-          <span className="ai-checking-spinner" aria-hidden="true" />
+          <span className="new-plan-running-icon" aria-hidden="true"><Icon name="spark" size={18} /></span>
           <div>
             <b>AI가 지출 내용을 확인하고 있어요.</b>
             <small>몇 분 걸릴 수 있어요. 다른 화면으로 가도 계속 진행되고, 끝나면 오른쪽 아래에 알려 드릴게요. 탭을 닫거나 새로고침하면 처음부터 다시 해야 해요.</small>
@@ -7780,12 +7788,13 @@ function PlanDetail({
                 {/* 주의: 여기는 '서버가 실제로 판단한 문장' 자리입니다.
                     예전에는 화면에 박아 둔 문구라, 어떤 계획을 열어도 같은 해설이
                     나왔습니다. 서버 요약이 있으면 그걸 보여줍니다. */}
-                <p>
-                  <CategoryChips 글={plan.aiSummary ||
-                    (plan.status === "특이사항 없음"
-                      ? "현재 조건에서는 주요 사전 준비가 확인됐습니다. 집행 후 증빙을 빠짐없이 보관하세요."
-                      : "사업계획과의 연관성은 확인됐습니다. 다만 계약 전에 과업 범위, 결과물, 검수 기준을 문서로 명확히 하고 금액 적정성과 특수관계 여부를 추가로 확인해야 합니다.")} />
-                </p>
+                {/* v069: 두 문장마다 줄을 바꿔 읽기 쉽게 보입니다. */}
+                {두문장씩(plan.aiSummary ||
+                  (plan.status === "특이사항 없음"
+                    ? "현재 조건에서는 주요 사전 준비가 확인됐습니다. 집행 후 증빙을 빠짐없이 보관하세요."
+                    : "사업계획과의 연관성은 확인됐습니다. 다만 계약 전에 과업 범위, 결과물, 검수 기준을 문서로 명확히 하고 금액 적정성과 특수관계 여부를 추가로 확인해야 합니다.")).map((줄, i) => (
+                  <p key={i}><CategoryChips 글={줄} /></p>
+                ))}
                 <꼭알아야할것 plan={plan} />
               </div>
             </div>
