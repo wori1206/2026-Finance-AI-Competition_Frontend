@@ -13,7 +13,7 @@ import { API켜짐 } from "../lib/config";
 import { 판정실행, 판정실패오류, 판정실패문장, 판정요청오류문장, 판정요청오류안내, 새멱등키 } from "../lib/judge";
 import { 다시시도오류, 정규화하기, type 정규화출력 } from "../lib/normalize";
 import { 인증오류 } from "../lib/http";
-import { 계획목록, 계획상세, 비목목록, 계획추가, 계획수정, 규정업로드, 규정처리기다리기, 규정적용, 규정거절, 조문연결저장, L3현재문서목록, 팀조회, 팀만들기, 초대코드재발급, 팀들어가기, 팀나가기, 팀원내보내기, 계획삭제, 일정수정, 피드백저장 } from "../lib/api";
+import { 할일추가, 계획목록, 계획상세, 비목목록, 계획추가, 계획수정, 규정업로드, 규정처리기다리기, 규정적용, 규정거절, 조문연결저장, L3현재문서목록, 팀조회, 팀만들기, 초대코드재발급, 팀들어가기, 팀나가기, 팀원내보내기, 계획삭제, 일정수정, 피드백저장 } from "../lib/api";
 import type { L3처리결과, L3현재문서 } from "../lib/server-types";
 import { 체크저장, 일정변경저장, 일정등록, 일정지우기, 점검일정인가 } from "../lib/tasks";
 import { 기본규정, 서버규정읽기, type 적용규정항목 } from "../lib/norms";
@@ -1210,6 +1210,37 @@ const displayPlanStatus = (value: PlanStatus) =>
 /** v033: 판정 카드 색. 불가 = risk, 확인 필요 = warn, 가능 = safe, 그 밖(점검 전 등) = draft */
 function 판정색(value: PlanStatus): "risk" | "warn" | "safe" | "draft" {
   return value === "위험" ? "risk" : value === "특이사항 없음" ? "safe" : value === "확인 필요" ? "warn" : "draft";
+}
+
+/** v070: 문의 초안이 있는 「확인 필요」 계획의 결제 전 확인에 넣는 항목. 이 글자로 있는지 찾습니다. */
+const 문의완료항목 = "담당자 문의 완료";
+/** v070: 「담당자 문의 완료」 를 넣고 있는 계획 id. 같은 항목을 두 번 만들지 않게 합니다(개발 모드 효과 두 번 실행 포함). */
+const 문의항목추가중 = new Set<string>();
+
+/**
+ * v070: 판정은 「확인 필요」 그대로인데 결제 전 확인을 모두 마쳤다(문의 초안이 있으면 「담당자 문의 완료」 포함).
+ * 판정 값은 바꾸지 않고 화면에서 「확인 완료」 로 가능한 지출처럼 다룹니다. 체크는 서버에 저장되므로 따로 저장하지 않습니다.
+ * 주의: 상세를 받은 계획(최근 20건 · 열어 본 계획)만 셀 수 있습니다. 나머지는 「확인 필요」 로 보입니다.
+ */
+function 확인완료(p: ExpensePlan): boolean {
+  if (p.status !== "확인 필요" || !p.결제전확인수) return false;
+  if (!p.aiChecks.length || !p.aiChecks.every((c) => c.done)) return false;
+  return !p.문의초안 || p.aiChecks.some((c) => c.label === 문의완료항목);
+}
+
+/** v070: 초록 「확인 완료」 배지. */
+function 확인완료배지() {
+  return (
+    <span className="status status-confirmed">
+      <Icon name="check" size={14} />
+      확인 완료
+    </span>
+  );
+}
+
+/** v070: 목록 · 홈의 계획 배지. 확인 완료면 「확인 필요」 대신 초록 「확인 완료」 입니다. */
+function 계획배지({ plan }: { plan: ExpensePlan }) {
+  return 확인완료(plan) ? <확인완료배지 /> : <Status value={plan.status} />;
 }
 
 function Status({ value }: { value: PlanStatus }) {
@@ -3748,7 +3779,7 @@ function HomePage({
   const 계획끝 = Math.min(100, 집행비율 + 비율(계획));
 
   const 확인할지출 = plans
-    .filter((p) => p.status === "위험" || p.status === "확인 필요" || p.status === "재점검 필요")
+    .filter((p) => (p.status === "위험" || p.status === "확인 필요" || p.status === "재점검 필요") && !확인완료(p))
     .sort(
       (a, b) =>
         Number(b.status === "위험") - Number(a.status === "위험") ||
@@ -3931,7 +3962,7 @@ function HomePage({
                     {won(plan.amount)}
                   </small>
                 </span>
-                <Status value={plan.status} />
+                <계획배지 plan={plan} />
               </button>
             ))
           )}
@@ -5246,7 +5277,7 @@ function PlansPage({
                   </td>
                   <td>{비목표기(plan.category) || "미정"}</td>
                   <td className="amount-cell"><strong>{won(plan.amount)}</strong></td>
-                  <td className="status-cell"><Status value={plan.status} /></td>
+                  <td className="status-cell"><계획배지 plan={plan} /></td>
                   <td className="action-cell planned-date-cell">
                     <span className="planned-date-content">
                     <time>{plan.plannedDate ? plan.plannedDate.replaceAll("-", ".") : "미정"}</time>
@@ -5404,7 +5435,7 @@ function PlansPage({
               {plans.filter((plan) => selected.includes(plan.id)).map((plan) => (
                 <button key={plan.id} onClick={() => go({ page: "plan-detail", id: plan.id })}>
                   <span><b>{plan.name}</b><small>예상 지출일 {plan.plannedDate ? plan.plannedDate.replaceAll("-", ".") : "미정"}</small></span>
-                  <Status value={plan.status} />
+                  <계획배지 plan={plan} />
                   <span className="bulk-result-arrow">›</span>
                 </button>
               ))}
@@ -7467,6 +7498,33 @@ function PlanDetail({
   const [집행확인, set집행확인] = useState<null | "등록" | "수정">(null);
   // v031: 「AI 점검 결과」와 「집행 준비」를 탭으로 나눠 한 화면이 아래로 길게 늘어지지 않게 합니다.
   const [상세탭, set상세탭] = useState<"ai" | "prep">("ai");
+  // v070: 「확인 완료」 는 [내용 반영하기] 를 누르면(또는 이미 다 마친 채 열면) 판정 카드 옆에 보입니다.
+  const 완료 = !!plan && 확인완료(plan);
+  const [반영함, set반영함] = useState(() => 완료);
+  const [준비탭반짝, set준비탭반짝] = useState(false);
+  const 탭바Ref = useRef<HTMLElement>(null);
+  const 내용반영 = () => {
+    set반영함(true);
+    탭바Ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    set준비탭반짝(true);
+    window.setTimeout(() => set준비탭반짝(false), 1800);
+  };
+  // v070: 문의 초안이 있는 「확인 필요」 면 결제 전 확인에 「담당자 문의 완료」 를 한 번 넣습니다(서버 할일).
+  const 문의항목필요 =
+    !!plan && API켜짐() && plan.status === "확인 필요" && !!plan.문의초안 && !plan.aiChecks.some((c) => c.label === 문의완료항목);
+  useEffect(() => {
+    if (!plan || !문의항목필요 || 문의항목추가중.has(plan.id)) return;
+    문의항목추가중.add(plan.id);
+    할일추가(plan.id, {
+      항목: 문의완료항목,
+      설명: "문의 초안으로 주관기관 담당자에게 확인하고 집행해도 된다는 답을 받았으면 체크해 주세요.",
+      구분: "결제전",
+    })
+      .then(() => 계획상세(plan.id))
+      .then((d) => update(상세를계획으로(d)))
+      .catch(() => 문의항목추가중.delete(plan.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [문의항목필요, plan?.id]);
   const [일정안내, 일정안내닫기] = useFirstVisitTip("일정에추가");
   const [첨부안내, 첨부안내닫기] = useFirstVisitTip("첨부");
   const 집행잠김 = 집행등록됨 && !집행수정중;
@@ -7483,6 +7541,8 @@ function PlanDetail({
     );
   const toggle = (group: "aiChecks" | "evidence", id: string) => {
     const 켜짐 = !plan[group].find((item) => item.id === id)?.done;
+    // v070: 하나라도 풀면 「확인 완료」 를 내리고, 다시 다 채우면 [내용 반영하기] 로 다시 반영합니다.
+    if (!켜짐 && group === "aiChecks") set반영함(false);
     // 주의: 상세 체크박스와 집행 일정의 완료 체크는 '같은 것' 입니다 (서버 plan_tasks 한 행).
     //    한 곳에서 처리해 두 화면이 같이 바뀌고, 서버 저장도 한 번만 나갑니다.
     할일동기화(plan.id, id, 켜짐);
@@ -7676,11 +7736,11 @@ function PlanDetail({
             </div>
           </dl>
         </section>
-        <nav className="plans-v2-tabs expense-v5-tabs" role="tablist" aria-label="지출 상세 보기">
+        <nav ref={탭바Ref} className="plans-v2-tabs expense-v5-tabs" role="tablist" aria-label="지출 상세 보기">
           <button role="tab" aria-selected={상세탭 === "ai"} className={상세탭 === "ai" ? "active" : ""} onClick={() => set상세탭("ai")}>
             AI 점검 결과
           </button>
-          <button role="tab" aria-selected={상세탭 === "prep"} className={상세탭 === "prep" ? "active" : ""} onClick={() => set상세탭("prep")}>
+          <button role="tab" aria-selected={상세탭 === "prep"} className={`${상세탭 === "prep" ? "active" : ""} ${준비탭반짝 ? "tab-flash" : ""}`} onClick={() => set상세탭("prep")}>
             집행 준비
           </button>
         </nav>
@@ -7738,6 +7798,7 @@ function PlanDetail({
             <section className={`ai-verdict-card tone-${판정색(plan.status === "재점검 필요" ? plan.previousStatus || "확인 필요" : plan.status)}`}>
             <div className="ai-verdict-row">
               <Status value={plan.status === "재점검 필요" ? plan.previousStatus || "확인 필요" : plan.status} />
+              {완료 && 반영함 && <확인완료배지 />}
               <div>
                 {/* 주의: 같은 「확인 필요」 라도 문의 초안이 있으면 할 일이 정반대입니다(조건 확인 ↔ 주관기관 문의).
                     판정을 받은 계획이면 판정별 문구를, 아니면 기존 문구를 씁니다. */}
@@ -7798,9 +7859,17 @@ function PlanDetail({
                     <Icon name="clipboardCheck" size={22} />
                     결제 전 확인
                   </h3>
-                  <b>
-                    {plan.aiChecks.filter((item) => item.done).length} / {plan.aiChecks.length} 확인
-                  </b>
+                  <div className="ai-precheck-count">
+                    {/* v070: 「확인 필요」 의 결제 전 확인을 모두 마치면 켜집니다. 판정은 바꾸지 않고 「확인 완료」 로 다룹니다. */}
+                    {완료 && !반영함 && (
+                      <button type="button" className="primary small" onClick={내용반영}>
+                        내용 반영하기
+                      </button>
+                    )}
+                    <b>
+                      {plan.aiChecks.filter((item) => item.done).length} / {plan.aiChecks.length} 확인
+                    </b>
+                  </div>
                   <p>결제 전에 아래 항목을 확인해주세요.</p>
                 </header>
                 <div className="ai-precheck-head">확인 항목</div>
