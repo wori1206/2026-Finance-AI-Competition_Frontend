@@ -626,3 +626,9 @@ body .app-shell .schedule-v2 .schedule-v2-calendar .schedule-v2-grid>div>button,
 body .app-shell .schedule-v2 .schedule-v2-calendar .schedule-v2-grid>div>button.planned,
 body .app-shell .schedule-v2 .schedule-v2-calendar .schedule-v2-grid>div>button.need,
 body .app-shell .schedule-v2 .schedule-v2-calendar .schedule-v2-grid>div>button.done{border:0!important;outline:0!important;box-shadow:none!important}
+/* v070: 확인 완료 배지 · 반영 버튼 · 집행 준비 탭 반짝 */
+.status-confirmed{display:inline-flex;align-items:center;gap:4px;border:1px solid #9fd3bd;background:#e3f4ec;color:#0b6b4f;font-weight:700}
+.ai-precheck-count{display:flex;align-items:center;gap:10px;justify-self:end}
+.expense-v5-tabs .tab-flash{animation:prepTabFlash .6s ease-in-out 3}
+@keyframes prepTabFlash{0%,100%{background:transparent}50%{background:#dff2ea;color:#0b6b4f}}
+@media (prefers-reduced-motion:reduce){.expense-v5-tabs .tab-flash{animation:none;background:#dff2ea}}

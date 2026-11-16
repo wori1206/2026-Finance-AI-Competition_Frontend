@@ -99,6 +99,8 @@ export type ExpensePlan = {
   updatedAt: string;
   aiSummary: string;
   aiChecks: ChecklistItem[];
+  /** v070: 결제 전 확인(구분 「결제전」) 항목 수. 0 이면 aiChecks 는 결제 후 항목으로 채운 것입니다. 상세를 받은 계획에만 있습니다. */
+  결제전확인수?: number;
   evidence: ChecklistItem[];
   rules: RuleItem[];
   /**
