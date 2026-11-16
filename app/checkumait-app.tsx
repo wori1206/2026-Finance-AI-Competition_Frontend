@@ -7795,10 +7795,11 @@ function PlanDetail({
               <기준문서줄 정보={plan.기준문서} 기준문서보기={기준문서보기} />
             )}
             {/* v033: 상태 · 결론 · AI 해설을 판정 색 카드 하나로 묶습니다. */}
-            <section className={`ai-verdict-card tone-${판정색(plan.status === "재점검 필요" ? plan.previousStatus || "확인 필요" : plan.status)}`}>
+            {/* v070: 확인 완료면 카드도 「가능」 과 같은 초록입니다(판정 값은 「확인 필요」 그대로). */}
+            <section className={`ai-verdict-card tone-${완료 && 반영함 ? "safe" : 판정색(plan.status === "재점검 필요" ? plan.previousStatus || "확인 필요" : plan.status)}`}>
             <div className="ai-verdict-row">
-              <Status value={plan.status === "재점검 필요" ? plan.previousStatus || "확인 필요" : plan.status} />
-              {완료 && 반영함 && <확인완료배지 />}
+              {/* v070: 확인 완료면 「확인 필요」 배지 대신 「확인 완료」 배지입니다. */}
+              {완료 && 반영함 ? <확인완료배지 /> : <Status value={plan.status === "재점검 필요" ? plan.previousStatus || "확인 필요" : plan.status} />}
               <div>
                 {/* 주의: 같은 「확인 필요」 라도 문의 초안이 있으면 할 일이 정반대입니다(조건 확인 ↔ 주관기관 문의).
                     판정을 받은 계획이면 판정별 문구를, 아니면 기존 문구를 씁니다. */}
