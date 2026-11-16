@@ -483,7 +483,8 @@ export function 요약을계획으로(s: 계획요약): ExpensePlan {
   return {
     id: String(s.plan_id),
     name: s.제목 ?? "(제목 없음)",
-    purpose: "",
+    // v066: 목록도 사용 목적을 줍니다. 상세를 따로 못 받은 계획(최근 20건 밖 · 상세 실패)도 빈칸이 되지 않습니다.
+    purpose: s.용도 ?? "",
     amount: s.금액 ?? 0,
     plannedDate: s.집행예정일 ?? "",
     category: s.확정비목 ?? "",
@@ -524,7 +525,7 @@ export function 상세를계획으로(d: 계획상세): ExpensePlan {
 
   return {
     ...기본,
-    purpose: d.용도 ?? "",
+    purpose: d.용도 ?? 기본.purpose,
     vendor: d.거래처 ?? "",
     nextAction: 남은것?.항목 ?? "",
     aiSummary:

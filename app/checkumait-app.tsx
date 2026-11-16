@@ -3895,6 +3895,8 @@ function HomePage({
               <button key={plan.id} className="home-v4-row" onClick={() => go({ page: "plan-detail", id: plan.id })}>
                 <span className="home-v4-row-text">
                   <b>{plan.name}</b>
+                  {/* v066: 사용 목적 한 줄 */}
+                  {plan.purpose && <small className="home-v4-row-purpose">{plan.purpose}</small>}
                   <small>
                     <비목강조 글={(plan.status === "위험" ? plan.aiSummary : plan.nextAction || plan.aiSummary) || 비목표기(plan.category)} />
                     {" · "}
