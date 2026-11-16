@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps } from "react";
+import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps } from "react";
 import { INITIAL_PLANS } from "../lib/mock-data";
 import { planService } from "../lib/plan-service";
 import type { 기준문서정보,
@@ -966,18 +966,19 @@ const EXPENSE_CATEGORIES = [
   "창업활동비",
 ] as const;
 
+/** v065: 글 속 비목 이름. 이름이 겹치면 긴 것부터 찾게 길이순으로 둡니다. */
+const 비목이름들 = [...EXPENSE_CATEGORIES].sort((a, b) => b.length - a.length);
 /**
- * v065: 글 속 비목 이름. 이름이 겹치면 긴 것부터 찾게 길이순으로 둡니다(정규식 특수문자는 없습니다).
- * 뒤에 「 > 세목 > 품목」 이 이어지면 경로 끝(다음 「 > 」 · 「 기준」 · 「 항목」 · 문장부호 · 글 끝)까지 한 칩입니다.
- * 주의: 세목 바로 뒤에 조사가 붙으면(「…구독료에」) 끝을 못 정해 비목만 칩이 됩니다.
+ * v069: 이 화면이 아는 분류 경로(예: 「창업활동비 > 외주용역비」). 글에 이 경로가 그대로 있으면 경로 전체를 한 칩으로 묶습니다.
+ * 예전에는 「 기준」 같은 끝말로 경로 끝을 추측해서, 「…규정상 집행할 수 없습니다」 처럼 끝말이 다르면 문장 끝까지 칩이 됐습니다.
  */
-const 비목찾기 = new RegExp(
-  `((?:${[...EXPENSE_CATEGORIES].sort((a, b) => b.length - a.length).join("|")})(?: > [^>.,·]+?(?= > | 기준| 항목|[.,·)]|$))*)`,
-  "g",
-);
+const 비목경로들 = createContext<readonly string[]>([]);
+const 정규식글 = (글: string) => 글.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** v065: AI 가 쓴 글 속 비목 이름을 칩으로 보입니다. 문의 초안처럼 복사해 보내는 글에는 쓰지 않습니다. */
-function 비목강조({ 글 }: { 글: string }) {
+/** v065: AI 가 쓴 글 속 비목 이름(또는 아는 분류 경로)을 칩으로 보입니다. 문의 초안처럼 복사해 보내는 글에는 쓰지 않습니다. */
+function CategoryChips({ 글 }: { 글: string }) {
+  const 경로들 = useContext(비목경로들).filter((v) => v.includes(" > "));
+  const 찾기 = new RegExp(`(${[...경로들].sort((a, b) => b.length - a.length).map(정규식글).concat(비목이름들).join("|")})`, "g");
   // split 에 묶음(괄호)이 있어 홀수 자리가 찾은 비목입니다.
   // 경로의 「 > 」 는 칸을 띄운 구분자로 따로 그립니다(읽는 사람은 그대로 「비목 > 세목」 으로 읽습니다).
   const 칩 = (조각: string, i: number) => (
@@ -985,7 +986,7 @@ function 비목강조({ 글 }: { 글: string }) {
       {조각.split(" > ").map((칸, j) => (j ? [<span key={`s${j}`} className="category-chip-sep"> &gt; </span>, 칸] : 칸))}
     </mark>
   );
-  return <>{글.split(비목찾기).map((조각, i) => (i % 2 ? 칩(조각, i) : 조각))}</>;
+  return <>{글.split(찾기).map((조각, i) => (i % 2 ? 칩(조각, i) : 조각))}</>;
 }
 
 /** 비목 단계 상단 「○○? 한 줄 설명」. 서버가 설명을 보내면 그쪽을 씁니다. */
@@ -3922,14 +3923,12 @@ function HomePage({
             확인할지출.slice(0, 4).map((plan) => (
               <button key={plan.id} className="home-v4-row" onClick={() => go({ page: "plan-detail", id: plan.id })}>
                 <span className="home-v4-row-text">
-                  <b>{plan.name}</b>
-                  {/* v066: 사용 목적 한 줄 */}
+                  {/* v069: 지출명 옆에 금액, 아래에 사용 목적. 판정 요약 문장은 지출 상세에서 봅니다. */}
+                  <b>
+                    {plan.name}
+                    <span className="home-v4-row-amount">{won(plan.amount)}</span>
+                  </b>
                   {plan.purpose && <small className="home-v4-row-purpose">{plan.purpose}</small>}
-                  <small>
-                    <비목강조 글={(plan.status === "위험" ? plan.aiSummary : plan.nextAction || plan.aiSummary) || 비목표기(plan.category)} />
-                    {" · "}
-                    {won(plan.amount)}
-                  </small>
                 </span>
                 <Status value={plan.status} />
               </button>
@@ -6438,7 +6437,7 @@ function NewPlanPage({
             {!조사확인단계 && 새경로 && 분류안내 && (
               <div className="auto-check-note classification-note">
                 <Icon name="check" />
-                <span><b><비목강조 글={분류안내} /></b></span>
+                <span><b><CategoryChips 글={분류안내} /></b></span>
               </div>
             )}
             <p className="section-copy additional-check-copy" hidden={!조사확인단계 && API켜짐()}>
@@ -6966,7 +6965,7 @@ function 꼭알아야할것({ plan }: { plan: ExpensePlan }) {
         {후보.slice(0, 3).map((x) => (
           <li key={x.문장}>
             <em className={`must-tag ${x.색}`}>{x.종류}</em>
-            <span><비목강조 글={x.문장} /></span>
+            <span><CategoryChips 글={x.문장} /></span>
           </li>
         ))}
       </ul>
@@ -7038,7 +7037,7 @@ function Question({
   return (
     <div className="question">
       <b>
-        <비목강조 글={label} />
+        <CategoryChips 글={label} />
         {근거조번호 && <small className="question-basis"> · {근거조번호}</small>}
       </b>
       <div>
@@ -7568,6 +7567,8 @@ function PlanDetail({
     ? 비목표기(plan.category)
     : (plan.분류?.표시문 ? 비목표기(plan.분류.표시문) : null) ?? (plan.확정세목 ? `${비목표기(plan.category)} > ${plan.확정세목}` : 비목표기(plan.category));
   return (
+    // v069: 이 계획의 분류 경로를 알려 글 속 「비목 > 세목」 을 경로 그대로 한 칩으로 묶습니다.
+    <비목경로들.Provider value={[표시분류]}>
     <div className="page expense-detail-page expense-detail-redesign expense-v5">
       <header className="expense-v5-header">
         <div className="expense-v5-toolbar">
@@ -7742,7 +7743,7 @@ function PlanDetail({
                 {/* 주의: 같은 「확인 필요」 라도 문의 초안이 있으면 할 일이 정반대입니다(조건 확인 ↔ 주관기관 문의).
                     판정을 받은 계획이면 판정별 문구를, 아니면 기존 문구를 씁니다. */}
                 <h3>
-                  <비목강조 글={plan.status === "점검 전" && !plan.판정
+                  <CategoryChips 글={plan.status === "점검 전" && !plan.판정
                     ? "아직 AI 점검을 하지 않았습니다."
                     : 코드판정제목(plan.코드판정, 표시분류) ??
                       판정제목(plan.판정, 표시분류, Boolean(plan.문의초안)) ??
@@ -7766,7 +7767,9 @@ function PlanDetail({
                 )}
               </div>
             </div>
-            {plan.코드판정 && (
+            {/* v069: 한도 · 금지는 판정 카드에 따로 그리지 않고 AI 해설로만 보입니다.
+                부가세 기준 미정은 「부가세 고르고 다시 점검하기」 로 이어지는 유일한 길이라 남깁니다. */}
+            {plan.코드판정?.종류 === "부가세기준미정" && (
               <코드판정카드 판정={plan.코드판정} 부가세={plan.부가세구분} 문의처={plan.문의처} 다시점검={점검열기} />
             )}
             {/* v031: 한 줄 결론(AI 해설)을 조건 목록보다 먼저 보입니다. */}
@@ -7778,7 +7781,7 @@ function PlanDetail({
                     예전에는 화면에 박아 둔 문구라, 어떤 계획을 열어도 같은 해설이
                     나왔습니다. 서버 요약이 있으면 그걸 보여줍니다. */}
                 <p>
-                  <비목강조 글={plan.aiSummary ||
+                  <CategoryChips 글={plan.aiSummary ||
                     (plan.status === "특이사항 없음"
                       ? "현재 조건에서는 주요 사전 준비가 확인됐습니다. 집행 후 증빙을 빠짐없이 보관하세요."
                       : "사업계획과의 연관성은 확인됐습니다. 다만 계약 전에 과업 범위, 결과물, 검수 기준을 문서로 명확히 하고 금액 적정성과 특수관계 여부를 추가로 확인해야 합니다.")} />
@@ -7809,8 +7812,8 @@ function PlanDetail({
                     <label key={item.id} className={item.done ? "done" : ""}>
                       <input type="checkbox" checked={Boolean(item.done)} onChange={() => toggle("aiChecks", item.id)} />
                       <span>
-                        <b><비목강조 글={item.label} /></b>
-                        {item.description && <small><비목강조 글={item.description} /></small>}
+                        <b><CategoryChips 글={item.label} /></b>
+                        {item.description && <small><CategoryChips 글={item.description} /></small>}
                       </span>
                     </label>
                   ))}
@@ -7971,8 +7974,8 @@ function PlanDetail({
                         onChange={() => toggle("evidence", item.id)}
                       />
                       <span>
-                        <b><비목강조 글={item.label} /></b>
-                        <small><비목강조 글={item.description} /></small>
+                        <b><CategoryChips 글={item.label} /></b>
+                        <small><CategoryChips 글={item.description} /></small>
                       </span>
                     </label>
                     <label className="outline small expense-v5-upload">
@@ -8186,6 +8189,7 @@ function PlanDetail({
         />
       )}
     </div>
+    </비목경로들.Provider>
   );
 }
 
