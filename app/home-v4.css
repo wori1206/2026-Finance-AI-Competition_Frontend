@@ -80,3 +80,5 @@
 }
 /* v066: 홈 지출 계획 줄의 사용 목적 */
 .home-v4-row-text .home-v4-row-purpose{color:var(--color-text,#2b2f2d)}
+/* v069: 홈 줄 지출명 옆 금액 */
+.home-v4-row-text b .home-v4-row-amount{margin-left:8px;color:var(--sub);font-size:13px;font-weight:500}
