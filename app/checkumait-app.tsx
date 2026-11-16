@@ -979,7 +979,13 @@ const 비목찾기 = new RegExp(
 /** v065: AI 가 쓴 글 속 비목 이름을 칩으로 보입니다. 문의 초안처럼 복사해 보내는 글에는 쓰지 않습니다. */
 function 비목강조({ 글 }: { 글: string }) {
   // split 에 묶음(괄호)이 있어 홀수 자리가 찾은 비목입니다.
-  return <>{글.split(비목찾기).map((조각, i) => (i % 2 ? <mark key={i} className="category-chip">{조각}</mark> : 조각))}</>;
+  // 경로의 「 > 」 는 칸을 띄운 구분자로 따로 그립니다(읽는 사람은 그대로 「비목 > 세목」 으로 읽습니다).
+  const 칩 = (조각: string, i: number) => (
+    <mark key={i} className="category-chip">
+      {조각.split(" > ").map((칸, j) => (j ? [<span key={`s${j}`} className="category-chip-sep"> &gt; </span>, 칸] : 칸))}
+    </mark>
+  );
+  return <>{글.split(비목찾기).map((조각, i) => (i % 2 ? 칩(조각, i) : 조각))}</>;
 }
 
 /** 비목 단계 상단 「○○? 한 줄 설명」. 서버가 설명을 보내면 그쪽을 씁니다. */

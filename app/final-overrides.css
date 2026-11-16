@@ -1604,4 +1604,6 @@ input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-ou
 .schedule-v2-grid>div.picked{background:var(--brand-soft);box-shadow:inset 0 0 0 2px var(--brand)}
 .schedule-v2-upcoming>.schedule-detail-empty{margin:0;padding:24px 18px;color:#7a8580;font-size:12px;text-align:center}
 /* v065: 글 속 비목 이름 칩. 판정 색(초록·노랑·빨강)과 겹치지 않게 중립 남색 */
-.category-chip{display:inline-block;margin:0 1px;padding:0 6px;border-radius:999px;background:#eef1f6;color:#2f3d57;box-shadow:inset 0 0 0 1px #d9dfe9;font:inherit;font-weight:700;line-height:1.5;white-space:nowrap}
+.category-chip{display:inline-block;margin:0 5px;padding:1px 8px;border-radius:3px;background:#e9edf4;color:#22314d;box-shadow:inset 0 0 0 1px #d3dae6;font:inherit;font-size:.92em;font-weight:700;line-height:1.45;vertical-align:.04em;white-space:nowrap}
+.category-chip:first-child{margin-left:0}
+.category-chip-sep{margin:0 3px;color:#7a869c;font-weight:500}
