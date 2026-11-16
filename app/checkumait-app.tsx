@@ -1669,7 +1669,6 @@ export default function CheckumaitApp() {
       else if (실패) notify("일정을 저장하지 못했습니다. 잠시 뒤 다시 시도해 주세요.");
       else if (API켜짐() && 건너뜀) notify(화면에만반영);
       else if (완료문구) notify(완료문구);
-      for (const id of new Set(새항목.map((s) => s.planId))) 단계다시읽기(id);
     });
   };
 
@@ -1701,10 +1700,7 @@ export default function CheckumaitApp() {
     setSchedules(다음);
     void planService.saveSchedules(다음);
     void 일정지우기(item)
-      .then(() => {
-        notify("일정을 삭제했습니다.");
-        단계다시읽기(item.planId);
-      })
+      .then(() => notify("일정을 삭제했습니다."))
       .catch((e: unknown) => {
         setSchedules(이전);
         notify(`일정을 삭제하지 못했습니다. ${오류사유(e)}`);
@@ -1717,17 +1713,6 @@ export default function CheckumaitApp() {
    *    옛 판정이 새 날짜와 맞지 않으므로 「재점검 필요」를 띄웁니다(`지출일저장`).
    */
   const [지출일창, set지출일창] = useState<{ plan: ExpensePlan; 새날짜: string; 줄들: ScheduleItem[] } | null>(null);
-  /** 일정·체크가 바뀐 뒤 진행 단계를 다시 받습니다. 단계는 서버가 할일에서 계산합니다. */
-  const 단계다시읽기 = (planId: string) => {
-    if (!API켜짐() || !/^\d+$/.test(planId)) return;
-    계획상세(planId)
-      .then((d) =>
-        setPlans((이전) =>
-          이전.map((p) => (p.id === planId ? { ...p, 단계요약: d.단계요약, 현재단계: d.현재단계 ?? null } : p)),
-        ),
-      )
-      .catch((e: unknown) => console.warn("[CHECKUMAIT] 진행 단계를 다시 읽지 못했습니다.", e));
-  };
   /** 저장이 끝난 뒤 일정을 다시 읽습니다. 저장은 이미 됐으므로 읽기 실패는 저장 실패가 아닙니다. */
   const 일정다시읽기 = () => {
     void planService
@@ -1735,16 +1720,14 @@ export default function CheckumaitApp() {
       .then(setSchedules)
       .catch((e: unknown) => console.warn("[CHECKUMAIT] 일정을 다시 읽지 못했습니다.", e));
   };
-  /** 실제 지출을 서버에 저장합니다. 집행 단계가 완료로 바뀌므로 일정도 다시 읽습니다. */
+  /** 실제 지출을 서버에 저장합니다. 집행 일정이 완료로 바뀌므로 일정도 다시 읽습니다. */
   const 실제지출저장 = (plan: ExpensePlan, 날짜: string, 금액: number): Promise<void> =>
-    계획수정(plan.id, { 실제지출일: 날짜, 실제지출액: 금액 }).then((d) => {
+    계획수정(plan.id, { 실제지출일: 날짜, 실제지출액: 금액 }).then(() => {
       계획반영({
         ...plan,
         actualDate: 날짜,
         actualAmount: 금액,
         executionStatus: "결제 완료",
-        단계요약: d.단계요약,
-        현재단계: d.현재단계 ?? null,
       });
       일정다시읽기();
     });
@@ -1759,8 +1742,6 @@ export default function CheckumaitApp() {
           ...plan,
           plannedDate: 새지출일,
           ...(재점검 ? { status: "재점검 필요" as const, previousStatus: plan.status as Exclude<PlanStatus, "점검 전" | "점검 중" | "재점검 필요">, nextAction: "AI 재점검 필요" } : {}),
-          단계요약: d.단계요약,
-          현재단계: d.현재단계 ?? null,
         });
         notify(
           `${일정이동 && 옮길일정있음 ? "예상 지출일과 연결된 일정을 옮겼습니다." : "예상 지출일을 저장했습니다."}${
@@ -1797,10 +1778,6 @@ export default function CheckumaitApp() {
       if (없음.length) {
         notify("일부 일정은 서버에 없어 이 화면에서만 바뀝니다.");
       }
-      // 주의: 일정 유형과 상태가 진행 단계를 정합니다. 바뀐 줄의 계획만 다시 받습니다.
-      const 전 = new Map(이전.map((s) => [s.id, s]));
-      const 바뀐계획 = next.filter((s) => 전.has(s.id) && 전.get(s.id) !== s).map((s) => s.planId);
-      for (const id of new Set(바뀐계획)) 단계다시읽기(id);
     });
   };
   /**
@@ -1862,7 +1839,6 @@ export default function CheckumaitApp() {
     // 주의: 서버 저장은 '한 번' 입니다 — 두 화면이 각자 PATCH 하면 경합합니다.
     체크저장(planId, taskId, 완료)
       .then((결과) => {
-        if (결과 === "저장됨") 단계다시읽기(planId);
         if (결과 !== "없음") return;
         console.warn("[할일] 서버에 없음 — plan_id=%s task_id=%s", planId, taskId);
         notify("이 항목은 서버에 없어 화면에서만 바뀝니다.");
@@ -5236,7 +5212,6 @@ function PlansPage({
                   </td>
                   <td className="title-cell">
                     <b>{plan.name}</b>
-                    {plan.현재단계 && <small className="plan-current-stage">현재: {plan.현재단계}</small>}
                   </td>
                   <td>{비목표기(plan.category) || "미정"}</td>
                   <td className="amount-cell"><strong>{won(plan.amount)}</strong></td>
