@@ -111,6 +111,8 @@ export type 계획요약 = {
   집행예정일: string | null;
   updated_at: string | null;
   사업명: string | null;
+  /** v066: 사용 목적. 옛 서버는 목록에 안 보냅니다. */
+  용도?: string | null;
   상태: "draft" | "judged";
   실제지출일?: string | null;
   실제지출액?: number | null;

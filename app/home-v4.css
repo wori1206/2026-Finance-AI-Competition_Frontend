@@ -78,3 +78,5 @@
   .home-v4-chart{flex-direction:column;align-items:stretch}
   .home-v4-donut{align-self:center}
 }
+/* v066: 홈 지출 계획 줄의 사용 목적 */
+.home-v4-row-text .home-v4-row-purpose{color:var(--color-text,#2b2f2d)}
