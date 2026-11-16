@@ -1487,6 +1487,8 @@ export default function CheckumaitApp() {
   const [판정기록들, set판정기록들] = useState<Record<string, 판정기록>>({});
   // v049: 새 지출 계획은 한 번에 한 건. 정리 · 검색 · 분류 중이거나 답이 필요한 동안은 다른 화면으로 가도 숨겨 둔 채 이어 갑니다.
   const [새계획알림, set새계획알림] = useState<{ 진행중: boolean; 문장: string } | null>(null);
+  /** v067: 오른쪽 아래 「새 지출 계획」 상자를 ✕ 로 닫았다. 확인은 계속하고, 끝나면 상자가 다시 뜹니다. */
+  const [새계획상자닫힘, set새계획상자닫힘] = useState(false);
   // v050: 분류가 없는 계획(임시저장 · 분류를 끝내 못 찾은 계획)은 새 지출 계획 페이지를 그 값으로 채워 점검합니다.
   //    새 계획을 만들지 않고 그 계획에 판정을 붙입니다. 키를 바꿔 새로 엽니다.
   const [시작계획, set시작계획] = useState<ExpensePlan | null>(null);
@@ -1654,6 +1656,20 @@ export default function CheckumaitApp() {
     setToast(message);
     window.setTimeout(() => setToast(""), 2300);
   };
+  // v067: 다른 화면에 있는 동안 새 지출 계획의 확인이 끝나면 알리고, 닫아 둔 상자를 다시 띄웁니다.
+  const 새계획진행중 = !!새계획알림?.진행중;
+  const 이전새계획진행중 = useRef(새계획진행중);
+  useEffect(() => {
+    const 끝남 = 이전새계획진행중.current && !새계획진행중;
+    이전새계획진행중.current = 새계획진행중;
+    if (!끝남) return;
+    set새계획상자닫힘(false);
+    if (route.page !== "plan-new" && 새계획알림) {
+      notify("새 지출 계획의 확인이 끝났어요. 오른쪽 아래 [열기]로 이어서 진행해 주세요.");
+      탭제목알림("확인 완료 · 써도돼요");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [새계획진행중]);
   const persistPlans = (next: ExpensePlan[]) => {
     setPlans(next);
     void planService.savePlans(next);
@@ -2201,7 +2217,7 @@ export default function CheckumaitApp() {
             update={계획반영}
           />
         )}
-        {route.page !== "plan-new" && 새계획알림 && (
+        {route.page !== "plan-new" && 새계획알림 && !새계획상자닫힘 && (
           <aside className="judge-pill" role="status" style={{ bottom: 20 + 파일높이 * 작업들.length }}>
             {새계획알림.진행중 ? <span className="ai-checking-spinner" aria-hidden="true" /> : <Icon name="alert" size={16} />}
             <span>
@@ -2209,6 +2225,18 @@ export default function CheckumaitApp() {
               <small>{새계획알림.진행중 ? `확인 중 · ${새계획알림.문장}` : "확인할 내용이 있어요"}</small>
             </span>
             <button onClick={() => go({ page: "plan-new" })}>열기</button>
+            {새계획알림.진행중 && (
+              <button
+                aria-label="알림 닫기"
+                title="닫아도 확인은 계속돼요. 끝나면 알려 드릴게요."
+                onClick={() => {
+                  set새계획상자닫힘(true);
+                  notify("확인은 계속돼요. 끝나면 알려 드릴게요.");
+                }}
+              >
+                ×
+              </button>
+            )}
           </aside>
         )}
         {(route.page === "plan-new" || 새계획알림) && (
@@ -6154,12 +6182,19 @@ function NewPlanPage({
   const 고쳐쓰기 = 입력검증안내?.다음행동 === "품목재입력";
   // v049: 최상단 알림 줄에 지금 상태를 알립니다. 판정으로 넘긴 뒤에는 판정 알림이 맡습니다.
   const 알릴문장 = 최근항목(진행항목들)?.문장 ?? "";
+  // v067: 다른 화면에 있는 동안 확인이 끝났으면, 결과가 질문이 아니어도(오류 · 「고쳐 쓰기」 안내) 화면을 남깁니다.
+  //    알림을 지우면 숨겨 둔 이 화면이 닫혀 입력이 사라집니다. 다시 열면(숨김 해제) 원래 규칙으로 돌아갑니다.
+  const 이전작업중 = useRef(작업중);
+  const 숨긴채끝남 = useRef(false);
   useEffect(() => {
     if (!알림) return;
+    if (이전작업중.current && !작업중 && 숨김) 숨긴채끝남.current = true;
+    if (!숨김) 숨긴채끝남.current = false;
+    이전작업중.current = 작업중;
     if (넘김.current) 알림(null);
     else if (작업중) 알림({ 진행중: true, 문장: 알릴문장 || "입력하신 내용을 확인하고 있어요." });
-    else 알림(step === 3 ? { 진행중: false, 문장: "" } : null);
-  }, [알림, 작업중, step, 알릴문장]);
+    else 알림(step === 3 || 숨긴채끝남.current ? { 진행중: false, 문장: "" } : null);
+  }, [알림, 작업중, step, 알릴문장, 숨김]);
   useEffect(() => () => 알림?.(null), [알림]);
   return (
     <div className="page narrow new-plan-page-v033" style={숨김 ? { display: "none" } : undefined}>
@@ -6506,6 +6541,16 @@ function NewPlanPage({
         <p className="section-copy" style={{ color: "var(--red, #c23b3b)" }}>
           {연동오류}
         </p>
+      )}
+      {/* v067: 점검 페이지가 뜨기 전(정리 · 검색 · 분류 · 질문 준비)에도 AI 가 도는 중임을 버튼 바로 위에 알립니다. */}
+      {(categoryLoading || questionsLoading || 정리중) && (
+        <div className="new-plan-running" role="status">
+          <span className="ai-checking-spinner" aria-hidden="true" />
+          <div>
+            <b>AI가 지출 내용을 확인하고 있어요.</b>
+            <small>몇 분 걸릴 수 있어요. 다른 화면으로 가도 계속 진행되고, 끝나면 오른쪽 아래에 알려 드릴게요. 탭을 닫거나 새로고침하면 처음부터 다시 해야 해요.</small>
+          </div>
+        </div>
       )}
       <footer className="form-actions">
         {step > 0 && (

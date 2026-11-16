@@ -65,3 +65,9 @@ body .app-shell .new-plan-page-v033 .form-actions>button:first-child:not(.draft-
   body .app-shell .new-plan-page-v033 .category-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
   body .app-shell .new-plan-page-v033 .new-plan-big{font-size:22px}
 }
+/* v067: 점검 페이지 전 AI 확인 중 안내 */
+.new-plan-running{display:flex;align-items:flex-start;gap:12px;margin-top:20px;padding:14px 16px;border:1px solid #cfe3dc;border-radius:8px;background:#f2f9f6}
+.new-plan-running .ai-checking-spinner{position:static;flex:none;width:18px;height:18px;margin-top:2px;border:2px solid #cfe3dc;border-top-color:var(--color-brand,#08725b);border-radius:50%;animation:judgePillSpin .9s linear infinite}
+.new-plan-running>div{display:grid;gap:4px}
+.new-plan-running b{font-size:14px;color:var(--color-text,#1d2422)}
+.new-plan-running small{font-size:12px;line-height:1.5;color:var(--color-secondary,#5d6662)}
