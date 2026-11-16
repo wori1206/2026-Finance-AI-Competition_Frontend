@@ -1502,6 +1502,8 @@ export default function CheckumaitApp() {
   //    새 계획을 만들지 않고 그 계획에 판정을 붙입니다. 키를 바꿔 새로 엽니다.
   const [시작계획, set시작계획] = useState<ExpensePlan | null>(null);
   const [새계획키, set새계획키] = useState(0);
+  /** v071: 새 지출 계획 페이지에서 다시 점검 중인 기존 계획. 확인(정리 · 검색 · 분류 · 질문 준비)이 도는 동안 목록 · 상세에 「점검 중」 으로 보입니다. */
+  const [점검준비id, set점검준비id] = useState<string | null>(null);
   const 임시점검 = (plan: ExpensePlan) => {
     if (새계획알림) {
       notify("진행 중인 새 지출 계획이 있어요. 먼저 마쳐 주세요.");
@@ -1509,6 +1511,7 @@ export default function CheckumaitApp() {
       return;
     }
     set시작계획(plan);
+    set점검준비id(plan.id);
     set새계획키((k) => k + 1);
     go({ page: "plan-new" });
   };
@@ -1612,11 +1615,13 @@ export default function CheckumaitApp() {
     return () => window.removeEventListener("beforeunload", 경고);
   }, [도는작업있음]);
   // 주의: 페이지에는 이 값을 넘깁니다. `plans` 자체에 넣으면 판정이 실패했을 때 원래 상태를 잃습니다.
+  const 준비중id = 새계획알림?.진행중 ? 점검준비id : null;
   const 화면계획 = useMemo(() => {
     const 도는id = new Set(작업들.filter((j) => !j.결과).map((j) => j.계획.id));
+    if (준비중id) 도는id.add(준비중id);
     if (!도는id.size) return plans;
     return plans.map((p) => (도는id.has(p.id) ? { ...p, status: "점검 중" as const } : p));
-  }, [plans, 작업들]);
+  }, [plans, 작업들, 준비중id]);
 
   // 주의: 2026-10-29 — 지출계획·일정은 로그인 '뒤에' 불러옵니다.
   //    예전에는 첫 마운트 때 한 번만 불렀는데, 그때는 아직 로그인 전이라 토큰 없이
@@ -1665,6 +1670,13 @@ export default function CheckumaitApp() {
     setToast(message);
     window.setTimeout(() => setToast(""), 2300);
   };
+  // v071: 새 지출 계획 페이지가 닫히면(알림이 사라지면) 다시 점검 중 표시를 지웁니다. 판정으로 넘어가면 판정 작업이 「점검 중」 을 맡습니다.
+  const 새계획열림 = !!새계획알림;
+  const 이전새계획열림 = useRef(새계획열림);
+  useEffect(() => {
+    if (이전새계획열림.current && !새계획열림) set점검준비id(null);
+    이전새계획열림.current = 새계획열림;
+  }, [새계획열림]);
   // v067: 다른 화면에 있는 동안 새 지출 계획의 확인이 끝나면 알리고, 닫아 둔 상자를 다시 띄웁니다.
   const 새계획진행중 = !!새계획알림?.진행중;
   const 이전새계획진행중 = useRef(새계획진행중);
@@ -5151,7 +5163,9 @@ function PlansPage({
               onClick={() => {
                 const target = plans.find((plan) => plan.id === selected[0]);
                 // v050: 분류가 없는 계획은 비목을 고르는 창 대신 새 지출 계획 페이지로 점검합니다.
-                if (target && API켜짐() && !target.category && 임시점검) 임시점검(target);
+                // v071: 분류가 있어도 새 지출 계획 페이지로 갑니다. 그 페이지는 다른 화면으로 가도 확인이 이어지고
+                //    오른쪽 아래 상자 · 끝남 알림 · 「점검 중」 배지까지 갖췄습니다(창은 닫으면 끊겼습니다).
+                if (target && API켜짐() && 임시점검) 임시점검(target);
                 else if (target) setQuestionPlan(target);
               }}
             >
@@ -7436,9 +7450,10 @@ function PlanDetail({
   const [editing, setEditing] = useState(false);
   const [recheckPrompt, setRecheckPrompt] = useState(false);
   const [recheckQuestions, setRecheckQuestions] = useState(false);
-  // v050: 분류가 없는 계획은 새 지출 계획 페이지로 점검합니다. 분류가 있으면 지금 창(질문 · 입력 칸만)입니다.
+  // v050: 분류가 없는 계획은 새 지출 계획 페이지로 점검합니다.
+  // v071: 분류가 있어도 새 지출 계획 페이지로 갑니다(닫아도 확인이 이어집니다). 창은 서버가 없을 때(예시 모드)만 씁니다.
   const 점검열기 = () => {
-    if (plan && API켜짐() && !plan.category && 임시점검) 임시점검(plan);
+    if (plan && API켜짐() && 임시점검) 임시점검(plan);
     else setRecheckQuestions(true);
   };
   const [detailMenuOpen, setDetailMenuOpen] = useState(false);
@@ -7585,10 +7600,11 @@ function PlanDetail({
             지출 계획
           </button>
           <div className="detail-actions">
-            {(plan.status === "재점검 필요" || plan.status === "점검 전") && (
-              <button className="primary" onClick={점검열기}>
+            {/* v071: 판정을 받은 계획도 언제든 다시 점검할 수 있게 늘 보입니다(점검 중에는 숨김). */}
+            {plan.status !== "점검 중" && (
+              <button className={plan.status === "재점검 필요" || plan.status === "점검 전" ? "primary" : "outline"} onClick={점검열기}>
                 <Icon name="spark" size={15} />
-                {plan.status === "재점검 필요" ? "재점검하기" : "AI 점검하기"}
+                {plan.status === "재점검 필요" ? "재점검하기" : plan.status === "점검 전" ? "AI 점검하기" : "다시 점검하기"}
               </button>
             )}
             <button
