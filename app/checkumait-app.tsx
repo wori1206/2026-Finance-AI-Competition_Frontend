@@ -966,6 +966,28 @@ const EXPENSE_CATEGORIES = [
   "창업활동비",
 ] as const;
 
+/**
+ * v065: 글 속 비목 이름. 이름이 겹치면 긴 것부터 찾게 길이순으로 둡니다(정규식 특수문자는 없습니다).
+ * 뒤에 「 > 세목 > 품목」 이 이어지면 경로 끝(다음 「 > 」 · 「 기준」 · 「 항목」 · 문장부호 · 글 끝)까지 한 칩입니다.
+ * 주의: 세목 바로 뒤에 조사가 붙으면(「…구독료에」) 끝을 못 정해 비목만 칩이 됩니다.
+ */
+const 비목찾기 = new RegExp(
+  `((?:${[...EXPENSE_CATEGORIES].sort((a, b) => b.length - a.length).join("|")})(?: > [^>.,·]+?(?= > | 기준| 항목|[.,·)]|$))*)`,
+  "g",
+);
+
+/** v065: AI 가 쓴 글 속 비목 이름을 칩으로 보입니다. 문의 초안처럼 복사해 보내는 글에는 쓰지 않습니다. */
+function 비목강조({ 글 }: { 글: string }) {
+  // split 에 묶음(괄호)이 있어 홀수 자리가 찾은 비목입니다.
+  // 경로의 「 > 」 는 칸을 띄운 구분자로 따로 그립니다(읽는 사람은 그대로 「비목 > 세목」 으로 읽습니다).
+  const 칩 = (조각: string, i: number) => (
+    <mark key={i} className="category-chip">
+      {조각.split(" > ").map((칸, j) => (j ? [<span key={`s${j}`} className="category-chip-sep"> &gt; </span>, 칸] : 칸))}
+    </mark>
+  );
+  return <>{글.split(비목찾기).map((조각, i) => (i % 2 ? 칩(조각, i) : 조각))}</>;
+}
+
 /** 비목 단계 상단 「○○? 한 줄 설명」. 서버가 설명을 보내면 그쪽을 씁니다. */
 const 비목한줄설명: Record<string, string> = {
   재료비: "시제품 제작 등에 직접 쓰는 재료와 부품을 사는 비용이에요.",
@@ -2145,6 +2167,11 @@ export default function CheckumaitApp() {
               이름={작업.계획.name}
               순번={순번}
               최소화={작업.최소화}
+              숨김={작업.숨김}
+              숨기기={() => {
+                작업바꾸기((이전) => 이전.map((j) => (j.키 === 작업.키 ? { ...j, 숨김: true } : j)));
+                notify("점검은 계속돼요. 끝나면 알려 드릴게요.");
+              }}
               접기={() => {
                 작업바꾸기((이전) => 이전.map((j) => (j.키 === 작업.키 ? { ...j, 최소화: true, 접은적: true } : j)));
                 // 작성 화면은 이미 제출이 끝났으므로 남아 있으면 같은 내용을 또 낼 수 있습니다.
@@ -3869,7 +3896,7 @@ function HomePage({
                 <span className="home-v4-row-text">
                   <b>{plan.name}</b>
                   <small>
-                    {(plan.status === "위험" ? plan.aiSummary : plan.nextAction || plan.aiSummary) || 비목표기(plan.category)}
+                    <비목강조 글={(plan.status === "위험" ? plan.aiSummary : plan.nextAction || plan.aiSummary) || 비목표기(plan.category)} />
                     {" · "}
                     {won(plan.amount)}
                   </small>
@@ -4188,45 +4215,6 @@ function 조사확인({ 후보, 답, 변경, 검색어, 단일선택 = false, �
   );
 }
 
-function 조사결과보기({ 결과 }: { 결과: import("../lib/questions").조사결과 | null | undefined }) {
-  if (!결과) return null;
-  // v056: 거래 유형 확인 카드에서 고른 행(`종류` 거래유형)은 공개 정보가 아니므로 목록에서 빼고 아래 한 줄로 보입니다.
-  const 거래유형행 = Array.isArray(결과.확인한정보) ? 결과.확인한정보.filter((v) => v.종류 === "거래유형" && (v.답 === "맞아요" || !!v.정정?.trim())) : [];
-  const 정보 = Array.isArray(결과.확인한정보) ? 결과.확인한정보.filter((v) => v.유형 !== "업체이용조건" && v.종류 !== "거래유형") : [];
-  const 조건 = Array.isArray(결과.업체이용조건) ? 결과.업체이용조건 : [];
-  const 미확인 = Array.isArray(결과.미확인) ? 결과.미확인.filter((v) => v.유형 !== "업체이용조건" && v.종류 !== "거래유형") : [];
-  const 거래유형줄 = 거래유형행.map((v, i) => (
-    <p key={`${v.id}-거래유형-${i}`} className="research-answered">
-      {v.답 === "맞아요" ? `내가 고른 거래 유형: ${v.확인문장 || v.내용}` : `직접 적은 내용: ${v.정정}`}
-    </p>
-  ));
-  if (!정보.length && !조건.length && !미확인.length && !결과.부족정보?.length && !결과.사용자확인?.length) {
-    return 거래유형줄.length ? <section className="research-results">{거래유형줄}</section> : null;
-  }
-  const 항목 = (v: 조사후보 & { 답?: string; 정정?: string }, i: number) => (
-    <조사카드 key={`${v.id}-${i}`} 항목={v}>
-      {/* 서버 값 「직접입력」 은 화면에 그대로 내지 않습니다. */}
-      {v.답 && <p className="research-answered">{v.답 === "직접입력" ? "직접 입력했어요" : `내 확인: ${v.답}`}</p>}
-      {v.정정 && <p className="research-answered">직접 적은 내용: {v.정정}</p>}
-    </조사카드>
-  );
-  return (
-    <section className="research-results">
-      <header className="research-results-head">
-        <span className="research-search-icon" aria-hidden="true"><Icon name="search" size={16} /></span>
-        <div><b>검색해 확인한 공개 정보</b></div>
-      </header>
-      <조사안내 결과화면 />
-      {정보.map(항목)}
-      {!!미확인.length && <><h4>확인되지 않은 정보</h4>{미확인.map(항목)}</>}
-      {!!조건.length && <><h4>업체 이용 조건</h4><p>업체가 안내한 내용입니다.</p>{조건.map(항목)}</>}
-      {!!결과.부족정보?.length && <p>더 확인이 필요한 공개 정보: {결과.부족정보.map((v) => 유형표기(v)).join(" · ")}</p>}
-      <직접확인안내 항목들={결과.사용자확인 ?? []} 결과화면 />
-      {거래유형줄}
-    </section>
-  );
-}
-
 function 직접확인안내({ 항목들, 결과화면 = false }: { 항목들: { 항목: string; 질문: string }[]; 결과화면?: boolean }) {
   if (!항목들.length) return null;
   return <section className="research-settings"><b>직접 확인할 사항</b><p>{결과화면 ? "공개 정보만으로는 알 수 없는 내용이에요. 집행 전에 직접 확인해 주세요." : "공개 정보만으로는 알 수 없는 내용이에요. 다음 규정 질문에서 해당 내용을 물으면 답해 주세요."}</p><ul>{항목들.map((v, i) => <li key={`${v.항목}-${i}`}>{v.질문}</li>)}</ul></section>;
@@ -4261,6 +4249,8 @@ type 판정작업 = 판정시작입력 & {
   /** 판정 행 멱등 키. 시작할 때 만들고 「다시 점검」 에서 그대로 씁니다. 입력을 바꾸면 작업이 지워져 새 키로 시작합니다. */
   멱등키: string;
   최소화: boolean;
+  /** v064: 접은 뒤 오른쪽 아래 「AI 점검 중」 상자를 ✕ 로 닫았다. 점검은 계속하고, 끝나면 완료 알림 상자가 다시 뜬다. */
+  숨김?: boolean;
   /** 한 번이라도 접었으면 시작한 페이지가 이미 없을 수 있어 최상단이 끝까지 맡습니다. */
   접은적?: boolean;
   /** 다시점검 = AI 연결 실패로 판정을 못 냈다(서버 `판정실패`). 같은 입력으로 다시 점검할 수 있게 작업을 남겨 둡니다. */
@@ -4284,6 +4274,8 @@ function AiCheckingOverlay({
   onComplete,
   onFail,
   최소화,
+  숨김,
+  숨기기,
   접기,
   펼치기,
   이름,
@@ -4291,6 +4283,9 @@ function AiCheckingOverlay({
 }: {
   /** 창을 접고 다른 화면을 쓰는 중입니다. 판정은 그대로 진행합니다. */
   최소화: boolean;
+  /** v064: 접힌 상자를 닫았다. 판정은 그대로 진행합니다. */
+  숨김?: boolean;
+  숨기기?: () => void;
   접기: () => void;
   펼치기: () => void;
   이름: string;
@@ -4431,6 +4426,7 @@ function AiCheckingOverlay({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [planId]);
   if (최소화) {
+    if (숨김) return null;
     return (
       <aside className="judge-pill" role="status" style={{ bottom: 20 + 파일높이 * 순번 }}>
         <span className="ai-checking-spinner" aria-hidden="true" />
@@ -4439,6 +4435,11 @@ function AiCheckingOverlay({
           <small>AI 점검 중 · {최근항목(진행항목들)?.문장 ?? "보통 1분 정도 걸려요"}</small>
         </span>
         <button onClick={펼치기}>열기</button>
+        {숨기기 && (
+          <button aria-label="알림 닫기" title="닫아도 점검은 계속돼요. 끝나면 알려 드릴게요." onClick={숨기기}>
+            ×
+          </button>
+        )}
       </aside>
     );
   }
@@ -6400,7 +6401,7 @@ function NewPlanPage({
             {!조사확인단계 && 새경로 && 분류안내 && (
               <div className="auto-check-note classification-note">
                 <Icon name="check" />
-                <span><b>{분류안내}</b></span>
+                <span><b><비목강조 글={분류안내} /></b></span>
               </div>
             )}
             <p className="section-copy additional-check-copy" hidden={!조사확인단계 && API켜짐()}>
@@ -6918,7 +6919,7 @@ function 꼭알아야할것({ plan }: { plan: ExpensePlan }) {
         {후보.slice(0, 3).map((x) => (
           <li key={x.문장}>
             <em className={`must-tag ${x.색}`}>{x.종류}</em>
-            <span>{x.문장}</span>
+            <span><비목강조 글={x.문장} /></span>
           </li>
         ))}
       </ul>
@@ -6990,7 +6991,7 @@ function Question({
   return (
     <div className="question">
       <b>
-        {label}
+        <비목강조 글={label} />
         {근거조번호 && <small className="question-basis"> · {근거조번호}</small>}
       </b>
       <div>
@@ -7160,7 +7161,7 @@ const 틀림이유: { 값: NonNullable<판정피드백["이유"]>; 글: string }
   { 값: "기타", 글: "기타" },
 ];
 
-/** 점검 결과의 「맞았어요 / 틀렸어요」. 맞았어요는 바로 저장하고, 틀렸어요는 이유를 받은 뒤 저장합니다. */
+/** 점검 결과의 「도움이 됐어요 / 아쉬워요」(저장 값은 맞음 / 틀림). 도움이 됐어요는 바로 저장하고, 아쉬워요는 이유를 받은 뒤 저장합니다. */
 /**
  * v033: 처음 한 번만 보이는 안내 말풍선. 닫거나 안내한 기능을 쓰면 이 브라우저에서는 다시 보이지 않습니다.
  *    주의: 저장소가 막힌 환경(시크릿 창 등)이면 매번 보일 수 있지만 화면은 정상으로 그립니다.
@@ -7256,7 +7257,7 @@ function 결과평가칸({
         <ul className="result-feedback-team">
           {plan.팀평가.map((평가) => (
             <li key={평가.작성자}>
-              <b>{평가.작성자}</b> {평가.평가 === "맞음" ? "맞았어요" : `틀렸어요${평가.이유 ? ` · ${평가.이유}` : ""}`}
+              <b>{평가.작성자}</b> {평가.평가 === "맞음" ? "도움이 됐어요" : `아쉬워요${평가.이유 ? ` · ${평가.이유}` : ""}`}
               {평가.의견 && <small>{평가.의견}</small>}
             </li>
           ))}
@@ -7264,7 +7265,7 @@ function 결과평가칸({
       )}
       <div className="result-feedback-head">
         <b>
-          이 점검 결과가 맞았나요? <정보 글="평가는 서비스 개선에 쓰이며, 이 점검 결과를 바꾸지는 않습니다." />
+          이 점검 결과가 도움이 되었나요? <정보 글="평가는 서비스 개선에 쓰이며, 이 점검 결과를 바꾸지는 않습니다." />
         </b>
         <div>
           <button
@@ -7274,7 +7275,7 @@ function 결과평가칸({
             disabled={저장중}
             onClick={() => 저장({ 평가: "맞음", 이유: null, 의견: null }, "평가를 저장했습니다.")}
           >
-            ✓ 맞았어요
+            ✓ 도움이 됐어요
           </button>
           <button
             type="button"
@@ -7284,7 +7285,7 @@ function 결과평가칸({
             disabled={저장중}
             onClick={() => set펼침(true)}
           >
-            ✕ 틀렸어요
+            ✕ 아쉬워요
           </button>
         </div>
       </div>
@@ -7297,7 +7298,7 @@ function 결과평가칸({
           }}
         >
           <fieldset>
-            <legend>어떤 점이 달랐나요?</legend>
+            <legend>어떤 점이 아쉬웠나요?</legend>
             {틀림이유.map((항목) => (
               <label key={항목.값}>
                 <input
@@ -7694,7 +7695,7 @@ function PlanDetail({
                 {/* 주의: 같은 「확인 필요」 라도 문의 초안이 있으면 할 일이 정반대입니다(조건 확인 ↔ 주관기관 문의).
                     판정을 받은 계획이면 판정별 문구를, 아니면 기존 문구를 씁니다. */}
                 <h3>
-                  {plan.status === "점검 전" && !plan.판정
+                  <비목강조 글={plan.status === "점검 전" && !plan.판정
                     ? "아직 AI 점검을 하지 않았습니다."
                     : 코드판정제목(plan.코드판정, 표시분류) ??
                       판정제목(plan.판정, 표시분류, Boolean(plan.문의초안)) ??
@@ -7702,7 +7703,7 @@ function PlanDetail({
                         plan.status === "특이사항 없음"
                           ? "특이사항이 없습니다."
                           : "추가 확인이 필요합니다."
-                      }`}
+                      }`} />
                 </h3>
                 {행동문구(plan.판정, Boolean(plan.분류), plan.문의처, 조건칸상태(plan), Boolean(plan.문의초안)) && (
                   <p className="ai-verdict-action">
@@ -7730,10 +7731,10 @@ function PlanDetail({
                     예전에는 화면에 박아 둔 문구라, 어떤 계획을 열어도 같은 해설이
                     나왔습니다. 서버 요약이 있으면 그걸 보여줍니다. */}
                 <p>
-                  {plan.aiSummary ||
+                  <비목강조 글={plan.aiSummary ||
                     (plan.status === "특이사항 없음"
                       ? "현재 조건에서는 주요 사전 준비가 확인됐습니다. 집행 후 증빙을 빠짐없이 보관하세요."
-                      : "사업계획과의 연관성은 확인됐습니다. 다만 계약 전에 과업 범위, 결과물, 검수 기준을 문서로 명확히 하고 금액 적정성과 특수관계 여부를 추가로 확인해야 합니다.")}
+                      : "사업계획과의 연관성은 확인됐습니다. 다만 계약 전에 과업 범위, 결과물, 검수 기준을 문서로 명확히 하고 금액 적정성과 특수관계 여부를 추가로 확인해야 합니다.")} />
                 </p>
                 <꼭알아야할것 plan={plan} />
               </div>
@@ -7742,7 +7743,6 @@ function PlanDetail({
             {/* 결론이 안 난 「확인 필요」의 결말입니다 — 할 일이 '문의' 라서 해설 바로 아래에 둡니다.
                 서버가 준 값이 있을 때만 나옵니다(빈 카드를 남기지 않습니다). */}
             {plan.문의초안 && <문의초안카드 초안={plan.문의초안} 문의처={plan.문의처} notify={notify} />}
-            <조사결과보기 결과={plan.조사} />
             {/* v033: 결제 전 확인은 판정을 본 직후에 할 일이라 AI 점검 결과 안에 둡니다(집행 준비에서 옮김). */}
             {plan.aiChecks.length > 0 && (
               <section className="ai-precheck" id="payment-before">
@@ -7762,8 +7762,8 @@ function PlanDetail({
                     <label key={item.id} className={item.done ? "done" : ""}>
                       <input type="checkbox" checked={Boolean(item.done)} onChange={() => toggle("aiChecks", item.id)} />
                       <span>
-                        <b>{item.label}</b>
-                        {item.description && <small>{item.description}</small>}
+                        <b><비목강조 글={item.label} /></b>
+                        {item.description && <small><비목강조 글={item.description} /></small>}
                       </span>
                     </label>
                   ))}
@@ -7924,8 +7924,8 @@ function PlanDetail({
                         onChange={() => toggle("evidence", item.id)}
                       />
                       <span>
-                        <b>{item.label}</b>
-                        <small>{item.description}</small>
+                        <b><비목강조 글={item.label} /></b>
+                        <small><비목강조 글={item.description} /></small>
                       </span>
                     </label>
                     <label className="outline small expense-v5-upload">
@@ -7994,9 +7994,6 @@ function PlanDetail({
           </div>
         </section>
         )}
-        <p className="ai-result-notice expense-v5-footnote">
-          <span>ⓘ</span>AI 점검 결과는 참고용이며, 최종 판단과 책임은 담당기관의 최신 안내를 확인해주세요.
-        </p>
       </main>
       {/* 주의: 누적 집행액에 들어가는 값이라 '되돌리기가 쉽지 않습니다'. 한 번 묻습니다. */}
       {집행확인 && (
