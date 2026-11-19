@@ -885,7 +885,7 @@ button:disabled,.primary:disabled,.outline:disabled{border-color:var(--color-bor
 button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--color-focus-ring)!important;outline-offset:2px!important}
 
 /* Cards and primary surfaces */
-:where(.summary-card,.panel,.table-panel,.card,.calendar-card,.chat-workspace,.rules-overview,.home-v3-status,.home-v3-panel,.plans-v2-table,.plans-v2-metrics>button,.schedule-v2-metrics>article,.schedule-v2-calendar,.schedule-v2-upcoming,.expense-v5-card,.expense-v5-section,.my-profile-card){
+:where(.summary-card,.panel,.table-panel,.card,.calendar-card,.chat-workspace,.rules-overview,.home-v3-status,.home-v3-panel,.plans-v2-table,.schedule-v2-metrics>article,.schedule-v2-calendar,.schedule-v2-upcoming,.expense-v5-card,.expense-v5-section,.my-profile-card){
   border-color:var(--color-border-subtle)!important;
   box-shadow:var(--shadow-surface)!important;
 }

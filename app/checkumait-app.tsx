@@ -46,6 +46,7 @@ import "./detail-refinement.css";
 import "./home-v4.css";
 import "./detail-v033.css";
 import "./new-plan-v033.css";
+import "./plans-v073.css";
 
 const won = (value: number) => `${value.toLocaleString("ko-KR")}원`;
 /** 일정 상태의 화면 이름. 저장 값(`집행 예정`·`준비 필요`)은 서버와 맞춰 그대로 둡니다. */
@@ -4996,12 +4997,13 @@ function PlansPage({
     link.click();
     URL.revokeObjectURL(url);
   };
-  const counts = {
-    all: plans.length,
-    safe: plans.filter((p) => p.status === "특이사항 없음").length,
-    warn: plans.filter((p) => p.status === "확인 필요").length,
-    risk: plans.filter((p) => p.status === "위험").length,
-  };
+  // v073: 점검 결과 그래프. 점검 중은 아직 결과가 없어 「점검 전」 구간에 셉니다. 0건 구간은 그리지 않습니다.
+  const 결과구간 = ([
+    ["점검 전", "점검전", "draft", plans.filter((p) => ["점검전", "점검 중"].includes(displayPlanStatus(p.status))).length],
+    ["확인 필요", "확인 필요", "warn", plans.filter((p) => p.status === "확인 필요").length],
+    ["불가", "불가", "risk", plans.filter((p) => p.status === "위험").length],
+    ["가능", "가능", "safe", plans.filter((p) => p.status === "특이사항 없음").length],
+  ] as const).filter(([, , , 건수]) => 건수 > 0);
   return (
     <div className="page plans-v2">
       <header className="plans-v2-heading">
@@ -5018,43 +5020,30 @@ function PlansPage({
           </button>
         </div>
       </header>
-      <section className="plans-v2-metrics">
-        <button onClick={() => setFilter("전체")}>
-          <span className="metric-icon all">
-            <Icon name="plans" />
-          </span>
+      {/* v073: 위쪽 4칸 숫자 → 전체 요약(흑백) + 점검 결과 그래프(Figma 03-E 점검 전 포함). 누르면 그 탭으로 거릅니다. */}
+      <section className="plans-v073-overview">
+        <button className="plans-v073-total" onClick={() => setFilter("전체")}>
+          <small>전체 지출 계획</small>
           <span>
-            <small>전체</small>
-            <b>{counts.all}건</b>
+            <b>{plans.length}<em>건</em></b>
+            <span>
+              <small>예상 지출 합계</small>
+              <strong>{만원표기(plans.reduce((합, p) => 합 + p.amount, 0))}원</strong>
+            </span>
           </span>
         </button>
-        <button onClick={() => setFilter("확인 필요")}>
-          <span className="metric-icon warn">
-            <Icon name="fileText" />
-          </span>
-          <span>
-            <small>확인 필요</small>
-            <b>{counts.warn}건</b>
-          </span>
-        </button>
-        <button onClick={() => setFilter("불가")}>
-          <span className="metric-icon risk">
-            <Icon name="alert" />
-          </span>
-          <span>
-            <small>불가</small>
-            <b>{counts.risk}건</b>
-          </span>
-        </button>
-        <button onClick={() => setFilter("가능")}>
-          <span className="metric-icon safe">
-            <Icon name="check" />
-          </span>
-          <span>
-            <small>가능</small>
-            <b>{counts.safe}건</b>
-          </span>
-        </button>
+        <div className="plans-v073-result">
+          <b>점검 결과</b>
+          <div>
+            {결과구간.length === 0 && <p>아직 지출 계획이 없습니다.</p>}
+            {결과구간.map(([이름, 탭, 색, 건수]) => (
+              <button key={이름} className={`is-${색}`} style={{ flexGrow: 건수 }} onClick={() => setFilter(탭)}>
+                <i />
+                <span>{이름}<b>{건수}건</b></span>
+              </button>
+            ))}
+          </div>
+        </div>
       </section>
       <nav className="plans-v2-tabs" aria-label="지출 상태 필터">
         {(["전체", "점검전", "점검 중", "확인 필요", "불가", "가능"] as const).map(
@@ -5185,7 +5174,8 @@ function PlansPage({
       <section className="plans-v2-table">
         <div className="plans-v2-selection">
           <b>
-            {selected.length > 0 ? `${selected.length}건 선택됨` : "지출 점검"}
+            {/* v073: 시안은 선택 전 제목이 없습니다. 선택하면 건수를 보입니다. */}
+            {selected.length > 0 ? `${selected.length}건 선택됨` : ""}
           </b>
           <div>
             <button

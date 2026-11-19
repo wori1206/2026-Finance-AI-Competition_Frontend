@@ -14,8 +14,6 @@ html,body,.app-shell,.main-area,.sidebar,.main-area:has(.expense-detail-page),.m
 .v3-section-heading p,.v3-ai-copy>p,.v3-process-heading p,.v4-stage-name>small,.v4-check-list small,.v4-stage-card>footer,.v4-progress-card li small{color:#666}
 
 /* Final expense-plan typography overrides */
-.plans-v2-metrics small{font-size:13px}
-.plans-v2-metrics b{font-size:26px}
 .plans-v2-tabs button{font-size:14px}
 .plans-v2-search input,.plans-v2-tools .outline{font-size:13px}
 .plans-v2-head,.plans-v2-row{grid-template-columns:34px minmax(145px,1.1fr) minmax(180px,1.35fr) 108px 112px 124px 120px 122px 32px}
@@ -68,7 +66,6 @@ html,body,.app-shell,.main-area,.sidebar,.main-area:has(.expense-detail-page),.m
 .home-v3-attention>footer{justify-content:flex-start}
 
 /* Expense plan table hierarchy */
-.plans-v2-metrics b{font-weight:650}
 .plans-v2-head,.plans-v2-row{min-width:980px;grid-template-columns:34px minmax(190px,1.45fr) minmax(130px,1fr) 116px 128px minmax(130px,1fr) 122px 32px}
 .plans-v2-row>.status{width:116px;justify-content:center;text-align:center}
 .plans-v2-row>.status-safe{border-color:#cfe5db;background:#eef7f3;color:#176b5b}.plans-v2-row>.status-warn{border-color:#f1d7a8;background:#fff5e6;color:#b96900}.plans-v2-row>.status-risk{border-color:#f3caca;background:#fff1f1;color:#c23b3b}.plans-v2-row>.status-draft{border-color:#d7dcda;background:#f2f4f3;color:#59615e}
