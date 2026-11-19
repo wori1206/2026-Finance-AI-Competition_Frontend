@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@import "../tokens.css";
+@import "./tokens.css";
 @import "./workspace.css";
 @import "./send-button.css";
 @import "./chat-layout.css";

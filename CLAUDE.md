@@ -22,8 +22,9 @@ npm run dev            # http://localhost:3000
 - `lib/adapt.ts` — 서버 응답 → 화면 모델(`ExpensePlan`) 변환, 판정 문구(`행동문구` 등).
 - `lib/api.ts` — 백엔드 호출. `lib/types.ts` · `lib/server-types.ts` — 화면/서버 타입.
 - `app/*.css` — 화면별 스타일. 버전 이름이 붙은 파일(`detail-v033.css`, `new-plan-v033.css`, `home-v4.css`, `plans-v073.css`, `schedule-v073.css`)과 `semantic-colors.css`.
-  색 · 그림자 토큰은 `app/globals.css` 끝(v074).
+  색 · 그림자 · 간격 · 모서리 토큰은 `app/globals.css` 끝(v074). `app/tokens.css` 는 옛 `--color-*` 토큰(옛 CSS 가 씀).
 - `docs/design-system.md` — **디자인 규칙**(색 · 글자 · 간격 · 모서리 · 부품 · CSS 작성 규칙 · 확인 방법). 화면을 만들거나 고치기 전에 읽고 따릅니다.
+- `docs/planning/` — 기능명세서 · 프론트 정리 · 인수인계 등 기획 문서(참고용).
 - 주석 `// v0NN:` 은 그 변경을 만든 이슈 번호입니다. 새로 고칠 때도 같은 형식으로 남깁니다.
 
 ## 지켜 온 결정

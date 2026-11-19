@@ -1,107 +1,97 @@
-# vinext-starter
+# 써도돼요 · 프론트엔드
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+> 창업지원금, 쓰기 전에 AI 가 규정에 비춰 먼저 확인해 드려요.
 
-## Prerequisites
+창업지원사업 참여 기업이 **지출 계획**을 적으면, AI 가 사업 규정 · 협약에 비춰 **가능 · 확인 필요 · 불가**로 점검하고
+결제 전에 챙길 증빙과 일정을 알려 주는 서비스의 화면입니다.
+판정 엔진과 API 는 별도 백엔드 저장소(FastAPI)에 있고, 이 저장소는 화면만 다룹니다.
 
-- Node.js `>=22.13.0`
-- Linux with `flock`, `curl`, and GNU `timeout`
+## 주요 화면
 
-## Sites Lifecycle
+| 화면 | 하는 일 |
+|---|---|
+| 홈 | 미완료 일정, 이번 주 일정, 사업비 현황(원그래프), 확인할 지출 계획 |
+| 지출 계획 | 전체 지출 계획 목록, 점검 결과 그래프, 상태별 탭 · 검색 · 필터 |
+| 새 지출 계획 | 한 문장으로 적으면 비목 · 금액 · 사용 목적을 정리하고 AI 점검 |
+| 지출 상세 | 판정과 근거 조문, 결제 전 확인 목록, 담당자 문의 초안 |
+| 집행 일정 | 달력 · 다가오는 일정, 기한 지난 일정, 사전 준비 · 집행 · 완료 |
+| 마이페이지 · 온보딩 | 참여 사업 · 주관기관 · 협약 정보 |
 
-The Sites lifecycle CLI runs the locked dependency install before returning this checkout. Edit the source under `app/`, then checkpoint when a coherent milestone is ready to inspect or share. The remote Sites builder runs `npm run build` against the pushed commit. Do not repeat install or build as a normal pre-checkpoint step.
+## 기술 스택
 
-This starter does not use `wrangler.jsonc`.
+- **Next.js 16** (App Router) · **React 19** · **TypeScript 5.9**
+- **Tailwind CSS 4** (기반) + 화면별 CSS · 디자인 토큰(`app/globals.css`)
+- **Supabase Auth** (로그인만), 데이터는 백엔드 API
+- 배포: **Vercel** (`main` 머지 = 운영 배포)
 
-`install:ci` is intentionally a single, non-retrying `npm ci`. It refuses a concurrent install for the same project, consumes a matching image-seeded npm cache with `--prefer-offline` while retaining registry fallback for a missing cache object, otherwise downloads and verifies the complete vinext tarball recorded in `package-lock.json`, limits npm to one socket, and terminates a stalled install. `build` applies a short timeout. These helpers target Linux and use GNU `timeout`; they are not native macOS scripts.
+## 시작하기
 
-Scripts that need writable project-scoped home, npm, XDG, and temporary paths use `scripts/sites-env.sh`. The `dev` and `start` scripts honor the caller's runtime environment and keep Wrangler logs inside the checkout. The generated `.sites-runtime/` directory is disposable and ignored by Git.
+Node.js 22.13 이상이 필요합니다.
 
-## Included Shape
-
-- edit site code under `app/`
-- `app/chatgpt-auth.ts` provides optional dispatch-owned ChatGPT sign-in helpers
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/index.ts` reads the D1 binding from the Cloudflare Worker environment
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-OpenAI workspace sites can read the current user's email from
-`oai-authenticated-user-email`.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```bash
+npm install
+cp .env.example .env.local   # 값 채우기 (아래 「환경 변수」)
+npm run dev                  # http://localhost:3000
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+- 화면만 볼 때는 **모의 백엔드**를 씁니다. 백엔드 저장소에서 `SUDDOE_MOCK=1` 로 켜면 `http://127.0.0.1:8080` 에 뜹니다.
+  모의 백엔드의 CORS 는 `localhost:3000` 만 허용합니다.
+- `node_modules` 가 심볼릭 링크 · 정션이면 Turbopack 이 거부합니다. 그때는 `npx next dev --webpack`.
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
+### 환경 변수
 
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
+| 이름 | 설명 | 비우면 |
+|---|---|---|
+| `NEXT_PUBLIC_API_BASE` | 백엔드 주소 | 내 컴퓨터에서는 `http://localhost:8080`(모의 백엔드), 그 밖에서는 예시 데이터로 동작 |
+| `NEXT_PUBLIC_SUPABASE_URL` · `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase 로그인 | Supabase 로그인을 쓰지 않음 |
 
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
+실제 값은 `.env.local` 에만 두고 커밋하지 않습니다(`.gitignore` 에서 `.env*` 제외, `.env.example` 만 올림).
 
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
+## 폴더 구조
 
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
+```text
+.
+├── app/
+│   ├── page.tsx · layout.tsx    # 진입점
+│   ├── checkumait-app.tsx       # 화면 대부분(홈 · 지출 계획 · 새 지출 계획 · 지출 상세 · 집행 일정 · 온보딩)
+│   ├── send-button.tsx          # 보내기 버튼
+│   ├── globals.css · tokens.css # 기본 스타일 · 디자인 토큰
+│   └── *-v###.css               # 화면별 스타일(이름의 v### 는 만든 이슈 번호)
+├── lib/
+│   ├── api.ts · http.ts · config.ts   # 백엔드 호출 · 주소
+│   ├── adapt.ts                       # 서버 응답 → 화면 모델, 판정 문구
+│   ├── types.ts · server-types.ts     # 화면 타입 · 서버 응답 타입(서버 필드 이름 그대로)
+│   ├── judge.ts · normalize.ts · questions.ts · sse.ts   # AI 점검 흐름
+│   ├── tasks.ts · attachments.ts · inquiry-store.ts      # 할일 · 첨부 · 문의 초안
+│   ├── profile.ts · program.ts · orgs.ts · norms.ts      # 협약 · 사업 · 주관기관 · 규정
+│   ├── supabase.ts · session.ts       # 로그인 · 토큰
+│   └── mock-data.ts · plan-service.ts · data-source.ts   # 예시 데이터 · 출처
+├── public/                      # 로고 · 아이콘
+└── docs/
+    ├── design-system.md         # 디자인 규칙(색 · 글자 · 간격 · 모서리 · 부품 크기 단계)
+    └── planning/                # 기능명세서 · 프론트 정리 · 인수인계 문서
+```
 
-## Diagnostic Commands
+`app/checkumait-app.tsx` 는 약 1.1만 줄입니다. 고칠 때는 `grep -n` 으로 위치를 찾고 그 부분만 읽으세요.
 
-- `npm run install:ci`: perform the one bounded lockfile install
-- `npm run dev`: start the Vite/Vinext development server
-- `npm run build`: build the deployable Sites artifact
-- `npm run start`: start the built Vinext application
-- `npm test`: build and verify the rendered development-preview metadata
-- `npm run db:generate`: generate Drizzle migrations after schema changes
+## 작업 규칙
 
-Use build commands for targeted diagnosis after a remote failure, not as part of the normal checkpoint path.
+- **디자인:** 화면을 만들거나 고치기 전에 [`docs/design-system.md`](docs/design-system.md) 를 읽고 따릅니다. hex 대신 토큰, 크기는 단계(XS · S · M · L) 단위.
+- **판정 값(가능 · 확인 필요 · 불가)은 화면에서 바꾸지 않습니다.** 서버 필드 이름도 그대로 씁니다.
+- **브랜치:** `main` 에서 `fix/v###-짧은-설명` 또는 `feat/v###-…` (`v###` 는 노션 이슈 번호)
+- **커밋:** `fix(v###): 무엇을 왜` — 한국어
+- **PR:** 템플릿(화면에서 바뀌는 것 · 검증)을 채우고, 리뷰 후 머지합니다. `main` 에 직접 푸시하지 않습니다.
+- **올리기 전 확인**
 
-The timeout defaults can be overridden for a controlled canary with `SITES_INSTALL_TIMEOUT`, `SITES_INSTALL_KILL_AFTER`, `SITES_BUILD_TIMEOUT`, and `SITES_BUILD_KILL_AFTER`. A timeout fails the command; the helpers never retry an unchanged install or build.
+  ```bash
+  npx tsc --noEmit   # 통과
+  npx eslint app lib # 기존 지적이 있어 main 보다 늘지 않으면 됨
+  ```
 
-## Learn More
+  화면 변경은 브라우저에서 직접 확인하고 콘솔 오류가 없는지 봅니다.
 
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+더 자세한 작업 안내(지켜 온 결정 · 용어 원칙)는 [`CLAUDE.md`](CLAUDE.md) 에 있습니다.
+
+## 배포
+
+`main` 에 머지하면 Vercel 이 운영에 배포합니다. PR 마다 Vercel 미리보기가 만들어지니, 머지 전에 통과했는지 봅니다.

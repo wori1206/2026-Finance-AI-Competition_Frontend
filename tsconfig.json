@@ -37,17 +37,6 @@
     "**/*.mts"
   ],
   "exclude": [
-    "node_modules",
-    "worker",
-    "db",
-    "examples",
-    "drizzle",
-    "build",
-    "scripts",
-    "tests",
-    "vite.config.ts",
-    "drizzle.config.ts",
-    "app/chatgpt-auth.ts",
-    "app/send-button.preview.tsx"
+    "node_modules"
   ]
 }
