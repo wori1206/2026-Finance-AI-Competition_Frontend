@@ -6,10 +6,10 @@
 .home-v4-head{display:flex;justify-content:space-between;align-items:center;gap:16px;padding-bottom:16px}
 .home-v4-head h1{margin:0;font-size:30px;font-weight:700;line-height:45px;letter-spacing:-.6px}
 .home-v4-head p{margin:6px 0 0;color:var(--sub);font-size:14px;line-height:21px;letter-spacing:-.15px}
-.home-v4-head .primary{display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 14px;border:1px solid #174d3e;border-radius:5px;background:#256855;font-size:14px;font-weight:500}
+.home-v4-head .primary{display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 14px;border:1px solid var(--primary-border);border-radius:5px;background:var(--primary-bg);font-size:14px;font-weight:500}
 
 /* ① 미완료 일정 */
-.home-v4-next{min-height:188px;display:flex;align-items:center;gap:22px;padding:28px 30px;border-radius:14px;background:#1d211f;color:#fff}
+.home-v4-next{min-height:188px;display:flex;align-items:center;gap:22px;padding:28px 30px;border-radius:14px;background:var(--surface-hero);color:#fff}
 .home-v4-next>div{min-width:0;display:flex;flex-direction:column;gap:8px}
 .home-v4-next small{padding-bottom:8px;color:#bde4d1;font-size:12px;font-weight:700;line-height:18px}
 .home-v4-next h2{margin:0;font-size:24px;font-weight:700;line-height:34px;color:#fff}
@@ -30,7 +30,7 @@
 .home-v4-week-wrap>header,.home-v4-card>header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px}
 .home-v4-week-wrap h2,.home-v4-card h2{font-size:18px!important;font-weight:700;line-height:27px;letter-spacing:-.15px}
 .home-v4-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
-.home-v4-day{min-height:104px;display:flex;flex-direction:column;align-items:stretch;gap:5px;padding:10px;border:1px solid #dfe3e1;border-radius:10px;background:#fff;text-align:left;font-size:12px;cursor:pointer}
+.home-v4-day{min-height:104px;display:flex;flex-direction:column;align-items:stretch;gap:5px;padding:10px;border:1px solid var(--control);border-radius:10px;background:#fff;text-align:left;font-size:12px;cursor:pointer}
 .home-v4-day:hover{border-color:#cbd3cf}
 /* 공통 규칙(.app-shell button … border-color !important · box-shadow none !important)이 버튼 테두리를 덮어써서
    오늘 칸 테두리는 가상 요소로 그립니다 */
@@ -66,7 +66,7 @@
 .home-v4-dday{display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding:11px 14px;border-radius:8px;background:var(--brand-soft);font-size:14px;letter-spacing:-.15px}
 .home-v4-dday b{color:var(--brand);font-size:18px;font-weight:700}
 .home-v4-attention>header{margin-bottom:0;padding-bottom:6px}
-.home-v4-row{width:100%;min-height:72px;display:flex;align-items:center;gap:12px;padding:15px 0;border:0;border-top:1px solid #dfe3e1;background:none;text-align:left;cursor:pointer}
+.home-v4-row{width:100%;min-height:72px;display:flex;align-items:center;gap:12px;padding:15px 0;border:0;border-top:1px solid var(--control);background:none;text-align:left;cursor:pointer}
 .home-v4-attention>header+.home-v4-row{border-top:0}
 .home-v4-row-text{flex:1;min-width:0;display:grid;gap:3px}
 .home-v4-row-text b{font-size:15px;font-weight:700;line-height:22.5px;letter-spacing:-.15px}

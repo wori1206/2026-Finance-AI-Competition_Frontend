@@ -21,7 +21,9 @@ npm run dev            # http://localhost:3000
   고칠 때는 `grep -n` 으로 위치를 찾고 그 부분만 읽으세요. 통째로 읽지 마세요.
 - `lib/adapt.ts` — 서버 응답 → 화면 모델(`ExpensePlan`) 변환, 판정 문구(`행동문구` 등).
 - `lib/api.ts` — 백엔드 호출. `lib/types.ts` · `lib/server-types.ts` — 화면/서버 타입.
-- `app/*.css` — 화면별 스타일. 버전 이름이 붙은 파일(`detail-v033.css`, `new-plan-v033.css`, `home-v4.css`)과 `semantic-colors.css`.
+- `app/*.css` — 화면별 스타일. 버전 이름이 붙은 파일(`detail-v033.css`, `new-plan-v033.css`, `home-v4.css`, `plans-v073.css`, `schedule-v073.css`)과 `semantic-colors.css`.
+  색 · 그림자 토큰은 `app/globals.css` 끝(v074).
+- `docs/design-system.md` — **디자인 규칙**(색 · 글자 · 간격 · 모서리 · 부품 · CSS 작성 규칙 · 확인 방법). 화면을 만들거나 고치기 전에 읽고 따릅니다.
 - 주석 `// v0NN:` 은 그 변경을 만든 이슈 번호입니다. 새로 고칠 때도 같은 형식으로 남깁니다.
 
 ## 지켜 온 결정
@@ -38,6 +40,8 @@ npm run dev            # http://localhost:3000
 
 ## 화면 · 용어 원칙 (백엔드와 같음)
 
+- **디자인:** 새 화면 · 자잘한 수정 모두 `docs/design-system.md` 를 따릅니다. hex 대신 토큰, 시안 요소 임의 삭제 금지,
+  구현 후 Figma 와 항목별 대조.
 - **UX 먼저:** 설계 · 구현 모두 사용자가 각 단계에서 보고 하는 것부터 생각합니다.
   내부 값(문장 ID `S01`, 검증코드, 처리단계, 사유 코드)은 화면에 내보내지 않고 쉬운 한국어로 바꿔 보입니다.
 - **용어:** 규정 용어(비목 · 세목 · 주관기관 · 협약 · 자기부담금)와 회계 · 개발 표준 용어를 씁니다. 새 말을 만들지 않습니다.
