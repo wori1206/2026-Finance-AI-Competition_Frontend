@@ -40,12 +40,14 @@ import type { 진행항목 } from "../lib/sse";
 import { 데모종료, 데모중, 이메일기억, 기억된이메일, 이메일잊기, 팀이름기억, 기억된팀이름 } from "../lib/session";
 import { 초안전부지우기 } from "../lib/inquiry-store";
 import { 선택사업, 사업저장, 사업선택지, 목록에맞추기, 기본사업 } from "../lib/program";
-import { 협약쓰기, 원, 날짜표기, 디데이표기, 지금협약, 협약기억, 협약잊기, 기억된협약, 서버협약읽기, 서버협약조회, 빈협약, type 협약정보 } from "../lib/profile";
+import { 협약쓰기, 원, 날짜표기, 디데이표기, 남은날, 지금협약, 협약기억, 협약잊기, 기억된협약, 서버협약읽기, 서버협약조회, 빈협약, type 협약정보 } from "../lib/profile";
 import { SendButton } from "./send-button";
 import "./detail-refinement.css";
 import "./home-v4.css";
 import "./detail-v033.css";
 import "./new-plan-v033.css";
+import "./plans-v073.css";
+import "./schedule-v073.css";
 
 const won = (value: number) => `${value.toLocaleString("ko-KR")}원`;
 /** 일정 상태의 화면 이름. 저장 값(`집행 예정`·`준비 필요`)은 서버와 맞춰 그대로 둡니다. */
@@ -3724,42 +3726,6 @@ function 이번주날짜(오늘: string): string[] {
   });
 }
 
-type 홈할일 = { 제목: string; 설명: string; 종류: "late" | "risk" | "soon" | "warn"; 이동: AppRoute };
-
-/**
- * v032: 배너에 올릴 할 일 순서. 기한 지남 → 불가 지출 → 가까운 마감 → 확인 필요 지출.
- *    배너는 맨 앞 하나만 크게 보이고, 나머지는 「그다음」 한 줄과 개수로만 알립니다.
- */
-function 홈할일목록(plans: ExpensePlan[], schedules: ScheduleItem[], 오늘: string): 홈할일[] {
-  const 계획이름 = (id: string) => plans.find((p) => p.id === id)?.name;
-  const 남은일정 = schedules
-    .filter((s) => s.state !== "완료" && !!s.date)
-    .sort((x, y) => x.date.localeCompare(y.date));
-  const 일정할일 = (s: ScheduleItem, 종류: "late" | "soon"): 홈할일 => ({
-    제목: 계획이름(s.planId) ? `${계획이름(s.planId)} — ${s.title}` : s.title,
-    설명: 종류 === "late" ? `${월일표기(s.date)} 기한이 지났어요` : `${월일표기(s.date)}까지 · ${s.type}`,
-    종류,
-    이동: { page: "schedule" },
-  });
-  const 계획할일 = (p: ExpensePlan, 종류: "risk" | "warn"): 홈할일 => ({
-    제목: `${p.name} — ${displayPlanStatus(p.status)}`,
-    설명:
-      종류 === "risk"
-        ? "사업비로 집행할 수 없어요. 계획을 바꾸거나 삭제하세요."
-        : p.status === "재점검 필요"
-          ? "수정한 내용으로 다시 점검해야 해요."
-          : p.nextAction || "결제 전에 확인할 조건이 있어요.",
-    종류,
-    이동: { page: "plan-detail", id: p.id },
-  });
-  return [
-    ...남은일정.filter((s) => s.date < 오늘).map((s) => 일정할일(s, "late")),
-    ...plans.filter((p) => p.status === "위험").map((p) => 계획할일(p, "risk")),
-    ...남은일정.filter((s) => s.date >= 오늘).map((s) => 일정할일(s, "soon")),
-    ...plans.filter((p) => p.status === "확인 필요" || p.status === "재점검 필요").map((p) => 계획할일(p, "warn")),
-  ];
-}
-
 function HomePage({
   plans,
   schedules,
@@ -3782,8 +3748,12 @@ function HomePage({
   const 협약있음 = !(협약.예시 && API켜짐());
   const 남음 = 협약있음 ? 디데이표기(협약.종료일) : "";
   const 오늘 = 오늘날짜();
-  const 할일 = 홈할일목록(plans, schedules, 오늘);
-  const [첫할일, 다음할일] = 할일;
+  const 남은일정 = schedules.filter((s) => s.state !== "완료" && !!s.date);
+  // v073: 진한 카드는 가장 이른 미완료 일정 하나(Figma 「미완료 일정」 — 지난 일정이 먼저 옵니다).
+  //    불가 · 확인 필요 지출은 아래 「확인할 지출 계획」 에서 봅니다. 일정이 없으면 「할 일이 없어요」.
+  const 첫일정 = [...남은일정].sort((x, y) => x.date.localeCompare(y.date))[0];
+  const 첫일정지출 = 첫일정 && plans.find((p) => p.id === 첫일정.planId)?.name;
+  const 첫일정남은날 = 첫일정 ? 남은날(첫일정.date) ?? 0 : 0;
 
   // 사업비: 총액 = 정부지원 + 자기부담 현금(현물은 돈이 나가지 않아 뺍니다).
   //    집행 완료 = 실제 지출을 등록한 계획, 계획 중 = 아직 결제 전인 계획(불가 판정은 쓸 수 없는 돈이라 뺍니다).
@@ -3806,11 +3776,9 @@ function HomePage({
         Number(b.status === "위험") - Number(a.status === "위험") ||
         b.updatedAt.localeCompare(a.updatedAt, "ko"),
     );
-  const 불가수 = 확인할지출.filter((p) => p.status === "위험").length;
 
   const 주간 = 이번주날짜(오늘);
   const 요일 = ["월", "화", "수", "목", "금", "토", "일"];
-  const 남은일정 = schedules.filter((s) => s.state !== "완료" && !!s.date);
 
   return (
     <div className="page home-v4">
@@ -3826,32 +3794,51 @@ function HomePage({
         </button>
       </header>
 
-      {/* ① 지금 할 일 — 하나만 크게. 부담을 줄이려고 나머지는 개수로만 알립니다. */}
-      <section className={`home-v4-next ${자료받음 && !첫할일 ? "is-clear" : ""}`}>
+      {/* ① 미완료 일정 — 가장 이른 것 하나만 크게(v073 Figma 02 홈). */}
+      <section className={`home-v4-next ${자료받음 && !첫일정 && !일정실패 ? "is-clear" : ""}`}>
         <div>
-          <small>{!자료받음 ? "불러오는 중" : 첫할일 ? "지금 하나만 하면 돼요" : "할 일이 없어요"}</small>
-          <h2>{!자료받음 ? "할 일을 확인하고 있어요." : 첫할일 ? 첫할일.제목 : "모두 준비됐어요"}</h2>
-          <p>
+          <small>{!자료받음 ? "불러오는 중" : 일정실패 || 첫일정 ? "미완료 일정" : "할 일이 없어요"}</small>
+          <h2>
             {!자료받음
-              ? "잠시만 기다려 주세요."
-              : 첫할일
-                ? 첫할일.설명
-                : "새 지출이 생기면 결제 전에 AI 점검부터 받아 보세요."}
-          </p>
-          {다음할일 && (
-            <div className="home-v4-next-sub">
-              <span>
-                그다음: <b>{다음할일.제목}</b>
-              </span>
-              <span>
-                남은 할 일 <b>{할일.length}개</b>
-              </span>
-            </div>
+              ? "할 일을 확인하고 있어요."
+              : 일정실패
+                ? "일정을 불러오지 못했어요"
+                : 첫일정
+                  ? 첫일정.title
+                  : "모두 준비됐어요"}
+          </h2>
+          {자료받음 && 첫일정 && !일정실패 ? (
+            <dl>
+              {첫일정지출 && (
+                <div>
+                  <dt>관련 지출</dt>
+                  <dd>{첫일정지출}</dd>
+                </div>
+              )}
+              <div>
+                <dt>예정일</dt>
+                <dd>
+                  {Number(첫일정.date.slice(5, 7))}월 {Number(첫일정.date.slice(8, 10))}일
+                  {/* 지났으면 「기한 지남」, 아니면 남은 날(D-n · 오늘은 D-DAY) */}
+                  <span className={`home-v4-due ${첫일정남은날 < 0 ? "is-late" : ""}`}>
+                    {첫일정남은날 < 0 ? "기한 지남" : 첫일정남은날 === 0 ? "D-DAY" : `D-${첫일정남은날}`}
+                  </span>
+                </dd>
+              </div>
+            </dl>
+          ) : (
+            <p>
+              {!자료받음
+                ? "잠시만 기다려 주세요."
+                : 일정실패
+                  ? "새로고침해 주세요."
+                  : "새 지출이 생기면 결제 전에 AI 점검부터 받아 보세요."}
+            </p>
           )}
         </div>
         {자료받음 && (
-          <button onClick={() => go(첫할일 ? 첫할일.이동 : { page: "plan-new" })}>
-            {첫할일 ? "시작하기" : "새 지출 계획"} <Icon name="arrow" size={16} />
+          <button onClick={() => go(첫일정 || 일정실패 ? { page: "schedule" } : { page: "plan-new" })}>
+            {첫일정 || 일정실패 ? "일정 확인하기" : "새 지출 계획"} <Icon name="arrow" size={16} />
           </button>
         )}
       </section>
@@ -3951,16 +3938,11 @@ function HomePage({
           )}
         </section>
 
-        {/* ④ 확인할 지출 — 날짜가 없어 이번 주 칸에 안 나오는 지출도 여기서 보입니다. */}
+        {/* ④ 확인할 지출 계획 — 날짜가 없어 이번 주 칸에 안 나오는 지출도 여기서 보입니다. */}
         <section className="home-v4-card home-v4-attention">
           <header>
-            <h2>확인할 지출</h2>
+            <h2>확인할 지출 계획</h2>
             <span>
-              {확인할지출.length > 0 && (
-                <small>
-                  {불가수 > 0 && `${displayPlanStatus("위험")} ${불가수} · `}확인 필요 {확인할지출.length - 불가수}
-                </small>
-              )}
               <button className="text-button" onClick={() => go({ page: "plans" })}>
                 전체 보기 <Icon name="arrow" size={15} />
               </button>
@@ -3974,12 +3956,10 @@ function HomePage({
             확인할지출.slice(0, 4).map((plan) => (
               <button key={plan.id} className="home-v4-row" onClick={() => go({ page: "plan-detail", id: plan.id })}>
                 <span className="home-v4-row-text">
-                  {/* v069: 지출명 옆에 금액, 아래에 사용 목적. 판정 요약 문장은 지출 상세에서 봅니다. */}
-                  <b>
-                    {plan.name}
-                    <span className="home-v4-row-amount">{won(plan.amount)}</span>
-                  </b>
-                  {plan.purpose && <small className="home-v4-row-purpose">{plan.purpose}</small>}
+                  {/* v073: Figma 대로 아래 줄은 「남은 결제 전 확인 첫 항목 · 금액」(v069 의 금액 옆 · 사용 목적 대신).
+                      확인 항목을 아직 못 받은 계획은 금액만. */}
+                  <b>{plan.name}</b>
+                  <small>{[plan.nextAction, won(plan.amount)].filter(Boolean).join(" · ")}</small>
                 </span>
                 <계획배지 plan={plan} />
               </button>
@@ -4996,12 +4976,13 @@ function PlansPage({
     link.click();
     URL.revokeObjectURL(url);
   };
-  const counts = {
-    all: plans.length,
-    safe: plans.filter((p) => p.status === "특이사항 없음").length,
-    warn: plans.filter((p) => p.status === "확인 필요").length,
-    risk: plans.filter((p) => p.status === "위험").length,
-  };
+  // v073: 점검 결과 그래프. 점검 중은 아직 결과가 없어 「점검 전」 구간에 셉니다. 0건 구간은 그리지 않습니다.
+  const 결과구간 = ([
+    ["점검 전", "점검전", "draft", plans.filter((p) => ["점검전", "점검 중"].includes(displayPlanStatus(p.status))).length],
+    ["확인 필요", "확인 필요", "warn", plans.filter((p) => p.status === "확인 필요").length],
+    ["불가", "불가", "risk", plans.filter((p) => p.status === "위험").length],
+    ["가능", "가능", "safe", plans.filter((p) => p.status === "특이사항 없음").length],
+  ] as const).filter(([, , , 건수]) => 건수 > 0);
   return (
     <div className="page plans-v2">
       <header className="plans-v2-heading">
@@ -5018,43 +4999,30 @@ function PlansPage({
           </button>
         </div>
       </header>
-      <section className="plans-v2-metrics">
-        <button onClick={() => setFilter("전체")}>
-          <span className="metric-icon all">
-            <Icon name="plans" />
-          </span>
+      {/* v073: 위쪽 4칸 숫자 → 전체 요약(흑백) + 점검 결과 그래프(Figma 03-E 점검 전 포함). 누르면 그 탭으로 거릅니다. */}
+      <section className="plans-v073-overview">
+        <button className="plans-v073-total" onClick={() => setFilter("전체")}>
+          <small>전체 지출 계획</small>
           <span>
-            <small>전체</small>
-            <b>{counts.all}건</b>
+            <b>{plans.length}<em>건</em></b>
+            <span>
+              <small>예상 지출 합계</small>
+              <strong>{만원표기(plans.reduce((합, p) => 합 + p.amount, 0))}원</strong>
+            </span>
           </span>
         </button>
-        <button onClick={() => setFilter("확인 필요")}>
-          <span className="metric-icon warn">
-            <Icon name="fileText" />
-          </span>
-          <span>
-            <small>확인 필요</small>
-            <b>{counts.warn}건</b>
-          </span>
-        </button>
-        <button onClick={() => setFilter("불가")}>
-          <span className="metric-icon risk">
-            <Icon name="alert" />
-          </span>
-          <span>
-            <small>불가</small>
-            <b>{counts.risk}건</b>
-          </span>
-        </button>
-        <button onClick={() => setFilter("가능")}>
-          <span className="metric-icon safe">
-            <Icon name="check" />
-          </span>
-          <span>
-            <small>가능</small>
-            <b>{counts.safe}건</b>
-          </span>
-        </button>
+        <div className="plans-v073-result">
+          <b>점검 결과</b>
+          <div>
+            {결과구간.length === 0 && <p>아직 지출 계획이 없습니다.</p>}
+            {결과구간.map(([이름, 탭, 색, 건수]) => (
+              <button key={이름} className={`is-${색}`} style={{ flexGrow: 건수 }} onClick={() => setFilter(탭)}>
+                <i />
+                <span>{이름}<b>{건수}건</b></span>
+              </button>
+            ))}
+          </div>
+        </div>
       </section>
       <nav className="plans-v2-tabs" aria-label="지출 상태 필터">
         {(["전체", "점검전", "점검 중", "확인 필요", "불가", "가능"] as const).map(
@@ -5185,7 +5153,8 @@ function PlansPage({
       <section className="plans-v2-table">
         <div className="plans-v2-selection">
           <b>
-            {selected.length > 0 ? `${selected.length}건 선택됨` : "지출 점검"}
+            {/* v073: 시안은 선택 전 제목이 없습니다. 선택하면 건수를 보입니다. */}
+            {selected.length > 0 ? `${selected.length}건 선택됨` : ""}
           </b>
           <div>
             <button
@@ -9030,7 +8999,6 @@ function SchedulePage({
   const month = 기준월 + 월오프셋;
   const 연 = month < 1 ? 기준연 - 1 : month > 12 ? 기준연 + 1 : 기준연;
   const 표시월 = ((month - 1 + 12) % 12) + 1;
-  const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [editing, setEditing] = useState<ScheduleItem | null>(null);
   const [viewing, setViewing] = useState<ScheduleItem | null>(null);
   const [upcomingView, setUpcomingView] = useState<"all" | "plans">("all");
@@ -9048,7 +9016,6 @@ function SchedulePage({
   const visibleUpcoming = upcoming.filter(
     (item) => item.state !== "완료" && !지났나(item),
   );
-  const activeUpcoming = visibleUpcoming.slice(0, 3);
   // v038: 캘린더에서 날짜를 고르면 오른쪽 목록이 그날 일정(완료·지난 것 포함)으로 바뀝니다.
   const [고른날, set고른날] = useState<string | null>(null);
   const 오른쪽목록 = 고른날 ? schedules.filter((item) => item.date === 고른날) : visibleUpcoming;
@@ -9167,12 +9134,14 @@ function SchedulePage({
             : "일정을 불러오는 중입니다."}
         </p>
       )}
+      {/* v073: Figma 「기한 지난 일정 · 회색 헤더 / 흰 목록」 — 처음엔 접혀 있고 누르면 펼칩니다. */}
       {기한지남.length > 0 && (
-        <section className="schedule-overdue" aria-label="기한 지난 일정">
-          <header>
+        <details className="schedule-overdue" aria-label="기한 지난 일정">
+          <summary>
             <h2>기한 지난 일정 {기한지남.length}건</h2>
-            <p>아직 완료하지 않은 일정입니다. 끝냈다면 체크하고, 미뤄졌다면 날짜를 고쳐 주세요.</p>
-          </header>
+            <Icon name="chevronDown" size={20} />
+          </summary>
+          <p>아직 완료하지 않은 일정입니다. 끝냈다면 체크하고, 미뤄졌다면 날짜를 고쳐 주세요.</p>
           <ul>
             {기한지남.map((item) => (
               <li key={item.id}>
@@ -9193,57 +9162,28 @@ function SchedulePage({
               </li>
             ))}
           </ul>
-        </section>
+        </details>
       )}
+      {/* v073: Figma 「상단 요약 · 다크 그린 / 미니 비율 그래프」. 비율은 이번 달 일정 전체 대비입니다. */}
       <section className="schedule-v2-metrics">
-        <article>
-          <span className="schedule-metric-icon all">
-            <Icon name="calendar" />
+        <article className="is-total">
+          <small>이번 달 예정<i /></small>
+          <b>{stats.all}<em>건</em></b>
+          <span className="schedule-v073-bar">
+            {(["need", "planned", "done"] as const).map((k) => stats[k] > 0 && <i key={k} className={k} style={{ flexGrow: stats[k] }} />)}
           </span>
-          <span>
-            <small>이번 달 예정</small>
-            <b>
-              {stats.all}
-              <em>건</em>
-            </b>
-          </span>
+          <p>미완료 {stats.all - stats.done}건 · 완료 {stats.done}건</p>
         </article>
-        <article>
-          <span className="schedule-metric-icon need">
-            <Icon name="clipboardCheck" />
-          </span>
-          <span>
-            <small>준비 중</small>
-            <b>
-              {stats.need}
-              <em>건</em>
-            </b>
-          </span>
-        </article>
-        <article>
-          <span className="schedule-metric-icon planned">
-            <Icon name="clock" />
-          </span>
-          <span>
-            <small>집행 일정</small>
-            <b>
-              {stats.planned}
-              <em>건</em>
-            </b>
-          </span>
-        </article>
-        <article>
-          <span className="schedule-metric-icon done">
-            <Icon name="check" />
-          </span>
-          <span>
-            <small>완료</small>
-            <b>
-              {stats.done}
-              <em>건</em>
-            </b>
-          </span>
-        </article>
+        {([["need", "사전 준비"], ["planned", "집행 일정"], ["done", "완료"]] as const).map(([k, 이름]) => (
+          <article key={k} className={`is-${k}`}>
+            <small>{이름}<i /></small>
+            <b>{stats[k]}<em>건</em></b>
+            <span className="schedule-v073-bar">
+              <i className={k} style={{ width: `${stats.all ? (stats[k] / stats.all) * 100 : 0}%` }} />
+            </span>
+            <p>전체 일정의 {stats.all ? Math.round((stats[k] / stats.all) * 100) : 0}%</p>
+          </article>
+        ))}
       </section>
       <div className="schedule-v2-layout">
         <section className="schedule-v2-calendar">
@@ -9351,7 +9291,7 @@ function SchedulePage({
                 </span>
                 <span>
                   <i className="need" />
-                  준비 중
+                  사전 준비
                 </span>
                 <span>
                   <i className="done" />
@@ -9433,94 +9373,60 @@ function SchedulePage({
                   : "앞으로 남은 일정이 없습니다."}
             </p>
           )}
-          {(고른날 || upcomingView === "all") && 오른쪽목록.length > 0 && (
-            <p className="upcoming-list-caption">체크하면 처리 완료</p>
-          )}
+          {/* v073: Figma 「다가오는 일정」 — 날짜 · D-n | 일정명 + 집행/준비 배지 · 지출명 | [완료] · 삭제. 수정은 줄을 눌러 여는 창에 있습니다. */}
           {고른날 || upcomingView === "all" ? 오른쪽목록.map((item) => {
-            const activeIndex = activeUpcoming.findIndex(
-              (active) => active.id === item.id,
-            );
+            const done = item.state === "완료";
+            const 남은 = dday(item.date);
             return (
-              <div
-                className={`upcoming-delete-row ${activeIndex === 0 ? "nearest" : ""}`}
-                key={item.id}
-              >
-                <div className="upcoming-main">
-                  <input
-                    type="checkbox"
-                    checked={item.state === "완료"}
-                    aria-label={`${item.title} 완료 처리`}
-                    onChange={() => toggleDone(item.id)}
-                  />
+              <div className={`upcoming-delete-row ${done ? "is-done" : ""}`} key={item.id}>
+                <button
+                  type="button"
+                  className="upcoming-view"
+                  onClick={() => setViewing(item)}
+                  aria-label={`${item.title} 일정 내용 보기`}
+                >
+                  <time>
+                    <b>{월일표기(item.date)}</b>
+                    <small className={!done && 남은 < 0 ? "past-date" : "dday"}>
+                      {done ? "완료" : 남은 < 0 ? "지남" : 남은 === 0 ? "D-DAY" : `D-${남은}`}
+                    </small>
+                  </time>
+                  <span>
+                    <span className="upcoming-title">
+                      <b>{item.title}{item.작성자 && <span className="item-author"> · {item.작성자}</span>}</b>
+                      <em className={item.type === "집행" ? "planned" : "need"}>{item.type === "집행" ? "집행" : "준비"}</em>
+                    </span>
+                    <small>{plans.find((p) => p.id === item.planId)?.name || "기타"}</small>
+                  </span>
+                </button>
+                <div className="upcoming-actions">
                   <button
                     type="button"
-                    className="upcoming-view"
-                    onClick={() => setViewing(item)}
-                    aria-label={`${item.title} 일정 내용 보기`}
+                    className={`upcoming-done ${done ? "active" : ""}`}
+                    aria-pressed={done}
+                    aria-label={`${item.title} ${done ? "미완료" : "완료"} 처리`}
+                    onClick={() => toggleDone(item.id)}
                   >
-                    <time>
-                      <b>
-                        {월일표기(item.date)}
-                      </b>
-                      {activeIndex >= 0 ? (
-                        <small className="dday">D-{dday(item.date)}</small>
-                      ) : null}
-                    </time>
-                    <span>
-                      <b>{item.title}{item.작성자 && <span className="item-author"> · {item.작성자}</span>}</b>
-                      <small>
-                        {plans.find((p) => p.id === item.planId)?.name || "기타"}
-                      </small>
-                    </span>
-                    <em
-                      className={item.state === "준비 필요" ? "need" : "planned"}
+                    완료
+                  </button>
+                  {/* 주의: 규정 점검이 만든 일정은 지워도 다음 점검이 다시 만들어 버튼을 내지 않습니다. */}
+                  {!점검일정인가(item) && !item.지출일연동 && (
+                    <button
+                      type="button"
+                      className="upcoming-delete"
+                      aria-label={`${item.title} 삭제`}
+                      onClick={() => {
+                        void 확인({
+                          제목: "일정을 삭제할까요?",
+                          설명: `'${item.title}' 일정을 삭제합니다.`,
+                          실행문구: "삭제",
+                        }).then((확인함) => {
+                          if (확인함) 지우기(item);
+                        });
+                      }}
                     >
-                      {scheduleStateLabel(item.state)}
-                    </em>
-                  </button>
-                </div>
-                <div className="row-menu">
-                  <button
-                    aria-label={`${item.title} 메뉴`}
-                    onClick={() =>
-                      setOpenMenu((value) =>
-                        value === item.id ? null : item.id,
-                      )
-                    }
-                  >
-                    <Icon name="moreVertical" size={16} />
-                  </button>
-                  {openMenu === item.id && (
-                    <div>
-                      <button
-                        onClick={() => {
-                          setEditing(item);
-                          setOpenMenu(null);
-                        }}
-                      >
-                        <Icon name="edit" size={14} />
-                        수정
-                      </button>
-                      {/* 주의: 규정 점검이 만든 일정은 지워도 다음 점검이 다시 만들어 버튼을 내지 않습니다. */}
-                      {!점검일정인가(item) && !item.지출일연동 && (
-                        <button
-                          className="danger"
-                          onClick={() => {
-                            setOpenMenu(null);
-                            void 확인({
-                              제목: "일정을 삭제할까요?",
-                              설명: `'${item.title}' 일정을 삭제합니다.`,
-                              실행문구: "삭제",
-                            }).then((확인함) => {
-                              if (확인함) 지우기(item);
-                            });
-                          }}
-                        >
-                          <Icon name="trash" size={14} />
-                          삭제
-                        </button>
-                      )}
-                    </div>
+                      <Icon name="trash" size={14} />
+                    </button>
                   )}
                 </div>
               </div>
