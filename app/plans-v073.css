@@ -3,7 +3,7 @@
  * 앞선 파일들(semantic-colors · final-overrides)에 !important 규칙이 많아, 이 파일은 `.app-shell .plans-v2` 로 범위를 좁히고
  * 겹치는 값만 !important 로 덮습니다. 다른 페이지에는 영향이 없습니다.
  */
-.app-shell .plans-v2{
+.app-shell{
   --v073-dark:#202722;
   --v073-control:#dfe3e1;
   --v073-ink:#202923;
@@ -13,8 +13,8 @@
   --v073-safe-bg:#d5f5e4;--v073-safe-text:#176343;--v073-safe-dot:#21a46b;--v073-safe-bar:#50a77d;--v073-safe-count:#26764f;
   --v073-risk-bg:#ffe4eb;--v073-risk-text:#682334;--v073-risk-dot:#eb426c;--v073-risk-bar:#e35375;--v073-risk-count:#b13e59;
   --v073-warn-bg:#fefbcb;--v073-warn-text:#494500;--v073-warn-dot:#a49b00;--v073-warn-bar:#a49b29;--v073-warn-count:#776e10;
-  padding-top:34px;
 }
+.app-shell .plans-v2{padding-top:34px}
 
 /* 머리글 */
 .app-shell .plans-v2 .plans-v2-heading{margin-bottom:0}
@@ -85,20 +85,20 @@
 .app-shell .plans-v2 .plans-v2-native-table .date-cell time{display:block;max-width:80px;color:#77827b;font-size:12px;line-height:19.5px;letter-spacing:-.15px;white-space:normal}
 .app-shell .plans-v2 .plans-v2-native-table .more-cell{left:auto!important}
 
-/* AI 점검 상태 배지 (Figma Neon tint): 아이콘 대신 점 */
-.app-shell .plans-v2 .plans-v2-native-table .status-cell>.status{width:auto!important;min-width:80px!important;height:24px!important;min-height:24px!important;display:inline-flex;align-items:center;justify-content:flex-start!important;gap:6px;padding:0 9px!important;border:0!important;border-radius:5px;font-size:12px;font-weight:500;line-height:20px;transform:none!important}
-.app-shell .plans-v2 .plans-v2-native-table .status-cell>.status>svg{display:none}
-.app-shell .plans-v2 .plans-v2-native-table .status-cell>.status::before{content:"";width:5px;height:5px;flex:0 0 5px;border-radius:50%;background:currentColor}
-.app-shell .plans-v2 .status-draft{background:var(--v073-draft-bg)!important;color:var(--v073-draft-text)!important}
-.app-shell .plans-v2 .status-draft::before{background:var(--v073-draft-dot)!important}
-.app-shell .plans-v2 .status-checking{background:var(--v073-checking-bg)!important;color:var(--v073-checking-text)!important}
-.app-shell .plans-v2 .status-checking::before{background:var(--v073-checking-dot)!important}
-.app-shell .plans-v2 .status-safe,.app-shell .plans-v2 .status-confirmed{background:var(--v073-safe-bg)!important;color:var(--v073-safe-text)!important}
-.app-shell .plans-v2 .status-safe::before,.app-shell .plans-v2 .status-confirmed::before{background:var(--v073-safe-dot)!important}
-.app-shell .plans-v2 .status-risk{background:var(--v073-risk-bg)!important;color:var(--v073-risk-text)!important}
-.app-shell .plans-v2 .status-risk::before{background:var(--v073-risk-dot)!important}
-.app-shell .plans-v2 .status-warn{background:var(--v073-warn-bg)!important;color:var(--v073-warn-text)!important}
-.app-shell .plans-v2 .status-warn::before{background:var(--v073-warn-dot)!important}
+/* AI 점검 상태 배지 (Figma Neon tint): 아이콘 대신 점. 지출 계획 표와 홈 「확인할 지출 계획」 이 같이 씁니다(지출 상세는 아직 옛 배지). */
+.app-shell :is(.plans-v2 .plans-v2-native-table .status-cell,.home-v4 .home-v4-row)>.status{width:auto!important;min-width:80px!important;height:24px!important;min-height:24px!important;display:inline-flex;align-items:center;justify-content:flex-start!important;gap:6px;padding:0 9px!important;border:0!important;border-radius:5px;font-size:12px;font-weight:500;line-height:20px;transform:none!important}
+.app-shell :is(.plans-v2 .plans-v2-native-table .status-cell,.home-v4 .home-v4-row)>.status>svg{display:none}
+.app-shell :is(.plans-v2 .plans-v2-native-table .status-cell,.home-v4 .home-v4-row)>.status::before{content:"";width:5px;height:5px;flex:0 0 5px;border-radius:50%;background:currentColor}
+.app-shell :is(.plans-v2,.home-v4) .status-draft{background:var(--v073-draft-bg)!important;color:var(--v073-draft-text)!important}
+.app-shell :is(.plans-v2,.home-v4) .status-draft::before{background:var(--v073-draft-dot)!important}
+.app-shell :is(.plans-v2,.home-v4) .status-checking{background:var(--v073-checking-bg)!important;color:var(--v073-checking-text)!important}
+.app-shell :is(.plans-v2,.home-v4) .status-checking::before{background:var(--v073-checking-dot)!important}
+.app-shell :is(.plans-v2,.home-v4) :is(.status-safe,.status-confirmed){background:var(--v073-safe-bg)!important;color:var(--v073-safe-text)!important}
+.app-shell :is(.plans-v2,.home-v4) :is(.status-safe,.status-confirmed)::before{background:var(--v073-safe-dot)!important}
+.app-shell :is(.plans-v2,.home-v4) .status-risk{background:var(--v073-risk-bg)!important;color:var(--v073-risk-text)!important}
+.app-shell :is(.plans-v2,.home-v4) .status-risk::before{background:var(--v073-risk-dot)!important}
+.app-shell :is(.plans-v2,.home-v4) .status-warn{background:var(--v073-warn-bg)!important;color:var(--v073-warn-text)!important}
+.app-shell :is(.plans-v2,.home-v4) .status-warn::before{background:var(--v073-warn-dot)!important}
 
 /* 아래 줄. 예전 min-width:1080px 때문에 오른쪽 「10개씩」 이 표 밖으로 잘려 안 보였습니다. */
 .app-shell .plans-v2 .plans-v2-table>footer{min-width:0!important}

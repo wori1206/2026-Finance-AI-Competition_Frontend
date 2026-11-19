@@ -1,21 +1,26 @@
 /* v032 홈 (4안): 할 일 배너 → 이번 주 → 사업비 원차트 | 확인할 지출 */
-.home-v4{max-width:1180px;display:grid;gap:18px}
+/* v073: 글자 크기 · 색 · 간격은 Figma 「완성본 / 02 홈」 값 */
+.home-v4{max-width:1180px;display:grid;gap:24px;padding-top:32px}
 .home-v4 h2{margin:0}
-.home-v4 .text-button{display:inline-flex;align-items:center;gap:3px;padding:0;border:0;background:none;color:var(--brand);font-size:13px;font-weight:600;text-decoration:none;cursor:pointer}
-.home-v4-head{display:flex;justify-content:space-between;align-items:center;gap:16px}
-.home-v4-head h1{margin:0;font-size:26px;font-weight:760;letter-spacing:-.6px}
-.home-v4-head p{margin:6px 0 0;color:var(--sub);font-size:14px}
-.home-v4-head .primary{display:inline-flex;align-items:center;gap:6px}
+.home-v4 .text-button{display:inline-flex;align-items:center;gap:3px;padding:0;border:0;background:none;color:var(--brand);font-size:13px;font-weight:500;letter-spacing:-.15px;text-decoration:none;cursor:pointer}
+.home-v4-head{display:flex;justify-content:space-between;align-items:center;gap:16px;padding-bottom:16px}
+.home-v4-head h1{margin:0;font-size:30px;font-weight:700;line-height:45px;letter-spacing:-.6px}
+.home-v4-head p{margin:6px 0 0;color:var(--sub);font-size:14px;line-height:21px;letter-spacing:-.15px}
+.home-v4-head .primary{display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 14px;border:1px solid #174d3e;border-radius:5px;background:#256855;font-size:14px;font-weight:500}
 
-/* ① 할 일 배너 */
-.home-v4-next{display:flex;align-items:center;gap:22px;padding:26px 30px;border-radius:14px;background:#171717;color:#fff}
-.home-v4-next>div{min-width:0}
-.home-v4-next small{color:#aaa;font-size:12px;letter-spacing:.3px}
-.home-v4-next h2{margin:6px 0;font-size:22px;font-weight:750;letter-spacing:-.4px;color:#fff}
-.home-v4-next p{margin:0;color:#ccc;font-size:14px}
-.home-v4-next-sub{display:flex;flex-wrap:wrap;gap:14px;margin-top:12px;color:#bbb;font-size:12px}
-.home-v4-next-sub b{color:#fff}
-.home-v4-next>button{flex:none;margin-left:auto;display:inline-flex;align-items:center;gap:6px;padding:11px 18px;border:0;border-radius:7px;background:#fff;color:#171717;font-weight:700;font-size:14px;cursor:pointer}
+/* ① 미완료 일정 */
+.home-v4-next{min-height:188px;display:flex;align-items:center;gap:22px;padding:28px 30px;border-radius:14px;background:#1d211f;color:#fff}
+.home-v4-next>div{min-width:0;display:flex;flex-direction:column;gap:8px}
+.home-v4-next small{padding-bottom:8px;color:#bde4d1;font-size:12px;font-weight:700;line-height:18px}
+.home-v4-next h2{margin:0;font-size:24px;font-weight:700;line-height:34px;color:#fff}
+.home-v4-next p{margin:0;color:#e2eae5;font-size:14px}
+.home-v4-next dl{display:grid;gap:6px;margin:0;padding-top:4px}
+.home-v4-next dl>div{display:flex;align-items:center;gap:12px}
+.home-v4-next dt{width:56px;flex:none;color:#9baaa1;font-size:12px;line-height:20px}
+.home-v4-next dd{display:flex;align-items:center;gap:12px;margin:0;color:#e2eae5;font-size:14px;font-weight:500;line-height:21px}
+.home-v4-due{padding:2px 8px;border-radius:4px;background:#263d4e;color:#abdaff;font-size:11px;font-weight:700;line-height:16px}
+.home-v4-due.is-late{background:#493038;color:#ffb6c5}
+.home-v4-next>button{flex:none;margin-left:auto;display:inline-flex;align-items:center;gap:6px;padding:11px 18px;border:0;border-radius:7px;background:#fff;color:#171717;font-weight:500;font-size:14px;letter-spacing:-.15px;cursor:pointer}
 .home-v4-next.is-clear{background:var(--brand-soft);color:var(--text)}
 .home-v4-next.is-clear h2{color:var(--brand)}
 .home-v4-next.is-clear small,.home-v4-next.is-clear p{color:var(--sub)}
@@ -23,9 +28,9 @@
 
 /* ② 이번 주 */
 .home-v4-week-wrap>header,.home-v4-card>header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px}
-.home-v4-week-wrap h2{font-size:15px;font-weight:700}
+.home-v4-week-wrap h2,.home-v4-card h2{font-size:18px!important;font-weight:700;line-height:27px;letter-spacing:-.15px}
 .home-v4-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
-.home-v4-day{min-height:104px;display:flex;flex-direction:column;align-items:stretch;gap:5px;padding:10px;border:1px solid var(--line);border-radius:10px;background:#fff;text-align:left;font-size:12px;cursor:pointer}
+.home-v4-day{min-height:104px;display:flex;flex-direction:column;align-items:stretch;gap:5px;padding:10px;border:1px solid #dfe3e1;border-radius:10px;background:#fff;text-align:left;font-size:12px;cursor:pointer}
 .home-v4-day:hover{border-color:#cbd3cf}
 /* 공통 규칙(.app-shell button … border-color !important · box-shadow none !important)이 버튼 테두리를 덮어써서
    오늘 칸 테두리는 가상 요소로 그립니다 */
@@ -42,30 +47,30 @@
 .home-v4-day small{color:var(--sub);font-weight:600}
 
 /* ③④ 아래 두 칸 */
-.home-v4-bottom{display:grid;grid-template-columns:400px minmax(0,1fr);gap:16px;align-items:start}
+.home-v4-bottom{display:grid;grid-template-columns:400px minmax(0,1fr);gap:16px;align-items:stretch}
 .home-v4-card{padding:22px 24px;border:1px solid var(--line);border-radius:12px;background:#fff}
-.home-v4-card h2{font-size:16px;font-weight:700}
 .home-v4-card>header>span{display:flex;align-items:center;gap:12px;color:var(--sub);font-size:12px}
-.home-v4-chart{display:flex;align-items:center;gap:24px}
+.home-v4-chart{display:flex;align-items:center;gap:24px;padding-top:10px}
 .home-v4-donut{width:180px;height:180px;flex:none;display:grid;place-items:center;border-radius:50%}
 .home-v4-donut>div{width:124px;height:124px;display:grid;place-content:center;border-radius:50%;background:#fff;text-align:center}
-.home-v4-donut small{color:var(--sub);font-size:12px}
-.home-v4-donut b{font-size:24px;letter-spacing:-.5px}
-.home-v4-chart ul{flex:1;display:grid;gap:9px;margin:0;padding:0;list-style:none;font-size:13px}
+.home-v4-donut small{color:var(--sub);font-size:12px;line-height:18px}
+.home-v4-donut b{font-size:28px;font-weight:700;line-height:42px;letter-spacing:-.5px}
+.home-v4-chart ul{flex:1;display:grid;gap:9px;margin:0;padding:0;list-style:none;font-size:14px;letter-spacing:-.15px}
 .home-v4-chart li{display:flex;align-items:center;gap:8px}
-.home-v4-chart li b{margin-left:auto}
+.home-v4-chart li b{margin-left:auto;font-weight:500}
 .home-v4-chart li i{width:10px;height:10px;border-radius:3px;background:#eef0ef;border:1px solid #ddd}
 .home-v4-chart li i.spent{background:var(--brand);border-color:var(--brand)}
 .home-v4-chart li i.planned{background:#8cc3b3;border-color:#8cc3b3}
 .home-v4-budget-empty{display:grid;justify-items:start;gap:10px;padding:18px 0;color:var(--sub);font-size:13px}
 .home-v4-budget-empty p{margin:0}
-.home-v4-dday{display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding:11px 14px;border-radius:8px;background:var(--brand-soft);font-size:13px}
-.home-v4-dday b{color:var(--brand);font-size:18px}
-.home-v4-row{width:100%;display:flex;align-items:center;gap:12px;padding:13px 0;border:0;border-top:1px solid #f0f0f0;background:none;text-align:left;cursor:pointer}
+.home-v4-dday{display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding:11px 14px;border-radius:8px;background:var(--brand-soft);font-size:14px;letter-spacing:-.15px}
+.home-v4-dday b{color:var(--brand);font-size:18px;font-weight:700}
+.home-v4-attention>header{margin-bottom:0;padding-bottom:6px}
+.home-v4-row{width:100%;min-height:72px;display:flex;align-items:center;gap:12px;padding:15px 0;border:0;border-top:1px solid #dfe3e1;background:none;text-align:left;cursor:pointer}
 .home-v4-attention>header+.home-v4-row{border-top:0}
 .home-v4-row-text{flex:1;min-width:0;display:grid;gap:3px}
-.home-v4-row-text b{font-size:14px}
-.home-v4-row-text small{overflow:hidden;color:var(--sub);font-size:12px;text-overflow:ellipsis;white-space:nowrap}
+.home-v4-row-text b{font-size:15px;font-weight:700;line-height:22.5px;letter-spacing:-.15px}
+.home-v4-row-text small{overflow:hidden;color:var(--sub);font-size:13px;line-height:19.5px;letter-spacing:-.15px;text-overflow:ellipsis;white-space:nowrap}
 .home-v4-row:hover .home-v4-row-text b{color:var(--brand)}
 
 @media(max-width:1050px){.home-v4-bottom{grid-template-columns:1fr}}
@@ -78,7 +83,3 @@
   .home-v4-chart{flex-direction:column;align-items:stretch}
   .home-v4-donut{align-self:center}
 }
-/* v066: 홈 지출 계획 줄의 사용 목적 */
-.home-v4-row-text .home-v4-row-purpose{color:var(--color-text,#2b2f2d)}
-/* v069: 홈 줄 지출명 옆 금액 */
-.home-v4-row-text b .home-v4-row-amount{margin-left:8px;color:var(--sub);font-size:13px;font-weight:500}
