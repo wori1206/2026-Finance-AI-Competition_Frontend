@@ -1216,7 +1216,7 @@ const 점검한상태 = (value: PlanStatus): value is Exclude<PlanStatus, "점�
   value !== "점검 전" && value !== "점검 중" && value !== "재점검 필요";
 // v034: 화면에 보이는 판정 이름은 서버 판정 값과 같게 「가능 · 확인 필요 · 불가」입니다. 내부 상태 값은 그대로 둡니다.
 const displayPlanStatus = (value: PlanStatus) =>
-  value === "점검 전" || value === "재점검 필요" ? "점검전" : value === "특이사항 없음" ? "가능" : value === "위험" ? "불가" : value;
+  value === "점검 전" || value === "재점검 필요" ? "점검 전" : value === "특이사항 없음" ? "가능" : value === "위험" ? "불가" : value;
 
 /** v033: 판정 카드 색. 불가 = risk, 확인 필요 = warn, 가능 = safe, 그 밖(점검 전 등) = draft */
 function 판정색(value: PlanStatus): "risk" | "warn" | "safe" | "draft" {
@@ -1258,7 +1258,7 @@ function Status({ value }: { value: PlanStatus }) {
   const key =
     value === "점검 중"
       ? "checking"
-      : displayPlanStatus(value) === "점검전"
+      : displayPlanStatus(value) === "점검 전"
       ? "draft"
       : value === "특이사항 없음"
         ? "safe"
@@ -4978,7 +4978,7 @@ function PlansPage({
   };
   // v073: 점검 결과 그래프. 점검 중은 아직 결과가 없어 「점검 전」 구간에 셉니다. 0건 구간은 그리지 않습니다.
   const 결과구간 = ([
-    ["점검 전", "점검전", "draft", plans.filter((p) => ["점검전", "점검 중"].includes(displayPlanStatus(p.status))).length],
+    ["점검 전", "점검 전", "draft", plans.filter((p) => ["점검 전", "점검 중"].includes(displayPlanStatus(p.status))).length],
     ["확인 필요", "확인 필요", "warn", plans.filter((p) => p.status === "확인 필요").length],
     ["불가", "불가", "risk", plans.filter((p) => p.status === "위험").length],
     ["가능", "가능", "safe", plans.filter((p) => p.status === "특이사항 없음").length],
@@ -5025,7 +5025,7 @@ function PlansPage({
         </div>
       </section>
       <nav className="plans-v2-tabs" aria-label="지출 상태 필터">
-        {(["전체", "점검전", "점검 중", "확인 필요", "불가", "가능"] as const).map(
+        {(["전체", "점검 전", "점검 중", "확인 필요", "불가", "가능"] as const).map(
           (label) => (
             <button
               className={filter === label ? "active" : ""}
@@ -5079,7 +5079,7 @@ function PlansPage({
                     onChange={(event) => setDetailFilters((value) => ({ ...value, status: event.target.value }))}
                   >
                     <option value="">전체 상태</option>
-                    <option value="점검전">점검전</option>
+                    <option value="점검 전">점검 전</option>
                     <option value="점검 중">점검 중</option>
                     <option value="가능">가능</option>
                     <option value="확인 필요">확인 필요</option>
