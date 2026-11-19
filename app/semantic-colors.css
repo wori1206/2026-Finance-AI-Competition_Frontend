@@ -29,9 +29,10 @@ html,body,.app-shell,.main-area,.sidebar,.main-area:has(.expense-detail-page),.m
 /* Global inset outline buttons */
 .outline{border:1px solid #dfe3e1!important;box-shadow:none!important;outline:none!important}
 .outline:hover{border-color:#d4dad7!important;box-shadow:none!important;outline:none!important}
-.outline:focus,.outline:focus-visible{border-color:#cfd8d4!important;box-shadow:none!important;outline:none!important}
+.outline:focus{border-color:#cfd8d4!important;box-shadow:none!important;outline:none!important}
 .app-shell button,.onboarding-landing button,.onboarding-setup button{box-shadow:none!important;outline:none!important}
-.app-shell button:focus-visible,.onboarding-landing button:focus-visible,.onboarding-setup button:focus-visible{box-shadow:none!important;outline:none!important}
+/* v074: 키보드로 이동할 때 초점 위치가 보이도록(마우스 클릭에는 안 보임) */
+:is(.app-shell,.onboarding-landing,.onboarding-setup) :is(button,a,select,summary,[tabindex]):focus-visible,.outline:focus-visible{outline:2px solid var(--focus-ring)!important;outline-offset:2px!important}
 .app-shell button:not(.primary):not(.selected):not(.active),.onboarding-landing button:not(.primary):not(.selected):not(.active),.onboarding-setup button:not(.primary):not(.selected):not(.active),label.outline{border-color:#dfe3e1!important}
 
 /* Standard text CTAs share one control height across onboarding and the app. */

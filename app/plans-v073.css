@@ -2,33 +2,35 @@
  * v073: 지출 계획 목록 — Figma 「완성본 / 03-E · 점검 전 포함 · 구간 정렬」.
  * 앞선 파일들(semantic-colors · final-overrides)에 !important 규칙이 많아, 이 파일은 `.app-shell .plans-v2` 로 범위를 좁히고
  * 겹치는 값만 !important 로 덮습니다. 다른 페이지에는 영향이 없습니다.
+ * v074: 크기 규칙(docs/design-system.md) — 글자 단계 · 부품 단계(XS 20 · S 24 · M 32 · L 40) · 간격 4px 단위 · 모서리 4종.
  */
-.app-shell .plans-v2{padding-top:34px}
+.app-shell .plans-v2{padding-top:var(--space-6)}
 
 /* 머리글 */
 .app-shell .plans-v2 .plans-v2-heading{margin-bottom:0}
-.app-shell .plans-v2 .plans-v2-heading h1{font-size:30px;font-weight:700;line-height:45px;letter-spacing:-.8px;color:var(--text)}
-.app-shell .plans-v2 .plans-v2-heading p{margin:9px 0 0;color:var(--sub);font-size:14px;line-height:21px;letter-spacing:-.15px}
-.app-shell .plans-v2 .plans-v2-heading .primary{height:40px;gap:7px;padding:0 14px;border:1px solid var(--primary-border);border-radius:5px;background:var(--primary-bg);font-size:14px;font-weight:500}
+.app-shell .plans-v2 .plans-v2-heading h1{font-size:30px;font-weight:700;line-height:40px;letter-spacing:-.8px;color:var(--text)}
+.app-shell .plans-v2 .plans-v2-heading p{margin:var(--space-2) 0 0;color:var(--sub);font-size:14px;line-height:21px;letter-spacing:-.15px}
+/* L 버튼 */
+.app-shell .plans-v2 .plans-v2-heading .primary{height:40px;gap:var(--space-2);padding:0 var(--space-4);border:1px solid var(--primary-border);border-radius:var(--radius-control);background:var(--primary-bg);font-size:14px;font-weight:500;line-height:20px}
 
 /* 전체 요약 + 점검 결과 */
-.plans-v073-overview{display:flex;gap:16px;margin-top:75px;padding-bottom:10px}
-.plans-v073-total{flex:0 0 280px;height:112px;display:flex;flex-direction:column;justify-content:center;gap:8px;padding:16px 24px;border:0;border-radius:10px;background:var(--surface-summary);color:#fff;text-align:left;cursor:pointer}
+.plans-v073-overview{display:flex;gap:var(--space-4);margin-top:var(--space-6);padding-bottom:var(--space-2)}
+.plans-v073-total{flex:0 0 280px;height:112px;display:flex;flex-direction:column;justify-content:center;gap:var(--space-2);padding:var(--space-4) var(--space-5);border:0;border-radius:var(--radius-card);background:var(--surface-dark);color:#fff;text-align:left;cursor:pointer}
 .plans-v073-total>small{font-size:13px;font-weight:500;line-height:20px}
 .plans-v073-total>span{height:44px;display:flex;align-items:flex-end;justify-content:space-between}
-.plans-v073-total>span>b{display:flex;align-items:baseline;gap:4px;font-size:36px;font-weight:700;line-height:44px}
-.plans-v073-total>span>b em{color:#bfc8c1;font-size:14px;font-style:normal;font-weight:500;line-height:21px}
+.plans-v073-total>span>b{display:flex;align-items:baseline;gap:var(--space-1);font-size:36px;font-weight:700;line-height:44px}
+.plans-v073-total>span>b em{color:#bfc8c1;font-size:14px;font-style:normal;font-weight:500;line-height:20px}
 .plans-v073-total>span>span{display:flex;flex-direction:column;align-items:flex-end}
-.plans-v073-total>span>span small{color:#bfc8c1;font-size:11px;line-height:18px}
-.plans-v073-total>span>span strong{font-size:18px;font-weight:700;line-height:26px}
-.plans-v073-result{flex:1;min-width:0;height:112px;display:flex;flex-direction:column;gap:12px;padding:18px 24px;border:1px solid #e3e7e5;border-radius:10px;background:#fff}
+.plans-v073-total>span>span small{color:#bfc8c1;font-size:11px;line-height:16px}
+.plans-v073-total>span>span strong{font-size:18px;font-weight:700;line-height:28px}
+.plans-v073-result{flex:1;min-width:0;height:112px;display:flex;flex-direction:column;gap:var(--space-3);padding:var(--space-4) var(--space-5);border:1px solid var(--border-card);border-radius:var(--radius-card);background:#fff}
 .plans-v073-result>b{color:#414b44;font-size:13px;font-weight:700;line-height:20px}
-.plans-v073-result>div{display:flex;gap:4px}
+.plans-v073-result>div{display:flex;gap:var(--space-1)}
 .plans-v073-result>div>p{margin:0;color:var(--muted);font-size:12px;line-height:40px}
 /* 구간 폭은 건수 비율(flex-grow). 글자가 잘리지 않게 최소 폭은 글자 폭입니다(건수가 아주 적으면 비율보다 조금 넓어짐). */
-.plans-v073-result>div>button{flex:1 1 0;min-width:max-content;height:40px;display:flex;flex-direction:column;align-items:center;gap:12px;padding:0;border:0;background:none;cursor:pointer}
-.plans-v073-result>div>button>i{width:100%;height:8px;border-radius:4px}
-.plans-v073-result>div>button>span{display:flex;align-items:center;gap:5px;color:#536159;font-size:12px;font-weight:500;line-height:20px;white-space:nowrap}
+.plans-v073-result>div>button{flex:1 1 0;min-width:max-content;height:40px;display:flex;flex-direction:column;align-items:center;gap:var(--space-3);padding:0;border:0;background:none;cursor:pointer}
+.plans-v073-result>div>button>i{width:100%;height:8px;border-radius:var(--radius-xs)}
+.plans-v073-result>div>button>span{display:flex;align-items:center;gap:var(--space-1);color:#536159;font-size:12px;font-weight:500;line-height:16px;white-space:nowrap}
 .plans-v073-result>div>button>span b{font-size:13px;font-weight:700}
 .plans-v073-result .is-draft>i{background:var(--result-draft-bar)}.plans-v073-result .is-draft b{color:var(--result-draft-count)}
 .plans-v073-result .is-warn>i{background:var(--result-warn-bar)}.plans-v073-result .is-warn b{color:var(--result-warn-count)}
@@ -36,21 +38,25 @@
 .plans-v073-result .is-safe>i{background:var(--result-safe-bar)}.plans-v073-result .is-safe b{color:var(--result-safe-count)}
 
 /* 상태 탭 */
-.app-shell .plans-v2 .plans-v2-tabs{margin-top:20px}
+.app-shell .plans-v2 .plans-v2-tabs{margin-top:var(--space-5)}
 .app-shell .plans-v2 .plans-v2-tabs button{font-size:16px!important;font-weight:500;line-height:24px;letter-spacing:-.15px;color:var(--sub)}
 .app-shell .plans-v2 .plans-v2-tabs button.active{font-weight:700;color:var(--brand)}
 
-/* 검색 · 필터 · 정렬 */
-.app-shell .plans-v2 .plans-v2-search input{font-size:14px;letter-spacing:-.15px}
-.app-shell .plans-v2 .plans-v2-search input::placeholder{color:#868a88}
-.app-shell .plans-v2 .plans-v2-tools .outline{border-color:var(--control);border-radius:5px;font-size:13px;font-weight:500;color:var(--text)}
+/* 검색 · 필터 · 정렬: L 단계(40 · 14/20 · 좌우 16 · 간격 8 · 모서리 6) */
+.app-shell .plans-v2 .plans-v2-search{padding:0 var(--space-4)!important;gap:var(--space-2)!important;border-radius:var(--radius-control)!important}
+.app-shell .plans-v2 .plans-v2-search input{font-size:14px;line-height:20px;letter-spacing:-.15px}
+.app-shell .plans-v2 .plans-v2-search input::placeholder{color:var(--muted)}
+.app-shell .plans-v2 .plans-v2-tools .outline{gap:var(--space-2)!important;padding:0 var(--space-4)!important;border-color:var(--control);border-radius:var(--radius-control)!important;font-size:14px;font-weight:500;line-height:20px;color:var(--text)}
 .app-shell .plans-v2 .plans-v2-tools .outline:disabled{background:#eef1ef;color:#838785;opacity:.72}
-.app-shell .plans-v2 .plans-v2-sort{width:132px}
+.app-shell .plans-v2 .plans-v2-sort{width:132px;border-radius:var(--radius-control)!important;font-size:14px}
+.app-shell .plans-v2 .plans-v2-sort select{padding:0 34px 0 var(--space-4)!important}
 
 /* 표 */
-.app-shell .plans-v2 .plans-v2-table{border:1px solid #eaeeec!important;border-radius:7px;box-shadow:var(--shadow-card)!important}
-.app-shell .plans-v2 .plans-v2-selection{min-height:55px;border-bottom:1px solid #e6e9ec;background:#f7f8fa}
-.app-shell .plans-v2 .plans-v2-selection .primary:disabled{border:1px solid #eaeeec;background:#eef1ef;color:#838785;opacity:.72;font-size:12px;font-weight:500}
+.app-shell .plans-v2 .plans-v2-table{border:1px solid var(--border-card)!important;border-radius:var(--radius-control);box-shadow:var(--shadow-card)!important}
+/* 선택 줄: M 버튼 32 + 위아래 8 = 48 */
+.app-shell .plans-v2 .plans-v2-selection{min-height:48px;padding-block:var(--space-2)!important;border-bottom:1px solid #e6e9ec;background:#f7f8fa}
+.app-shell .plans-v2 .plans-v2-selection .primary{height:32px!important;min-height:32px!important;gap:6px!important;padding:0 var(--space-3)!important;border-radius:var(--radius-control)!important;font-size:13px!important;font-weight:500;line-height:20px}
+.app-shell .plans-v2 .plans-v2-selection .primary:disabled{border:1px solid var(--border-card);background:#eef1ef;color:#838785;opacity:.72}
 .app-shell .plans-v2 .plans-v2-native-table{min-width:0!important}
 /* Figma 열 위치(왼쪽부터 px): 체크 0 · 지출명 48 · 비목 232 · 금액 ~444 · 상태 ~674 · 지출일 ~796 · 수정일 ~916 · 더보기. 지출명이 남는 폭을 가집니다. */
 .app-shell .plans-v2 .plans-v2-native-table col.checkbox-col{width:48px!important}
@@ -62,20 +68,23 @@
 .app-shell .plans-v2 .plans-v2-native-table col.date-col{width:120px!important}
 .app-shell .plans-v2 .plans-v2-native-table col.more-col{width:49px!important}
 .app-shell .plans-v2 .plans-v2-native-table th,
-.app-shell .plans-v2 .plans-v2-native-table td{position:static!important;left:auto!important;padding:0 8px!important}
+.app-shell .plans-v2 .plans-v2-native-table td{position:static!important;left:auto!important;padding:0 var(--space-2)!important}
 .app-shell .plans-v2 .plans-v2-native-table thead{background:var(--label)!important}
-.app-shell .plans-v2 .plans-v2-native-table th{color:#58645e;font-size:12px;font-weight:500;line-height:18px;letter-spacing:-.15px}
+/* 표 머리글 48 = 글자 12/16 + 위아래 16 */
+.app-shell .plans-v2 .plans-v2-native-table thead tr{height:48px!important}
+.app-shell .plans-v2 .plans-v2-native-table th{height:48px!important;color:#58645e;font-size:12px;font-weight:500;line-height:16px;letter-spacing:-.15px}
 .app-shell .plans-v2 .plans-v2-native-table tbody tr{height:72px!important}
 .app-shell .plans-v2 .plans-v2-native-table .title-cell b{color:var(--text-strong);font-size:14px;font-weight:500;line-height:21px;letter-spacing:-.15px}
 .app-shell .plans-v2 .plans-v2-native-table td:nth-child(3){color:#536058;font-size:13px;line-height:20px;letter-spacing:-.15px}
 .app-shell .plans-v2 .plans-v2-native-table .amount-cell strong{color:var(--text-strong);font-size:14px;font-weight:700;letter-spacing:-.15px}
 .app-shell .plans-v2 .plans-v2-native-table .planned-date-cell time{color:#56635c!important;font-size:13px;font-weight:400;letter-spacing:-.15px}
 /* 최근 수정일은 날짜 / 시각 두 줄 */
-.app-shell .plans-v2 .plans-v2-native-table .date-cell time{display:block;max-width:80px;color:#77827b;font-size:12px;line-height:19.5px;letter-spacing:-.15px;white-space:normal}
+.app-shell .plans-v2 .plans-v2-native-table .date-cell time{display:block;max-width:80px;color:var(--text-meta);font-size:12px;line-height:18px;letter-spacing:-.15px;white-space:normal}
 .app-shell .plans-v2 .plans-v2-native-table .more-cell{left:auto!important}
 
-/* AI 점검 상태 배지 (Figma Neon tint): 아이콘 대신 점. 지출 계획 표와 홈 「확인할 지출 계획」 이 같이 씁니다(지출 상세는 아직 옛 배지). */
-.app-shell :is(.plans-v2 .plans-v2-native-table .status-cell,.home-v4 .home-v4-row)>.status{width:auto!important;min-width:80px!important;height:24px!important;min-height:24px!important;display:inline-flex;align-items:center;justify-content:flex-start!important;gap:6px;padding:0 9px!important;border:0!important;border-radius:5px;font-size:12px;font-weight:500;line-height:20px;transform:none!important}
+/* AI 점검 상태 배지 (Figma Neon tint): 아이콘 대신 점. 지출 계획 표와 홈 「확인할 지출 계획」 이 같이 씁니다(지출 상세는 아직 옛 배지).
+   S 단계: 24 · 12/16 · 좌우 8 · 간격 4 · 모서리 4 */
+.app-shell :is(.plans-v2 .plans-v2-native-table .status-cell,.home-v4 .home-v4-row)>.status{width:auto!important;min-width:80px!important;height:24px!important;min-height:24px!important;display:inline-flex;align-items:center;justify-content:flex-start!important;gap:var(--space-1);padding:0 var(--space-2)!important;border:0!important;border-radius:var(--radius-xs);font-size:12px;font-weight:500;line-height:16px;transform:none!important}
 .app-shell :is(.plans-v2 .plans-v2-native-table .status-cell,.home-v4 .home-v4-row)>.status>svg{display:none}
 .app-shell :is(.plans-v2 .plans-v2-native-table .status-cell,.home-v4 .home-v4-row)>.status::before{content:"";width:5px;height:5px;flex:0 0 5px;border-radius:50%;background:currentColor}
 .app-shell :is(.plans-v2,.home-v4) .status-draft{background:var(--status-draft-bg)!important;color:var(--status-draft-text)!important}
@@ -93,7 +102,9 @@
 .app-shell .plans-v2 .plans-v2-table>footer{min-width:0!important}
 .app-shell .plans-v2 .plans-v2-table>footer>span{color:var(--sub);font-size:12px;letter-spacing:-.15px}
 .app-shell .plans-v2 .plans-v2-table>footer>nav button.active:not([aria-label]){font-size:13px}
-.app-shell .plans-v2 .plans-v2-page-size{width:81px;border-color:var(--control)}
+/* 페이지 개수: M 단계(32 · 13 · 모서리 6) */
+.app-shell .plans-v2 .plans-v2-page-size{width:81px;height:32px!important;border-color:var(--control);border-radius:var(--radius-control)!important}
+.app-shell .plans-v2 .plans-v2-page-size select{padding:0 30px 0 var(--space-3)!important;font-size:13px;font-weight:500}
 
 @media(max-width:1050px){
   .plans-v073-overview{flex-direction:column}
