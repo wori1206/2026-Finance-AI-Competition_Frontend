@@ -1,0 +1,120 @@
+/*
+ * v073: 집행 일정 — Figma 「완성본 / 06-B 집행 일정 · 일정 데이터 적용 · PC 1280」.
+ * 앞선 파일들(workspace · semantic-colors · final-overrides)의 !important 규칙을 덮으려고 `.app-shell .schedule-v2` 로
+ * 범위를 좁히고 겹치는 값만 !important 로 씁니다. 다른 페이지에는 영향이 없습니다.
+ */
+.app-shell .schedule-v2{
+  --v073-need:#a278f4;--v073-planned:#ffc436;--v073-done:#50a77d;--v073-done-legend:#929eab;
+  padding-top:34px;
+}
+
+/* 머리글 */
+.app-shell .schedule-v2 .schedule-v2-heading h1{font-size:29px;font-weight:700;line-height:37.7px;letter-spacing:-.8px}
+.app-shell .schedule-v2 .schedule-v2-heading p{margin-top:8px;color:var(--sub);font-size:12px;line-height:19.2px}
+.app-shell .schedule-v2 .schedule-v2-heading .primary{height:40px;gap:7px;padding:0 14px;border:1px solid #174d3e;border-radius:5px;background:#256855;font-size:14px;font-weight:500}
+
+/* 기한 지난 일정 — 회색 헤더 · 흰 목록, 처음엔 접힘 */
+.schedule-overdue{margin-top:24px;overflow:hidden;border:1px solid #dfe3e6;border-radius:6px;background:#fff;interpolate-size:allow-keywords}
+.schedule-overdue>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;background:#f0f2f4;color:#48515a;list-style:none;cursor:pointer}
+.schedule-overdue>summary::-webkit-details-marker{display:none}
+.schedule-overdue>summary h2{margin:0;color:#303a43;font-size:16px;font-weight:700;line-height:24px;letter-spacing:-.15px}
+.schedule-overdue>summary svg{transition:transform .2s}
+.schedule-overdue[open]>summary svg{transform:rotate(180deg)}
+/* 펼침 애니메이션(지원하는 브라우저에서만, 나머지는 바로 열림) */
+.schedule-overdue::details-content{block-size:0;overflow:hidden;transition:block-size .2s ease,content-visibility .2s allow-discrete}
+.schedule-overdue[open]::details-content{block-size:auto}
+.schedule-overdue>p{margin:0;padding:0 18px 12px;background:#f0f2f4;color:#7b838b;font-size:12px;line-height:18px;letter-spacing:-.15px}
+.schedule-overdue>ul{margin:0;padding:0;list-style:none}
+.schedule-overdue li{display:flex;align-items:center;gap:18px;padding:12px 24px;border-top:1px solid #d8dce0}
+.schedule-overdue li input{width:16px;height:16px;flex:none;margin:0;accent-color:var(--brand)}
+.schedule-overdue li>button{flex:1;min-width:0;display:grid;grid-template-columns:60px minmax(0,1fr) auto;align-items:center;gap:18px;padding:0;border:0;background:none;text-align:left;cursor:pointer}
+.schedule-overdue time{color:#5c6670;font-size:14px;font-weight:700;line-height:21px;text-align:center}
+.schedule-overdue li span{min-width:0}
+.schedule-overdue li b,.schedule-overdue li small{display:block;overflow-wrap:anywhere}
+.schedule-overdue li b{color:#48515a;font-size:14px;font-weight:700;line-height:21px;letter-spacing:-.15px}
+.schedule-overdue li small{margin-top:2px;color:#7b838b;font-size:12px;line-height:18px}
+.schedule-overdue em{min-width:78px;color:#5c6670;font-size:13px;font-style:normal;font-weight:700;text-align:center;white-space:nowrap}
+
+/* 위쪽 요약 4칸 */
+.app-shell .schedule-v2 .schedule-v2-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-top:15px}
+.app-shell .schedule-v2 .schedule-v2-metrics>article{min-height:136px;display:flex;flex-direction:column;align-items:stretch;gap:12px;padding:18px;border:1px solid #e2e7e3!important;border-radius:7px;background:#fff;box-shadow:none!important}
+.app-shell .schedule-v2 .schedule-v2-metrics small{display:flex;align-items:center;justify-content:space-between;color:#5f6e64;font-size:12px;font-weight:500;line-height:17px}
+.app-shell .schedule-v2 .schedule-v2-metrics small>i{width:6px;height:6px;border-radius:50%}
+.app-shell .schedule-v2 .schedule-v2-metrics b{display:flex;align-items:baseline;gap:5px;margin:0;color:#202923;font-size:28px;font-weight:700;line-height:37px}
+.app-shell .schedule-v2 .schedule-v2-metrics b em{margin:0;color:#8b968f;font-size:12px;font-style:normal;font-weight:500}
+.schedule-v073-bar{height:4px;display:flex;gap:3px;overflow:hidden;border-radius:2px;background:#f0f2f1}
+.schedule-v073-bar>i{height:4px;border-radius:2px}
+.schedule-v073-bar>.need{background:var(--v073-need)}.schedule-v073-bar>.planned{background:var(--v073-planned)}.schedule-v073-bar>.done{background:var(--v073-done)}
+.app-shell .schedule-v2 .schedule-v2-metrics p{margin:-5px 0 0;color:#87938b;font-size:10px;line-height:14px}
+.app-shell .schedule-v2 .schedule-v2-metrics .is-need small>i{background:var(--v073-need)}
+.app-shell .schedule-v2 .schedule-v2-metrics .is-planned small>i{background:var(--v073-planned)}
+.app-shell .schedule-v2 .schedule-v2-metrics .is-done small>i{background:var(--v073-done)}
+.app-shell .schedule-v2 .schedule-v2-metrics>article.is-total{border-color:#202e25!important;background:#202e25}
+.app-shell .schedule-v2 .schedule-v2-metrics .is-total small{color:#dbeee3}
+.app-shell .schedule-v2 .schedule-v2-metrics .is-total small>i{background:#79be98}
+.app-shell .schedule-v2 .schedule-v2-metrics .is-total b{color:#fff}
+.app-shell .schedule-v2 .schedule-v2-metrics .is-total b em{color:#d1e7da}
+.app-shell .schedule-v2 .schedule-v2-metrics .is-total .schedule-v073-bar{background:#35463a}
+.app-shell .schedule-v2 .schedule-v2-metrics .is-total .schedule-v073-bar>i{flex:1 1 0}
+.app-shell .schedule-v2 .schedule-v2-metrics .is-total .schedule-v073-bar>.done{background:#79be98}
+.app-shell .schedule-v2 .schedule-v2-metrics .is-total p{color:#bdd3c4}
+
+/* 달력 + 다가오는 일정 */
+.app-shell .schedule-v2 .schedule-v2-layout{grid-template-columns:minmax(0,1fr) 330px;gap:18px;margin-top:32px;align-items:start}
+.app-shell .schedule-v2 :is(.schedule-v2-calendar,.schedule-v2-upcoming){overflow:hidden;border:1px solid #eaeeec!important;border-radius:7px;background:#fff;box-shadow:0 1px 2px rgba(16,24,20,.04),0 5px 16px rgba(16,24,20,.03)!important}
+.app-shell .schedule-v2 .schedule-v2-calendar>header,.app-shell .schedule-v2 .schedule-v2-upcoming>header{min-height:62px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 18px;border-bottom:1px solid #e5eae7!important}
+.app-shell .schedule-v2 .schedule-month-nav{position:static!important;transform:none!important;display:flex;align-items:center;gap:7px}
+.app-shell .schedule-v2 .schedule-month-nav>button{width:32px;height:32px;display:grid;place-items:center;padding:0;border:1px solid #dfe3e1!important;border-radius:5px;background:#fff;color:var(--text);font-size:24px;line-height:24px}
+.app-shell .schedule-v2 .schedule-month-nav h2{min-width:135px;margin:0;font-size:18px;font-weight:700;line-height:27px;text-align:center}
+.app-shell .schedule-v2 .schedule-v2-calendar>header>div:last-child{display:flex;align-items:center;gap:12px;margin-left:auto}
+.app-shell .schedule-v2 .schedule-v2-calendar>header .outline.small{min-height:32px;padding:0 11px;border-color:#dfe3e1!important;border-radius:5px;font-size:12px;font-weight:400}
+.app-shell .schedule-v2 :is(.schedule-v2-view,.upcoming-view-switch){height:34px;display:flex;align-items:center;padding:3px;border:1px solid #e0e5e2!important;border-radius:6px;background:#f4f6f5}
+.app-shell .schedule-v2 :is(.schedule-v2-view,.upcoming-view-switch)>button{height:26px;display:flex;align-items:center;justify-content:center;gap:5px;padding:0 8px;border:0!important;border-radius:4px;background:transparent!important;color:#7b857e!important;font-size:11px;font-weight:500;box-shadow:none!important}
+.app-shell .schedule-v2 :is(.schedule-v2-view,.upcoming-view-switch)>button.active{background:#fff!important;color:#176b54!important}
+.app-shell .schedule-v2 .schedule-v2-week>span{padding:11px;color:var(--sub);font-size:11px;font-weight:400;line-height:16.5px;text-align:center}
+.app-shell .schedule-v2 .schedule-v2-grid>div{min-height:88px;display:flex;flex-direction:column;align-items:stretch;gap:4px;padding:6px;border-top:1px solid #e5e5e5;border-right:1px solid #e5e5e5;background:#fff}
+.app-shell .schedule-v2 .schedule-v2-grid>div:nth-child(7n){border-right:0}
+.app-shell .schedule-v2 .schedule-v2-grid>div.outside{background:#f8f9f9}
+.app-shell .schedule-v2 .schedule-v2-grid .day-pick{width:20px;height:20px;display:grid;place-items:center;padding:0;border:0!important;border-radius:10px;background:transparent!important;color:#56635b!important;font-size:11px;font-weight:500;box-shadow:none!important}
+.app-shell .schedule-v2 .schedule-v2-grid>div.today .day-pick{width:22px;height:22px;border-radius:18px;background:#2e3b32!important;color:#fff!important}
+/* 일정 칩: 흰 바탕 + 왼쪽 색 막대(사전 준비 보라 · 집행 노랑), 완료는 회색 취소선 */
+body .app-shell .schedule-v2 .schedule-v2-calendar .schedule-v2-grid>div>button:is(.need,.planned,.done){position:relative;height:24px;display:block;overflow:hidden;padding:0 3px 0 11px!important;border:1px solid #dcd5e8!important;border-radius:3px;background:#fff!important;color:#344039!important;font-size:10px;font-weight:500;line-height:22px;text-align:left;text-overflow:ellipsis;white-space:nowrap;outline:0!important;box-shadow:none!important}
+body .app-shell .schedule-v2 .schedule-v2-calendar .schedule-v2-grid>div>button:is(.need,.planned,.done)::before{content:"";position:absolute;top:5px;left:4px;width:3px;height:12px;background:var(--v073-need)}
+body .app-shell .schedule-v2 .schedule-v2-calendar .schedule-v2-grid>div>button.planned{border-color:#f0dfa6!important}
+body .app-shell .schedule-v2 .schedule-v2-calendar .schedule-v2-grid>div>button.planned::before{background:var(--v073-planned)}
+body .app-shell .schedule-v2 .schedule-v2-calendar .schedule-v2-grid>div>button.done{border:1px solid #d8dde1!important;background:#f5f6f7!important;color:#9aa3aa!important;text-decoration:line-through}
+body .app-shell .schedule-v2 .schedule-v2-calendar .schedule-v2-grid>div>button.done::before{background:#b8c0c6}
+.app-shell .schedule-v2 .schedule-v2-legend{min-height:48px;display:flex;align-items:center;gap:22px;padding:0 18px;color:var(--sub);font-size:9px}
+.app-shell .schedule-v2 .schedule-v2-legend span{display:flex;align-items:center;gap:6px}
+.app-shell .schedule-v2 .schedule-v2-legend i{width:8px;height:8px;border-radius:4px}
+.app-shell .schedule-v2 .schedule-v2-legend i.planned{background:var(--v073-planned)!important}
+.app-shell .schedule-v2 .schedule-v2-legend i.need{background:var(--v073-need)!important}
+.app-shell .schedule-v2 .schedule-v2-legend i.done{background:var(--v073-done-legend)!important}
+
+/* 다가오는 일정 */
+.app-shell .schedule-v2 .schedule-v2-upcoming>header h2{margin:0;font-size:18px;font-weight:700;line-height:27px}
+.app-shell .schedule-v2 .upcoming-delete-row{min-height:88px;display:flex;align-items:center;gap:12px;padding:18px;border-top:1px solid #edf0ee;background:#fff}
+.app-shell .schedule-v2 .schedule-v2-upcoming>header+.upcoming-delete-row,.app-shell .schedule-v2 .schedule-v2-upcoming>p+.upcoming-delete-row{border-top:0}
+.app-shell .schedule-v2 .upcoming-delete-row>.upcoming-view{flex:1;min-width:0;display:flex;align-items:center;gap:12px;padding:0;border:0!important;background:none!important;text-align:left;box-shadow:none!important;cursor:pointer}
+.app-shell .schedule-v2 .upcoming-delete-row time{width:48px;height:54px;flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:0 8px 0 0!important;border:0!important;border-right:1px solid #cfdad3!important;border-radius:0!important;background:none!important}
+.app-shell .schedule-v2 .upcoming-delete-row time b{color:#202923;font-size:11px;font-weight:500;line-height:17px}
+.app-shell .schedule-v2 .upcoming-delete-row time small{color:#176b54;font-size:10px;font-weight:500;line-height:15px}
+.app-shell .schedule-v2 .upcoming-delete-row time small.past-date{color:var(--red)}
+.app-shell .schedule-v2 .upcoming-delete-row .upcoming-view>span{min-width:0;flex:1;display:flex;flex-direction:column;gap:3px}
+.app-shell .schedule-v2 .upcoming-title{min-width:0;display:flex;align-items:center;gap:6px}
+.app-shell .schedule-v2 .upcoming-title b{min-width:0;overflow:hidden;color:#202923;font-size:13px;font-weight:500;line-height:20px;text-overflow:ellipsis;white-space:nowrap}
+.app-shell .schedule-v2 .upcoming-title em{height:17px;flex:none;display:inline-flex;align-items:center;padding:0 5px;border:0!important;border-radius:3px;font-size:9px;font-style:normal;font-weight:500;line-height:13px}
+.app-shell .schedule-v2 .upcoming-title em.planned{background:#fff4cd!important;color:#85600d!important}
+.app-shell .schedule-v2 .upcoming-title em.need{background:#eee6ff!important;color:#6542a6!important}
+.app-shell .schedule-v2 .upcoming-delete-row .upcoming-view>span>small{overflow:hidden;color:#7b857e;font-size:12px;line-height:18px;text-overflow:ellipsis;white-space:nowrap}
+.app-shell .schedule-v2 .upcoming-actions{flex:none;display:flex;align-items:center;gap:4px}
+.app-shell .schedule-v2 .upcoming-done{width:32px;height:18px;display:grid;place-items:center;padding:0;border:.75px solid #d5dbd8!important;border-radius:2px;background:#fff!important;color:#8c959b!important;font-size:10px;font-weight:500;line-height:14px;box-shadow:none!important}
+.app-shell .schedule-v2 .upcoming-done.active{border-color:#9fd3bd!important;background:#eef7f3!important;color:#176b5b!important}
+.app-shell .schedule-v2 .upcoming-delete{width:18px;height:18px;display:grid;place-items:center;padding:0;border:0!important;background:none!important;color:#8c959b!important;box-shadow:none!important}
+.app-shell .schedule-v2 .upcoming-delete:hover{color:var(--red)!important}
+.app-shell .schedule-v2 .upcoming-delete-row.is-done .upcoming-title b{color:#9aa3aa;text-decoration:line-through}
+
+@media(max-width:1050px){
+  .app-shell .schedule-v2 .schedule-v2-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .app-shell .schedule-v2 .schedule-v2-layout{grid-template-columns:1fr}
+}

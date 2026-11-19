@@ -47,6 +47,7 @@ import "./home-v4.css";
 import "./detail-v033.css";
 import "./new-plan-v033.css";
 import "./plans-v073.css";
+import "./schedule-v073.css";
 
 const won = (value: number) => `${value.toLocaleString("ko-KR")}원`;
 /** 일정 상태의 화면 이름. 저장 값(`집행 예정`·`준비 필요`)은 서버와 맞춰 그대로 둡니다. */
@@ -8997,7 +8998,6 @@ function SchedulePage({
   const month = 기준월 + 월오프셋;
   const 연 = month < 1 ? 기준연 - 1 : month > 12 ? 기준연 + 1 : 기준연;
   const 표시월 = ((month - 1 + 12) % 12) + 1;
-  const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [editing, setEditing] = useState<ScheduleItem | null>(null);
   const [viewing, setViewing] = useState<ScheduleItem | null>(null);
   const [upcomingView, setUpcomingView] = useState<"all" | "plans">("all");
@@ -9015,7 +9015,6 @@ function SchedulePage({
   const visibleUpcoming = upcoming.filter(
     (item) => item.state !== "완료" && !지났나(item),
   );
-  const activeUpcoming = visibleUpcoming.slice(0, 3);
   // v038: 캘린더에서 날짜를 고르면 오른쪽 목록이 그날 일정(완료·지난 것 포함)으로 바뀝니다.
   const [고른날, set고른날] = useState<string | null>(null);
   const 오른쪽목록 = 고른날 ? schedules.filter((item) => item.date === 고른날) : visibleUpcoming;
@@ -9134,12 +9133,14 @@ function SchedulePage({
             : "일정을 불러오는 중입니다."}
         </p>
       )}
+      {/* v073: Figma 「기한 지난 일정 · 회색 헤더 / 흰 목록」 — 처음엔 접혀 있고 누르면 펼칩니다. */}
       {기한지남.length > 0 && (
-        <section className="schedule-overdue" aria-label="기한 지난 일정">
-          <header>
+        <details className="schedule-overdue" aria-label="기한 지난 일정">
+          <summary>
             <h2>기한 지난 일정 {기한지남.length}건</h2>
-            <p>아직 완료하지 않은 일정입니다. 끝냈다면 체크하고, 미뤄졌다면 날짜를 고쳐 주세요.</p>
-          </header>
+            <Icon name="chevronDown" size={20} />
+          </summary>
+          <p>아직 완료하지 않은 일정입니다. 끝냈다면 체크하고, 미뤄졌다면 날짜를 고쳐 주세요.</p>
           <ul>
             {기한지남.map((item) => (
               <li key={item.id}>
@@ -9160,57 +9161,28 @@ function SchedulePage({
               </li>
             ))}
           </ul>
-        </section>
+        </details>
       )}
+      {/* v073: Figma 「상단 요약 · 다크 그린 / 미니 비율 그래프」. 비율은 이번 달 일정 전체 대비입니다. */}
       <section className="schedule-v2-metrics">
-        <article>
-          <span className="schedule-metric-icon all">
-            <Icon name="calendar" />
+        <article className="is-total">
+          <small>이번 달 예정<i /></small>
+          <b>{stats.all}<em>건</em></b>
+          <span className="schedule-v073-bar">
+            {(["need", "planned", "done"] as const).map((k) => stats[k] > 0 && <i key={k} className={k} style={{ flexGrow: stats[k] }} />)}
           </span>
-          <span>
-            <small>이번 달 예정</small>
-            <b>
-              {stats.all}
-              <em>건</em>
-            </b>
-          </span>
+          <p>미완료 {stats.all - stats.done}건 · 완료 {stats.done}건</p>
         </article>
-        <article>
-          <span className="schedule-metric-icon need">
-            <Icon name="clipboardCheck" />
-          </span>
-          <span>
-            <small>준비 중</small>
-            <b>
-              {stats.need}
-              <em>건</em>
-            </b>
-          </span>
-        </article>
-        <article>
-          <span className="schedule-metric-icon planned">
-            <Icon name="clock" />
-          </span>
-          <span>
-            <small>집행 일정</small>
-            <b>
-              {stats.planned}
-              <em>건</em>
-            </b>
-          </span>
-        </article>
-        <article>
-          <span className="schedule-metric-icon done">
-            <Icon name="check" />
-          </span>
-          <span>
-            <small>완료</small>
-            <b>
-              {stats.done}
-              <em>건</em>
-            </b>
-          </span>
-        </article>
+        {([["need", "사전 준비"], ["planned", "집행 일정"], ["done", "완료"]] as const).map(([k, 이름]) => (
+          <article key={k} className={`is-${k}`}>
+            <small>{이름}<i /></small>
+            <b>{stats[k]}<em>건</em></b>
+            <span className="schedule-v073-bar">
+              <i className={k} style={{ width: `${stats.all ? (stats[k] / stats.all) * 100 : 0}%` }} />
+            </span>
+            <p>전체 일정의 {stats.all ? Math.round((stats[k] / stats.all) * 100) : 0}%</p>
+          </article>
+        ))}
       </section>
       <div className="schedule-v2-layout">
         <section className="schedule-v2-calendar">
@@ -9318,7 +9290,7 @@ function SchedulePage({
                 </span>
                 <span>
                   <i className="need" />
-                  준비 중
+                  사전 준비
                 </span>
                 <span>
                   <i className="done" />
@@ -9400,94 +9372,60 @@ function SchedulePage({
                   : "앞으로 남은 일정이 없습니다."}
             </p>
           )}
-          {(고른날 || upcomingView === "all") && 오른쪽목록.length > 0 && (
-            <p className="upcoming-list-caption">체크하면 처리 완료</p>
-          )}
+          {/* v073: Figma 「다가오는 일정」 — 날짜 · D-n | 일정명 + 집행/준비 배지 · 지출명 | [완료] · 삭제. 수정은 줄을 눌러 여는 창에 있습니다. */}
           {고른날 || upcomingView === "all" ? 오른쪽목록.map((item) => {
-            const activeIndex = activeUpcoming.findIndex(
-              (active) => active.id === item.id,
-            );
+            const done = item.state === "완료";
+            const 남은 = dday(item.date);
             return (
-              <div
-                className={`upcoming-delete-row ${activeIndex === 0 ? "nearest" : ""}`}
-                key={item.id}
-              >
-                <div className="upcoming-main">
-                  <input
-                    type="checkbox"
-                    checked={item.state === "완료"}
-                    aria-label={`${item.title} 완료 처리`}
-                    onChange={() => toggleDone(item.id)}
-                  />
+              <div className={`upcoming-delete-row ${done ? "is-done" : ""}`} key={item.id}>
+                <button
+                  type="button"
+                  className="upcoming-view"
+                  onClick={() => setViewing(item)}
+                  aria-label={`${item.title} 일정 내용 보기`}
+                >
+                  <time>
+                    <b>{월일표기(item.date)}</b>
+                    <small className={!done && 남은 < 0 ? "past-date" : "dday"}>
+                      {done ? "완료" : 남은 < 0 ? "지남" : 남은 === 0 ? "D-DAY" : `D-${남은}`}
+                    </small>
+                  </time>
+                  <span>
+                    <span className="upcoming-title">
+                      <b>{item.title}{item.작성자 && <span className="item-author"> · {item.작성자}</span>}</b>
+                      <em className={item.type === "집행" ? "planned" : "need"}>{item.type === "집행" ? "집행" : "준비"}</em>
+                    </span>
+                    <small>{plans.find((p) => p.id === item.planId)?.name || "기타"}</small>
+                  </span>
+                </button>
+                <div className="upcoming-actions">
                   <button
                     type="button"
-                    className="upcoming-view"
-                    onClick={() => setViewing(item)}
-                    aria-label={`${item.title} 일정 내용 보기`}
+                    className={`upcoming-done ${done ? "active" : ""}`}
+                    aria-pressed={done}
+                    aria-label={`${item.title} ${done ? "미완료" : "완료"} 처리`}
+                    onClick={() => toggleDone(item.id)}
                   >
-                    <time>
-                      <b>
-                        {월일표기(item.date)}
-                      </b>
-                      {activeIndex >= 0 ? (
-                        <small className="dday">D-{dday(item.date)}</small>
-                      ) : null}
-                    </time>
-                    <span>
-                      <b>{item.title}{item.작성자 && <span className="item-author"> · {item.작성자}</span>}</b>
-                      <small>
-                        {plans.find((p) => p.id === item.planId)?.name || "기타"}
-                      </small>
-                    </span>
-                    <em
-                      className={item.state === "준비 필요" ? "need" : "planned"}
+                    완료
+                  </button>
+                  {/* 주의: 규정 점검이 만든 일정은 지워도 다음 점검이 다시 만들어 버튼을 내지 않습니다. */}
+                  {!점검일정인가(item) && !item.지출일연동 && (
+                    <button
+                      type="button"
+                      className="upcoming-delete"
+                      aria-label={`${item.title} 삭제`}
+                      onClick={() => {
+                        void 확인({
+                          제목: "일정을 삭제할까요?",
+                          설명: `'${item.title}' 일정을 삭제합니다.`,
+                          실행문구: "삭제",
+                        }).then((확인함) => {
+                          if (확인함) 지우기(item);
+                        });
+                      }}
                     >
-                      {scheduleStateLabel(item.state)}
-                    </em>
-                  </button>
-                </div>
-                <div className="row-menu">
-                  <button
-                    aria-label={`${item.title} 메뉴`}
-                    onClick={() =>
-                      setOpenMenu((value) =>
-                        value === item.id ? null : item.id,
-                      )
-                    }
-                  >
-                    <Icon name="moreVertical" size={16} />
-                  </button>
-                  {openMenu === item.id && (
-                    <div>
-                      <button
-                        onClick={() => {
-                          setEditing(item);
-                          setOpenMenu(null);
-                        }}
-                      >
-                        <Icon name="edit" size={14} />
-                        수정
-                      </button>
-                      {/* 주의: 규정 점검이 만든 일정은 지워도 다음 점검이 다시 만들어 버튼을 내지 않습니다. */}
-                      {!점검일정인가(item) && !item.지출일연동 && (
-                        <button
-                          className="danger"
-                          onClick={() => {
-                            setOpenMenu(null);
-                            void 확인({
-                              제목: "일정을 삭제할까요?",
-                              설명: `'${item.title}' 일정을 삭제합니다.`,
-                              실행문구: "삭제",
-                            }).then((확인함) => {
-                              if (확인함) 지우기(item);
-                            });
-                          }}
-                        >
-                          <Icon name="trash" size={14} />
-                          삭제
-                        </button>
-                      )}
-                    </div>
+                      <Icon name="trash" size={14} />
+                    </button>
                   )}
                 </div>
               </div>

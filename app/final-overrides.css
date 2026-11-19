@@ -471,31 +471,12 @@ body .app-shell .expense-v5 .ai-before-checks>header button.outline:focus-visibl
 .plans-v2-native-table .more-cell{position:relative;left:-12px}
 
 /* Execution schedule status palette: planned blue, preparation violet, done gray, all neutral. */
-.schedule-v2 .schedule-metric-icon.all{background:#f3f4f6!important;color:#5f6873!important}
-.schedule-v2 .schedule-metric-icon.planned{background:#eff6ff!important;color:#2563eb!important}
-.schedule-v2 .schedule-metric-icon.need{background:#f5f3ff!important;color:#7c3aed!important}
-.schedule-v2 .schedule-metric-icon.done{background:#f1f3f5!important;color:#6b7280!important}
-.schedule-v2 .schedule-v2-grid>div>button.planned,
-.schedule-v2 .schedule-v2-list-view em.planned,
-.schedule-v2 .upcoming-main>.upcoming-view>em:not(.need):not(.done),
-.schedule-v2 .schedule-detail-state:not(.need):not(.done){border-color:transparent!important;background:#eff6ff!important;color:#2563eb!important}
-.schedule-v2 .schedule-v2-grid>div>button.need,
-.schedule-v2 .schedule-v2-list-view em.need,
-.schedule-v2 .upcoming-main>.upcoming-view>em.need,
-.schedule-v2 .schedule-detail-state.need{border-color:transparent!important;background:#f5f3ff!important;color:#7c3aed!important}
-.schedule-v2 .schedule-v2-grid>div>button.done,
-.schedule-v2 .schedule-v2-list-view em.done,
-.schedule-v2 .upcoming-main>.upcoming-view>em.done,
-.schedule-v2 .schedule-detail-state.done{border-color:transparent!important;background:#f1f3f5!important;color:#6b7280!important}
-.schedule-v2 .schedule-v2-grid>div>button.planned,
-.schedule-v2 .schedule-v2-list-view em.planned,
-.schedule-v2 .upcoming-main>.upcoming-view>em:not(.need):not(.done){border-color:transparent!important;background:#eff6ff!important;color:#2563eb!important}
-.schedule-v2 .schedule-v2-grid>div>button.need,
-.schedule-v2 .schedule-v2-list-view em.need,
-.schedule-v2 .upcoming-main>.upcoming-view>em.need{border-color:transparent!important;background:#f5f3ff!important;color:#7c3aed!important}
-.schedule-v2 .schedule-v2-grid>div>button.done,
-.schedule-v2 .schedule-v2-list-view em.done,
-.schedule-v2 .upcoming-main>.upcoming-view>em.done{border-color:transparent!important;background:#f1f3f5!important;color:#6b7280!important}
+.schedule-v2 .schedule-v2-grid>div>button.planned,.schedule-v2 .schedule-v2-list-view em.planned,.schedule-v2 .schedule-detail-state:not(.need):not(.done){border-color:transparent!important;background:#eff6ff!important;color:#2563eb!important}
+.schedule-v2 .schedule-v2-grid>div>button.need,.schedule-v2 .schedule-v2-list-view em.need,.schedule-v2 .schedule-detail-state.need{border-color:transparent!important;background:#f5f3ff!important;color:#7c3aed!important}
+.schedule-v2 .schedule-v2-grid>div>button.done,.schedule-v2 .schedule-v2-list-view em.done,.schedule-v2 .schedule-detail-state.done{border-color:transparent!important;background:#f1f3f5!important;color:#6b7280!important}
+.schedule-v2 .schedule-v2-grid>div>button.planned,.schedule-v2 .schedule-v2-list-view em.planned{border-color:transparent!important;background:#eff6ff!important;color:#2563eb!important}
+.schedule-v2 .schedule-v2-grid>div>button.need,.schedule-v2 .schedule-v2-list-view em.need{border-color:transparent!important;background:#f5f3ff!important;color:#7c3aed!important}
+.schedule-v2 .schedule-v2-grid>div>button.done,.schedule-v2 .schedule-v2-list-view em.done{border-color:transparent!important;background:#f1f3f5!important;color:#6b7280!important}
 .schedule-v2 .schedule-v2-legend i.planned{background:#2563eb!important}
 .schedule-v2 .schedule-v2-legend i.need{background:#7c3aed!important}
 .schedule-v2 .schedule-v2-legend i.done{background:#9ca3af!important}
@@ -539,16 +520,6 @@ body .app-shell .expense-v5 .ai-before-checks>header button.outline:focus-visibl
 @media(max-width:620px){.plans-v2-primary-tools{width:100%;flex-wrap:wrap}.plans-v2-primary-tools .plans-v2-search{width:100%;flex-basis:100%}.plans-v2-filter-panel,.plans-v2-amount-panel{position:fixed;top:80px;right:18px;left:18px;width:auto}.plans-v2-filter-grid{grid-template-columns:1fr}.plans-v2-filter-grid fieldset{grid-column:auto}}
 
 /* Keep the original four-column upcoming layout while separating completion from detail viewing. */
-.schedule-v2 .upcoming-delete-row>.upcoming-main{min-width:0;min-height:66px;display:grid;grid-template-columns:18px minmax(0,1fr);align-items:center;gap:10px;padding:8px 4px 8px 14px}
-.schedule-v2 .upcoming-main>input{width:15px;height:15px;margin:0;accent-color:#2563eb;cursor:pointer}
-.schedule-v2 .upcoming-main>.upcoming-view{min-width:0;height:100%;display:grid;grid-template-columns:54px minmax(0,1fr) auto;align-items:center;gap:10px;padding:0;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer}
-.schedule-v2 .upcoming-main>.upcoming-view:hover{background:#fafbfa}
-.schedule-v2 .upcoming-main>.upcoming-view>span{min-width:0}
-.schedule-v2 .upcoming-main>.upcoming-view>span b,.schedule-v2 .upcoming-main>.upcoming-view>span small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.schedule-v2 .upcoming-main>.upcoming-view>span b{font-size:13px;font-weight:700}
-.schedule-v2 .upcoming-main>.upcoming-view>span small{margin-top:4px;color:#747c78;font-size:11px}
-.schedule-v2 .upcoming-main>.upcoming-view>em{padding:3px 6px;border:0;border-radius:4px;background:#dff3ec;color:#08725b;font-size:10.5px;font-style:normal;font-weight:700;white-space:nowrap}
-.schedule-v2 .upcoming-main>.upcoming-view>em.need{background:#ffedcf;color:#a65300}
 
 /* Upcoming schedules can be browsed chronologically or grouped by expense plan. */
 .schedule-v2-upcoming>header{display:flex;align-items:center;justify-content:space-between;gap:12px}
@@ -716,36 +687,20 @@ body .app-shell .schedule-v2 .schedule-v2-calendar .schedule-v2-grid>div>button.
   --schedule-done-bg:#F2F3F2;
   --schedule-done-border:#E2E4E3;
 }
-.schedule-v2 .schedule-metric-icon.all{border:1px solid var(--schedule-all-border)!important;background:var(--schedule-all-bg)!important;color:var(--schedule-all-text)!important}
-.schedule-v2 .schedule-metric-icon.need{border:1px solid var(--schedule-need-border)!important;background:var(--schedule-need-bg)!important;color:var(--schedule-need-text)!important}
-.schedule-v2 .schedule-metric-icon.planned{border:1px solid var(--schedule-planned-border)!important;background:var(--schedule-planned-bg)!important;color:var(--schedule-planned-text)!important}
-.schedule-v2 .schedule-metric-icon.done{border:1px solid var(--schedule-done-border)!important;background:var(--schedule-done-bg)!important;color:var(--schedule-done-text)!important}
 
-body .app-shell .schedule-v2 .schedule-v2-calendar .schedule-v2-grid>div>button.need,
-.schedule-v2 .schedule-v2-list-view em.need,
-.schedule-v2 .upcoming-main>.upcoming-view>em.need,
-.schedule-v2 .upcoming-plan-item em.need,
-.schedule-v2 .schedule-detail-state.need{
+body .app-shell .schedule-v2 .schedule-v2-calendar .schedule-v2-grid>div>button.need,.schedule-v2 .schedule-v2-list-view em.need,.schedule-v2 .upcoming-plan-item em.need,.schedule-v2 .schedule-detail-state.need{
   border:1px solid var(--schedule-need-border)!important;
   background:var(--schedule-need-bg)!important;
   color:var(--schedule-need-text)!important;
   box-shadow:none!important;
 }
-body .app-shell .schedule-v2 .schedule-v2-calendar .schedule-v2-grid>div>button.planned,
-.schedule-v2 .schedule-v2-list-view em.planned,
-.schedule-v2 .upcoming-main>.upcoming-view>em.planned,
-.schedule-v2 .upcoming-plan-item em.planned,
-.schedule-v2 .schedule-detail-state:not(.need):not(.done){
+body .app-shell .schedule-v2 .schedule-v2-calendar .schedule-v2-grid>div>button.planned,.schedule-v2 .schedule-v2-list-view em.planned,.schedule-v2 .upcoming-plan-item em.planned,.schedule-v2 .schedule-detail-state:not(.need):not(.done){
   border:1px solid var(--schedule-planned-border)!important;
   background:var(--schedule-planned-bg)!important;
   color:var(--schedule-planned-text)!important;
   box-shadow:none!important;
 }
-body .app-shell .schedule-v2 .schedule-v2-calendar .schedule-v2-grid>div>button.done,
-.schedule-v2 .schedule-v2-list-view em.done,
-.schedule-v2 .upcoming-main>.upcoming-view>em.done,
-.schedule-v2 .upcoming-plan-item em.done,
-.schedule-v2 .schedule-detail-state.done{
+body .app-shell .schedule-v2 .schedule-v2-calendar .schedule-v2-grid>div>button.done,.schedule-v2 .schedule-v2-list-view em.done,.schedule-v2 .upcoming-plan-item em.done,.schedule-v2 .schedule-detail-state.done{
   border:1px solid var(--schedule-done-border)!important;
   background:var(--schedule-done-bg)!important;
   color:var(--schedule-done-text)!important;
@@ -768,8 +723,6 @@ body .app-shell .schedule-v2 .schedule-v2-calendar .schedule-v2-grid>div>button.
 @media(prefers-reduced-motion:reduce){.ai-checking-visual>svg,.ai-checking-visual .ai-check-spark{animation:none}}
 
 /* Upcoming schedule badges: hard override after legacy blue badge rules. */
-body .app-shell .schedule-v2 .schedule-v2-upcoming .upcoming-delete-row .upcoming-main>.upcoming-view>em.planned,
-body .app-shell .schedule-v2 .schedule-v2-upcoming .upcoming-delete-row .upcoming-main>.upcoming-view>em:not(.need):not(.done),
 body .app-shell .schedule-v2 .schedule-v2-upcoming .upcoming-plan-item em.planned{
   border:1px solid #EBD7DC!important;
   background:#FAF0F2!important;
@@ -1349,20 +1302,6 @@ input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-ou
 .regulation-table td{padding:5px 8px;border:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}
 
 /* 집행 일정: 기한 지난 일정 · 날짜 미정 묶음 */
-.schedule-overdue{margin-bottom:15px;border:1px solid var(--danger-border);border-radius:7px;background:var(--red-soft)}
-.schedule-overdue>header{padding:14px 18px 10px}
-.schedule-overdue h2{margin:0;color:var(--red);font-size:15px;font-weight:800}
-.schedule-overdue p{margin:4px 0 0;color:var(--sub);font-size:12px}
-.schedule-overdue ul{margin:0;padding:0;list-style:none}
-.schedule-overdue li{display:grid;grid-template-columns:18px minmax(0,1fr);align-items:center;gap:10px;padding:8px 18px;border-top:1px solid var(--danger-border)}
-.schedule-overdue li input{width:15px;height:15px;accent-color:var(--brand)}
-.schedule-overdue li>button{min-width:0;display:grid;grid-template-columns:54px minmax(0,1fr) auto;align-items:center;gap:12px;padding:0;border:0;background:none;text-align:left}
-.schedule-overdue time{color:var(--red);font-size:13px;font-weight:700}
-.schedule-overdue li span{min-width:0}
-.schedule-overdue li b,.schedule-overdue li small{display:block;overflow-wrap:anywhere}
-.schedule-overdue li b{font-size:13px}
-.schedule-overdue li small{margin-top:2px;color:var(--sub);font-size:11px}
-.schedule-overdue em{color:var(--red);font-size:12px;font-style:normal;font-weight:700;white-space:nowrap}
 .schedule-v2-list-view time .past-date,.upcoming-plan-item time .past-date{display:block;margin-top:2px}
 .upcoming-plan-meta .past-date{display:block;margin-top:2px}
 .schedule-undated{margin-top:18px;overflow:hidden;border:1px solid var(--line);border-radius:7px;background:#fff}
@@ -1387,8 +1326,6 @@ input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-ou
 .home-overdue-line b{flex:1;font-weight:750}
 .home-overdue-line span{font-size:12px;font-weight:600}
 @media(max-width:620px){
-  .schedule-overdue li>button{grid-template-columns:46px minmax(0,1fr)}
-  .schedule-overdue em{grid-column:2}
   .schedule-undated-group li{grid-template-columns:18px minmax(0,1fr)}
   .schedule-undated-group li>button.outline,.schedule-undated-date{grid-column:2;justify-self:start;justify-content:flex-start}
 }
@@ -1576,7 +1513,6 @@ input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-ou
 .public-search-note{margin-top:16px}
 
 /* v037 다가오는 일정 체크박스 설명 */
-.upcoming-list-caption{margin:6px 0 2px;padding:0 4px 0 12px;color:#7a8580;font-size:11px;font-weight:600}
 
 /* v040 일정 수정: 일정일·상태 칸 높이를 맞추고 도움말은 회색 작은 글씨 */
 .schedule-info-grid>div{align-items:start}
