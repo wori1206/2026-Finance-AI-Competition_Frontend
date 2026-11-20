@@ -4,7 +4,7 @@
 // 주의: 화면 코드(checkumait-app.tsx)를 안 고치려고 여기서 흡수합니다.
 
 import type { 기준문서정보, ExpensePlan, PlanStatus, ScheduleItem, ChecklistItem, RuleItem } from "./types";
-import type { 계획요약, 계획상세, 할일, 판정값, L3현재문서, 사용자답변항목, 부가세구분, 분류값, 용어풀이항목, 코드판정값, 확인한조건항목 } from "./server-types";
+import type { 계획요약, 계획상세, 할일, 판정값, L3현재문서, 사용자답변항목, 부가세구분, 분류값, 용어풀이항목, 코드판정값, 확인한조건항목, 확인한조건출처 } from "./server-types";
 import { 초안읽기 } from "./inquiry-store";
 
 /**
@@ -370,7 +370,10 @@ export function 사용자답변정리(값: unknown): 사용자답변항목[] {
   });
 }
 
-/** 서버 `확인한조건[]` → 「확인한 내용」에 낼 선택 칸 답. 항목 · 답이 없으면 버립니다. */
+/** 서버 `확인한조건[].출처` 중 화면에 낼 수 있는 말. 그 밖의 값은 내지 않습니다. */
+const 확인한조건출처들: readonly 확인한조건출처[] = ["답하신 내용", "공개 조사"];
+
+/** 서버 `확인한조건[]` → 「확인한 내용」에 낼 선택 칸 답. 항목 · 답이 없으면 버립니다. `출처` 는 아는 말일 때만 남깁니다. */
 export function 확인한조건정리(값: unknown): 확인한조건항목[] {
   if (!Array.isArray(값)) return [];
   return 값.flatMap((항목): 확인한조건항목[] => {
@@ -378,7 +381,8 @@ export function 확인한조건정리(값: unknown): 확인한조건항목[] {
     const o = 항목 as Record<string, unknown>;
     const 이름 = typeof o["항목"] === "string" ? o["항목"].trim() : "";
     const 답 = typeof o["답"] === "string" ? o["답"].trim() : "";
-    return 이름 && 답 ? [{ 항목: 이름, 답, 문장: 문장목록정리(o["문장"]), 해당문장: 문장목록정리(o["해당문장"]) }] : [];
+    const 출처 = 확인한조건출처들.find((v) => v === (typeof o["출처"] === "string" ? o["출처"].trim() : ""));
+    return 이름 && 답 ? [{ 항목: 이름, 답, 문장: 문장목록정리(o["문장"]), 해당문장: 문장목록정리(o["해당문장"]), ...(출처 ? { 출처 } : {}) }] : [];
   });
 }
 

@@ -35,7 +35,8 @@ export type 질문입력 = {
 
 /** `질문` 은 서버가 검사한 화면용 확인 문장(없으면 옛 서버), `질문종류`=기본 이면 유형 이름만 든 기본 문장입니다. 판정에는 `내용`(발췌)만 갑니다. */
 /** v056: `종류`=거래유형 이면 공개 검색 결과가 아니라 서버가 만든 거래 유형 확인 문장입니다(출처 없음). 화면에 내지 않는 값입니다. */
-export type 조사후보 = { id: string; 유형: string; 내용: string; 질문?: string; 질문종류?: string; 확인문장?: string; 종류?: string; 상태: string; 출처: { 제목: string; url: string; 발췌?: string }[] };
+/** 자금 확인: `종류`=자금 이면 서버가 만든 자금 확인 문장이고(출처 없음), `자금` 은 그 문장의 자금 이름입니다(화면은 `질문` 만 냅니다). */
+export type 조사후보 = { id: string; 유형: string; 내용: string; 질문?: string; 질문종류?: string; 확인문장?: string; 종류?: string; 자금?: string; 상태: string; 출처: { 제목: string; url: string; 발췌?: string }[] };
 /** v047: [맞아요] | [직접 입력하기]. 직접입력이면 정정(사용자가 쓴 한 문장 설명)이 꼭 있어야 합니다(서버가 400). */
 export type 조사답변 = { id: string; 답: "맞아요" | "직접입력"; 정정?: string };
 export type 조사결과 = { 상태?: string; 확인한정보?: (조사후보 & { 답?: string; 정정?: string })[]; 업체이용조건?: 조사후보[]; 미확인?: 조사후보[]; 부족정보?: string[]; 사용자확인?: { 항목: string; 질문: string }[] };
@@ -58,7 +59,8 @@ export type 질문결과 = {
   다음행동?: string;
   /** v048: 다음행동 재조사확인 일 때 다시 물을 품목 정보. */
   재조사후보?: 조사후보[];
-  /** v056: 재조사 후보의 종류. 「거래유형」 이면 거래 유형 확인 카드(하나만 고름), 없으면 지금 재조사 카드입니다(화면에 내지 않는 값). */
+  /** v056: 재조사 후보의 종류. 「거래유형」 이면 거래 유형 확인 카드, 「자금」 이면 자금 확인 카드(둘 다 하나만 고름),
+   *  없거나 모르는 값이면 지금 재조사 카드입니다(화면에 내지 않는 값). */
   재조사종류?: string;
 };
 
@@ -112,6 +114,28 @@ function 질문정리(값: unknown): 확인질문[] {
     const 질문문 = 문자(o, "질문문");
     if (!id || !질문문) return [];
     return [{ id, 질문문, 이유: 문자(o, "이유"), 선택지: 선택지정리(o["선택지"]), 근거: 근거정리(o["근거"]) }];
+  });
+}
+
+/**
+ * 응답 `재조사.후보` → 화면이 그릴 후보. id 가 없는 항목은 버리고(답을 맞출 수 없음), 글 칸은 글자만 남깁니다.
+ * 주의: 모르는 `종류` 의 후보도 버리지 않습니다. 화면이 지금의 재조사 카드로 그리므로 칸 모양만 맞춥니다.
+ */
+function 재조사후보정리(값: unknown): 조사후보[] {
+  if (!Array.isArray(값)) return [];
+  const 선택글 = (o: Record<string, unknown>, 키: string) => 문자(o, 키) || undefined;
+  return 값.flatMap((항목): 조사후보[] => {
+    if (typeof 항목 !== "object" || 항목 === null) return [];
+    const o = 항목 as Record<string, unknown>;
+    const id = 문자(o, "id");
+    if (!id) return [];
+    const 출처 = (Array.isArray(o["출처"]) ? o["출처"] : []).flatMap((c): 조사후보["출처"] => {
+      if (typeof c !== "object" || c === null) return [];
+      const s = c as Record<string, unknown>;
+      return 문자(s, "url") ? [{ 제목: 문자(s, "제목"), url: 문자(s, "url"), ...(문자(s, "발췌") ? { 발췌: 문자(s, "발췌") } : {}) }] : [];
+    });
+    return [{ id, 유형: 문자(o, "유형"), 내용: 문자(o, "내용"), 질문: 선택글(o, "질문"), 질문종류: 선택글(o, "질문종류"), 확인문장: 선택글(o, "확인문장"),
+      종류: 선택글(o, "종류"), 자금: 선택글(o, "자금"), 상태: 문자(o, "상태"), 출처 }];
   });
 }
 
@@ -205,7 +229,7 @@ async function 질문요청(입력: 질문입력, on진행?: (항목: 진행항�
       // 주의: 다음행동이 없으면 화면이 할 일을 모르므로 다시 시도로 둡니다.
       ...(문자(응답, "상태") === "분류없음" ? {
         다음행동: 문자(응답, "다음행동") || "다시시도",
-        재조사후보: Array.isArray((응답["재조사"] as Record<string, unknown> | undefined)?.후보) ? (응답["재조사"] as { 후보: 조사후보[] }).후보 : [],
+        재조사후보: 응답["재조사"] && typeof 응답["재조사"] === "object" ? 재조사후보정리((응답["재조사"] as Record<string, unknown>).후보) : [],
         재조사종류: 응답["재조사"] && typeof 응답["재조사"] === "object" ? 문자(응답["재조사"] as Record<string, unknown>, "종류") || undefined : undefined,
       } : {}) };
   } catch (e) {
