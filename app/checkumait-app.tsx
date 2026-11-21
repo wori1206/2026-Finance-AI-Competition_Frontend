@@ -32,7 +32,7 @@ import {
 } from "../lib/attachments";
 import { 지금출처, 출처구독, 출처문구 } from "../lib/data-source";
 import { 인증켜짐, 로그인 as supabase로그인, 가입 as supabase가입, 로그아웃 as supabase로그아웃, 이메일 as supabase이메일, 팀이름 as supabase팀이름, 팀이름쓰기 as supabase팀이름쓰기, 온보딩기록읽기, 온보딩마침, 재설정링크읽기, 재설정끝내기, 재설정메일보내기, 새비밀번호저장 } from "../lib/supabase";
-import { 상세를계획으로, 판정제목, 행동문구, 조건칸상태, 시각표기, L3등록사실, L3현재문서요약짓기, 조문연결셈, 문서명보기, 답표기, 로조사, 부가세확정, 부가세표기, 부가세질문id, 정규화저장값, 문의처표기, 문의완료항목, 문의완료설명, 문의완료설명보기, type L3현재문서요약 } from "../lib/adapt";
+import { 상세를계획으로, 판정제목, 행동문구, 조건칸상태, 시각표기, L3등록사실, L3현재문서요약짓기, 조문연결셈, 문서명보기, 답표기, 로조사, 부가세확정, 부가세표기, 부가세질문id, 정규화저장값, 문의처표기, 문의완료항목, 문의완료설명, 문의완료설명보기, 자동문의완료설명인가, type L3현재문서요약 } from "../lib/adapt";
 import { 질문가져오기, 추가입력초기값, 추가입력값만들기, 기본선택지인가, type 질문결과, type 조사후보, type 조사답변 } from "../lib/questions";
 import type { 진행항목 } from "../lib/sse";
 // 주의: `데모종료` 는 남깁니다 — 「계정 없이 둘러보기」를 없앴어도 예전에 받아 둔
@@ -9792,6 +9792,21 @@ function SchedulePage({
   );
 }
 
+// 일정 상세 · 수정 창에서 연결된 계획의 상세를 따로 읽어야 하는지. 자동 「담당자 문의 완료」 설명이고, 계획이 목록 요약만 받은
+//    상태(lib/plan-service.ts 는 처음 20개 계획만 상세를 읽음)일 때입니다. 상세를 받은 계획에만 결제전확인수가 있습니다(상세를계획으로).
+//    계획이 없는 일정(기타)과 사용자가 쓴 메모는 읽지 않습니다.
+function 계획상세필요(item: ScheduleItem | undefined, plan: ExpensePlan | undefined): boolean {
+  return (
+    !!item &&
+    !!plan &&
+    item.planId !== "other" &&
+    API켜짐() &&
+    plan.결제전확인수 === undefined &&
+    item.title === 문의완료항목 &&
+    자동문의완료설명인가(item.memo)
+  );
+}
+
 function ScheduleFormModal({
   item,
   plans,
@@ -9803,10 +9818,11 @@ function ScheduleFormModal({
   close: () => void;
   save: (item: ScheduleItem) => void;
 }) {
+  const 연결계획 = item ? plans.find((p) => p.id === item.planId) : undefined;
   // 메모 칸에 처음 보일 글. 자동으로 만든 「담당자 문의 완료」 설명이면 일정 상세와 같이 그 계획의 지금 문의처 글(문의완료설명보기),
-  //    사용자가 쓴 메모는 글자 그대로입니다. 열 때 한 번만 정합니다.
-  const [처음메모] = useState(() =>
-    item ? 문의완료설명보기(item.title, item.memo, plans.find((p) => p.id === item.planId)) : undefined,
+  //    사용자가 쓴 메모는 글자 그대로입니다. 열 때 정하고, 계획 상세를 읽은 뒤 한 번 더 정합니다(아래).
+  const [처음메모, set처음메모] = useState(() =>
+    item ? 문의완료설명보기(item.title, item.memo, 연결계획) : undefined,
   );
   const [draft, setDraft] = useState<ScheduleItem>(
     item ? { ...item, memo: 처음메모 ?? undefined } : {
@@ -9819,6 +9835,30 @@ function ScheduleFormModal({
       memo: "",
     },
   );
+  const 상세필요 = 계획상세필요(item, 연결계획);
+  // 사용자가 메모를 고치기 시작했는지. 상세를 읽는 동안 고쳤으면 읽은 뒤에도 사용자 글을 덮지 않습니다.
+  const 메모고침 = useRef(false);
+  // 계획 상세를 받지 않은 계획이면 지출 상세 화면과 같은 경로(계획상세 → 상세를계획으로)로 그 계획 하나의 상세를 읽습니다.
+  //    읽는 동안은 저장된 글이 보이고, 읽기에 실패하면 저장된 글 그대로 둡니다(오류 알림 없음).
+  //    메모를 고치지 않았으면 처음 메모와 메모 칸을 함께 바꾸므로 「고치지 않았으면 원래 저장값 유지」 는 그대로입니다.
+  useEffect(() => {
+    if (!item || !상세필요) return;
+    let 살아있음 = true;
+    void 계획상세(item.planId)
+      .then(상세를계획으로)
+      .then(
+        (상세계획) => {
+          if (!살아있음 || 메모고침.current) return;
+          const 새메모 = 문의완료설명보기(item.title, item.memo, 상세계획);
+          set처음메모(새메모);
+          setDraft((d) => ({ ...d, memo: 새메모 ?? undefined }));
+        },
+        () => undefined,
+      );
+    return () => {
+      살아있음 = false;
+    };
+  }, [item, 상세필요]);
   // 주의: 규정 점검이 다시 쓰는 값은 고쳐도 사라지므로 잠급니다. 계획을 옮기는 API 는 없어 수정 때 잠급니다.
   const 지출일줄 = !!item?.지출일연동;
   const 잠김 = 지출일줄 || (!!item && 점검일정인가(item));
@@ -9943,7 +9983,10 @@ function ScheduleFormModal({
                 maxLength={500}
                 disabled={잠김}
                 value={draft.memo || ""}
-                onChange={(e) => setDraft({ ...draft, memo: e.target.value })}
+                onChange={(e) => {
+                  메모고침.current = true;
+                  setDraft({ ...draft, memo: e.target.value });
+                }}
                 placeholder="추가로 기록할 내용을 입력하세요."
               />
               <small>{(draft.memo || "").length}/500</small>
@@ -9990,6 +10033,26 @@ function ScheduleDetailModal({
   toggleComplete: () => void;
   edit: () => void;
 }) {
+  // 계획 상세를 받지 않은 계획이면 수정 창과 같이 그 계획 하나의 상세를 읽어 메모 표시에만 씁니다(계획상세필요).
+  //    읽는 동안 · 실패하면 저장된 글이 보입니다. 다른 일정으로 바뀌면 그 계획의 상세가 아니므로 쓰지 않습니다.
+  const 상세필요 = 계획상세필요(item, plan);
+  const [읽은계획, set읽은계획] = useState<ExpensePlan | null>(null);
+  useEffect(() => {
+    if (!상세필요) return;
+    let 살아있음 = true;
+    void 계획상세(item.planId)
+      .then(상세를계획으로)
+      .then(
+        (상세계획) => {
+          if (살아있음) set읽은계획(상세계획);
+        },
+        () => undefined,
+      );
+    return () => {
+      살아있음 = false;
+    };
+  }, [item.planId, 상세필요]);
+  const 메모계획 = 읽은계획 && 읽은계획.id === item.planId ? 읽은계획 : plan;
   const related = plan
     ? `${plan.name} · ${비목표기(plan.category) || "비목 미정"} · ${won(plan.amount)}`
     : item.planId === "other"
@@ -10026,8 +10089,8 @@ function ScheduleDetailModal({
           <div className="wide">
             <dt>메모</dt>
             {/* 자동으로 만든 「담당자 문의 완료」 의 설명은 결제 전 확인과 같이 그 계획의 지금 문의처로 보입니다(문의완료설명보기).
-                계획 상세를 받지 않은 계획(문의 초안을 모름)이나 사용자가 쓴 메모는 저장된 글 그대로입니다. */}
-            <dd>{문의완료설명보기(item.title, item.memo, plan) || "등록된 메모가 없습니다."}</dd>
+                계획 상세를 받지 않은 계획은 위에서 상세를 읽은 뒤 바뀝니다. 사용자가 쓴 메모는 저장된 글 그대로입니다. */}
+            <dd>{문의완료설명보기(item.title, item.memo, 메모계획) || "등록된 메모가 없습니다."}</dd>
           </div>
         </dl>
         <label className="schedule-detail-completion">
