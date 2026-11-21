@@ -4331,10 +4331,10 @@ function 조사확인({ 후보, 답, 변경, 검색어, 단일선택 = false, �
         </조사카드>
         );
       })}
-      {/* 자금 카드: 어느 자금인지 끝내 모르면 여기서 빠져나갑니다(카드 답 버튼과 같은 모양). */}
+      {/* 자금 카드: 어느 자금인지 끝내 모르면 여기서 빠져나갑니다. 보조 버튼 M 단계(docs/design-system.md §5, new-plan-v033.css). */}
       {모름 && (
-        <div className="research-answer" role="group" aria-label="자금을 모를 때">
-          <button type="button" disabled={모름.꺼짐} onClick={모름.누름}>{모름.라벨}</button>
+        <div className="research-unknown" role="group" aria-label="자금을 모를 때">
+          <button type="button" className="outline small" disabled={모름.꺼짐} onClick={모름.누름}>{모름.라벨}</button>
         </div>
       )}
     </section>
@@ -6879,8 +6879,8 @@ function 확인한내용({ 항목, 조건 }: { 항목?: 사용자답변항목[];
       <ul>
         {(조건 ?? []).map((c, index) => (
           <li key={`조건-${index}`}>
-            {/* 서버가 `출처`(답하신 내용 · 공개 조사)를 주면 항목 옆에 작게 붙입니다. 없으면 지금처럼 항목만. */}
-            <span>{c.항목}{c.출처 && <> <span className="research-kind">{c.출처}</span></>}</span>
+            {/* 서버가 `출처`(답하신 내용 · 공개 조사)를 주면 항목 옆에 S 단계 배지로 붙입니다(detail-v033.css). 없으면 지금처럼 항목만. */}
+            <span>{c.항목}{c.출처 && <> <span className="source-badge">{c.출처}</span></>}</span>
             <strong>{c.답}</strong>
             {c.문장.length > 0 && (
               <small>

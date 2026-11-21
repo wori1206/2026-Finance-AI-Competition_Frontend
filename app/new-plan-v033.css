@@ -73,3 +73,6 @@ body .app-shell .new-plan-page-v033 .form-actions>button:first-child:not(.draft-
 .new-plan-running>div{display:grid;gap:4px}
 .new-plan-running b{font-size:14px;color:var(--color-text,#1d2422)}
 .new-plan-running small{font-size:12px;line-height:1.5;color:var(--color-secondary,#5d6662)}
+/* v074 규칙(docs/design-system.md §5): 자금 확인 카드 「잘 모르겠어요」 - 보조 버튼 M 단계. 카드 답 버튼(.research-answer)은 그대로 */
+body .app-shell .new-plan-page-v033 .research-unknown{display:flex;margin-top:var(--space-3)}
+body .app-shell .new-plan-page-v033 .research-unknown button.outline{height:32px;min-height:32px;gap:6px;padding:0 var(--space-3);border-color:var(--control)!important;border-radius:var(--radius-control);color:var(--text);font-size:13px;font-weight:500;line-height:20px}
