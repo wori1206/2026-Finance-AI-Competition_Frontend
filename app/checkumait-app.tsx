@@ -10,7 +10,7 @@ import type { 기준문서정보,
 } from "../lib/types";
 import type { 서버팀, 비목후보, 답변항목, 확인질문, 확인질문선택지, 사용자답변항목, 판정피드백, 부가세구분, 분류값, 추가입력칸, 용어풀이항목, 코드판정값, 확인한조건항목 } from "../lib/server-types";
 import { API켜짐 } from "../lib/config";
-import { 판정실행, 판정실패오류, 판정실패문장, 판정요청오류문장, 판정요청오류안내, 새멱등키 } from "../lib/judge";
+import { 판정실행, 판정실패오류, 판정실패설명, 새멱등키 } from "../lib/judge";
 import { 다시시도오류, 정규화하기, type 정규화출력 } from "../lib/normalize";
 import { 인증오류 } from "../lib/http";
 import { 할일추가, 계획목록, 계획상세, 비목목록, 계획추가, 계획수정, 규정업로드, 규정처리기다리기, 규정적용, 규정거절, 조문연결저장, L3현재문서목록, 팀조회, 팀만들기, 초대코드재발급, 팀들어가기, 팀나가기, 팀원내보내기, 계획삭제, 일정수정, 피드백저장 } from "../lib/api";
@@ -32,7 +32,7 @@ import {
 } from "../lib/attachments";
 import { 지금출처, 출처구독, 출처문구 } from "../lib/data-source";
 import { 인증켜짐, 로그인 as supabase로그인, 가입 as supabase가입, 로그아웃 as supabase로그아웃, 이메일 as supabase이메일, 팀이름 as supabase팀이름, 팀이름쓰기 as supabase팀이름쓰기, 온보딩기록읽기, 온보딩마침, 재설정링크읽기, 재설정끝내기, 재설정메일보내기, 새비밀번호저장 } from "../lib/supabase";
-import { 상세를계획으로, 판정제목, 행동문구, 조건칸상태, 시각표기, L3등록사실, L3현재문서요약짓기, 조문연결셈, 문서명보기, 답표기, 로조사, 부가세확정, 부가세표기, 부가세질문id, 정규화저장값, type L3현재문서요약 } from "../lib/adapt";
+import { 상세를계획으로, 판정제목, 행동문구, 조건칸상태, 시각표기, L3등록사실, L3현재문서요약짓기, 조문연결셈, 문서명보기, 답표기, 로조사, 부가세확정, 부가세표기, 부가세질문id, 정규화저장값, 문의처표기, 문의완료항목, 문의완료설명, type L3현재문서요약 } from "../lib/adapt";
 import { 질문가져오기, 추가입력초기값, 추가입력값만들기, 기본선택지인가, type 질문결과, type 조사후보, type 조사답변 } from "../lib/questions";
 import type { 진행항목 } from "../lib/sse";
 // 주의: `데모종료` 는 남깁니다 — 「계정 없이 둘러보기」를 없앴어도 예전에 받아 둔
@@ -1223,8 +1223,6 @@ function 판정색(value: PlanStatus): "risk" | "warn" | "safe" | "draft" {
   return value === "위험" ? "risk" : value === "특이사항 없음" ? "safe" : value === "확인 필요" ? "warn" : "draft";
 }
 
-/** v070: 문의 초안이 있는 「확인 필요」 계획의 결제 전 확인에 넣는 항목. 이 글자로 있는지 찾습니다. */
-const 문의완료항목 = "담당자 문의 완료";
 /** v070: 「담당자 문의 완료」 를 넣고 있는 계획 id. 같은 항목을 두 번 만들지 않게 합니다(개발 모드 효과 두 번 실행 포함). */
 const 문의항목추가중 = new Set<string>();
 
@@ -1580,7 +1578,7 @@ export default function CheckumaitApp() {
     작업바꾸기((이전) => [...이전, { ...입력, 키, 멱등키: 새멱등키(), 최소화: !!입력.접힘, 접은적: !!입력.접힘 }]);
     return true;
   };
-  const 판정끝 = (키: number, 판정된계획?: ExpensePlan, 오류?: string, 기록?: 판정기록, 다시점검?: boolean, 요청오류?: boolean) => {
+  const 판정끝 = (키: number, 판정된계획?: ExpensePlan, 오류?: string, 기록?: 판정기록, 다시점검?: boolean, 실패원인?: string | null) => {
     const 작업 = 작업Ref.current.find((j) => j.키 === 키);
     if (!작업) return;
     if (기록) {
@@ -1590,7 +1588,7 @@ export default function CheckumaitApp() {
     // 판정실패(AI 연결 실패): 작업을 지우지 않고 「다시 점검」 을 보입니다. 입력 · 답은 작업에 그대로 남아 같은 내용으로 다시 부릅니다.
     //    「닫기」 를 눌러야 시작한 화면에 실패를 알립니다(`판정실패닫기`).
     if (다시점검) {
-      작업바꾸기((이전) => 이전.map((j) => (j.키 === 키 ? { ...j, 결과: { 오류, 다시점검: true, 요청오류 } } : j)));
+      작업바꾸기((이전) => 이전.map((j) => (j.키 === 키 ? { ...j, 결과: { 오류, 다시점검: true, 실패원인: 실패원인 ?? null } } : j)));
       if (작업.최소화) notify(`'${작업.계획.name}' 점검을 마치지 못했습니다. 다시 점검해 주세요.`);
       탭제목알림("점검 실패 · 써도돼요");
       return;
@@ -2162,7 +2160,7 @@ export default function CheckumaitApp() {
               key={작업.키}
               이름={작업.계획.name}
               순번={순번}
-              요청오류={작업.결과.요청오류 === true}
+              실패원인={작업.결과.실패원인}
               다시점검={() => 다시점검(작업.키)}
               닫기={() => 판정실패닫기(작업)}
             />
@@ -2176,8 +2174,9 @@ export default function CheckumaitApp() {
               <Icon name="alert" size={18} />
               <span>
                 <b>{작업.계획.name}</b>
-                <small title={작업.결과.요청오류 ? 판정요청오류문장 : 판정실패문장}>
-                  {작업.결과.요청오류 ? 판정요청오류문장 : 판정실패문장}
+                {/* 펼친 실패 화면과 같은 원인별 제목(판정실패설명) */}
+                <small title={판정실패설명(작업.결과.실패원인).제목}>
+                  {판정실패설명(작업.결과.실패원인).제목}
                 </small>
               </span>
               <button onClick={() => 다시점검(작업.키)}>다시 점검</button>
@@ -2249,7 +2248,7 @@ export default function CheckumaitApp() {
               }}
               펼치기={() => 작업바꾸기((이전) => 이전.map((j) => (j.키 === 작업.키 ? { ...j, 최소화: false } : j)))}
               onComplete={(판정된계획, 기록) => 판정끝(작업.키, 판정된계획, undefined, 기록)}
-              onFail={(메시지, 기록, 다시점검, 요청오류) => 판정끝(작업.키, undefined, 메시지, 기록, 다시점검, 요청오류)}
+              onFail={(메시지, 기록, 다시점검, 실패원인) => 판정끝(작업.키, undefined, 메시지, 기록, 다시점검, 실패원인)}
             />
           ),
         )}
@@ -4379,8 +4378,9 @@ type 판정작업 = 판정시작입력 & {
   숨김?: boolean;
   /** 한 번이라도 접었으면 시작한 페이지가 이미 없을 수 있어 최상단이 끝까지 맡습니다. */
   접은적?: boolean;
-  /** 다시점검 = AI 연결 실패로 판정을 못 냈다(서버 `판정실패`). 같은 입력으로 다시 점검할 수 있게 작업을 남겨 둡니다. */
-  결과?: { 오류?: string; 저장안됨?: boolean; 다시점검?: boolean; 요청오류?: boolean };
+  /** 다시점검 = AI 연결 실패로 판정을 못 냈다(서버 `판정실패`). 같은 입력으로 다시 점검할 수 있게 작업을 남겨 둡니다.
+   *  실패원인 = 서버 `판정실패원인` 값 그대로(화면에 내지 않는 값, 화면 글은 판정실패설명). */
+  결과?: { 오류?: string; 저장안됨?: boolean; 다시점검?: boolean; 실패원인?: string | null };
 };
 
 function AiCheckingOverlay({
@@ -4451,7 +4451,7 @@ function AiCheckingOverlay({
   /** 기록은 이번 판정에서 받은 작업 내역입니다. 결과 화면의 「작업 내역 보기」가 씁니다. */
   onComplete: (판정된계획?: ExpensePlan, 기록?: 판정기록) => void;
   /** `다시점검` 은 AI 연결 실패로 판정을 못 냈을 때 true 입니다. 최상단이 「다시 점검」 을 보입니다. */
-  onFail?: (메시지: string, 기록?: 판정기록, 다시점검?: boolean, 요청오류?: boolean) => void;
+  onFail?: (메시지: string, 기록?: 판정기록, 다시점검?: boolean, 실패원인?: string | null) => void;
 }) {
   const [, setStage] = useState(0);
   const [설명, set설명] = useState("");
@@ -4541,7 +4541,7 @@ function AiCheckingOverlay({
         if (!살아있음) return;
         진행중.current = null;          // 다음 시도는 새로 부를 수 있게
         const 메시지 = e instanceof Error ? e.message : "점검에 실패했습니다";
-        if (onFail) onFail(메시지, 기록(), e instanceof 판정실패오류, e instanceof 판정실패오류 && e.요청오류);
+        if (onFail) onFail(메시지, 기록(), e instanceof 판정실패오류, e instanceof 판정실패오류 ? e.원인 : null);
         else onComplete(undefined, 기록());
       });
 
@@ -4610,19 +4610,21 @@ function AiCheckingOverlay({
 /**
  * 판정실패 화면. AI 연결이 끝내 실패해 판정을 못 냈을 때 점검 화면 자리에 그립니다.
  * 판정이 아니므로 판정 배지 · 문의 초안을 보이지 않습니다. 「다시 점검」 은 입력 · 답을 그대로 다시 보냅니다.
- * v062: `요청오류`(AI 모델이 이 요청 자체를 받지 않음)면 연결 문장 대신 다시 점검해도 같을 수 있다는 안내와 다음 행동을 보입니다.
+ * `실패원인`(서버 `판정실패원인` 값 그대로)에 따라 제목 · 안내가 바뀝니다(판정실패설명). 최소화된 작업 표시도 같은 제목을 씁니다.
+ * v062: 요청오류(AI 모델이 이 요청 자체를 받지 않음)면 연결 문장 대신 다시 점검해도 같을 수 있다는 안내와 다음 행동을 보입니다.
  */
-function 판정실패화면({ 이름, 순번, 요청오류, 다시점검, 닫기 }: {
-  이름: string; 순번: number; 요청오류?: boolean; 다시점검: () => void; 닫기: () => void;
+function 판정실패화면({ 이름, 순번, 실패원인, 다시점검, 닫기 }: {
+  이름: string; 순번: number; 실패원인?: string | null; 다시점검: () => void; 닫기: () => void;
 }) {
+  const 설명 = 판정실패설명(실패원인);
   return (
     <section className="page judge-run" aria-labelledby={`judge-fail-title-${순번}`} role="alert">
       <header className="judge-run-head">
         <small>{이름}</small>
-        <h1 id={`judge-fail-title-${순번}`}>{요청오류 ? 판정요청오류문장 : 판정실패문장}</h1>
+        <h1 id={`judge-fail-title-${순번}`}>{설명.제목}</h1>
       </header>
       <p className="judge-run-note">
-        {요청오류 ? 판정요청오류안내 : "입력하고 답한 내용은 그대로 두었어요. 다시 점검하면 같은 내용으로 다시 확인해요."}
+        {설명.안내}
         <br />
         이번 점검 결과는 저장되지 않았어요.
       </p>
@@ -7247,7 +7249,7 @@ function 문의초안카드({
         <div className="ai-inquiry-title">
           <Icon name="fileText" size={20} />
           <div>
-            <b>{문의처 || "주관기관에"} 보낼 문의 초안</b>
+            <b>{문의처표기(문의처)} 보낼 문의 초안</b>
             <small>규정만으로 결론이 안 나서, 물어볼 내용을 정리했습니다.</small>
           </div>
         </div>
@@ -7631,7 +7633,8 @@ function PlanDetail({
     문의항목추가중.add(plan.id);
     할일추가(plan.id, {
       항목: 문의완료항목,
-      설명: "문의 초안으로 주관기관 담당자에게 확인하고 집행해도 된다는 답을 받았으면 체크해 주세요.",
+      // 저장되는 글은 만들 때의 문의처로 쓰고, 화면은 계획을 만들 때마다 지금 판정의 문의처로 다시 씁니다(lib/adapt.ts 문의완료설명맞춤).
+      설명: 문의완료설명(plan.문의처),
       구분: "결제전",
     })
       .then(() => 계획상세(plan.id))
