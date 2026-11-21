@@ -8,7 +8,7 @@ import type { 기준문서정보,
   PlanStatus,
   ScheduleItem,
 } from "../lib/types";
-import type { 서버팀, 비목후보, 답변항목, 확인질문, 사용자답변항목, 판정피드백, 부가세구분, 분류값, 추가입력칸, 용어풀이항목, 코드판정값, 확인한조건항목 } from "../lib/server-types";
+import type { 서버팀, 비목후보, 답변항목, 확인질문, 확인질문선택지, 사용자답변항목, 판정피드백, 부가세구분, 분류값, 추가입력칸, 용어풀이항목, 코드판정값, 확인한조건항목 } from "../lib/server-types";
 import { API켜짐 } from "../lib/config";
 import { 판정실행, 판정실패오류, 판정실패문장, 판정요청오류문장, 판정요청오류안내, 새멱등키 } from "../lib/judge";
 import { 다시시도오류, 정규화하기, type 정규화출력 } from "../lib/normalize";
@@ -33,7 +33,7 @@ import {
 import { 지금출처, 출처구독, 출처문구 } from "../lib/data-source";
 import { 인증켜짐, 로그인 as supabase로그인, 가입 as supabase가입, 로그아웃 as supabase로그아웃, 이메일 as supabase이메일, 팀이름 as supabase팀이름, 팀이름쓰기 as supabase팀이름쓰기, 온보딩기록읽기, 온보딩마침, 재설정링크읽기, 재설정끝내기, 재설정메일보내기, 새비밀번호저장 } from "../lib/supabase";
 import { 상세를계획으로, 판정제목, 행동문구, 조건칸상태, 시각표기, L3등록사실, L3현재문서요약짓기, 조문연결셈, 문서명보기, 답표기, 로조사, 부가세확정, 부가세표기, 부가세질문id, 정규화저장값, type L3현재문서요약 } from "../lib/adapt";
-import { 질문가져오기, 추가입력초기값, 추가입력값만들기, type 질문결과, type 조사후보, type 조사답변 } from "../lib/questions";
+import { 질문가져오기, 추가입력초기값, 추가입력값만들기, 기본선택지인가, type 질문결과, type 조사후보, type 조사답변 } from "../lib/questions";
 import type { 진행항목 } from "../lib/sse";
 // 주의: `데모종료` 는 남깁니다 — 「계정 없이 둘러보기」를 없앴어도 예전에 받아 둔
 //    데모 토큰이 브라우저에 2시간 남아 있을 수 있고, 그게 로그인 조회를 가로챕니다.
@@ -6762,6 +6762,7 @@ function 글에_나온_풀이(글: string, 풀이: 용어풀이항목[]): 용어
 /**
  * 3단계 확인 질문 한 개. 재점검 창이 함께 쓰는 `Question` 과 달리 이유와 규정 원문이 딸려 있습니다.
  * 주의: 세 버튼은 칸 너비까지 같게 둡니다. 「모르겠어요」가 작거나 흐리면 모른다고 답하기 어려워집니다.
+ * 선택지가 예 · 아니오 · 모르겠어요가 아닌 질문(선택지형 사실)은 `선택지묶음` 이 그립니다.
  */
 function 확인질문카드({
   질문,
@@ -6788,19 +6789,23 @@ function 확인질문카드({
           </p>
         ))}
       </div>
-      <div className="confirm-question-options" role="group" aria-label={질문.질문문}>
-        {질문.선택지.map((s) => (
-          <button
-            key={s.값}
-            type="button"
-            className={값 === s.값 ? "active" : ""}
-            aria-pressed={값 === s.값}
-            onClick={() => onChange(s.값)}
-          >
-            {s.라벨}
-          </button>
-        ))}
-      </div>
+      {기본선택지인가(질문.선택지) ? (
+        <div className="confirm-question-options" role="group" aria-label={질문.질문문}>
+          {질문.선택지.map((s) => (
+            <button
+              key={s.값}
+              type="button"
+              className={값 === s.값 ? "active" : ""}
+              aria-pressed={값 === s.값}
+              onClick={() => onChange(s.값)}
+            >
+              {s.라벨}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <선택지묶음 질문={질문} 값={값} onChange={onChange} />
+      )}
       {근거 && (
         <details className="confirm-question-source">
           <summary>
@@ -6815,6 +6820,45 @@ function 확인질문카드({
           </div>
         </details>
       )}
+    </div>
+  );
+}
+
+/** 선택지가 이 개수(「모르겠어요」 포함)를 넘으면 버튼 대신 목록(`<select>`)으로 그립니다. 6개면 버튼이 두 줄 안에 들고, 그보다 많으면 버튼 묶음이 길어져 읽기 어렵습니다. */
+const 선택지_버튼최대 = 6;
+
+/**
+ * 선택지형 사실 질문(사실 정의의 선택지 + 모르겠어요). 기본 세 버튼(예 · 아니오 · 모르겠어요) 질문은 `확인질문카드` 가 지금 모양으로 그립니다.
+ * 6개까지는 줄바꿈되는 버튼 묶음, 넘으면 목록 + 「모르겠어요」 버튼입니다. 목록에서도 「모르겠어요」는 버튼으로 따로 둬 늘 같은 크기로 보입니다.
+ */
+function 선택지묶음({ 질문, 값, onChange }: { 질문: 확인질문; 값?: string; onChange: (값: string) => void }) {
+  const 버튼 = (s: 확인질문선택지) => (
+    <button key={s.값} type="button" className={값 === s.값 ? "active" : ""} aria-pressed={값 === s.값} onClick={() => onChange(s.값)}>
+      {s.라벨}
+    </button>
+  );
+  if (질문.선택지.length <= 선택지_버튼최대) {
+    return (
+      <div className="confirm-question-choices" role="group" aria-label={질문.질문문}>
+        {질문.선택지.map(버튼)}
+      </div>
+    );
+  }
+  const 목록 = 질문.선택지.filter((s) => s.값 !== "모름");
+  const 모름 = 질문.선택지.filter((s) => s.값 === "모름");
+  return (
+    <div className="confirm-question-choices is-list" role="group" aria-label={질문.질문문}>
+      <select aria-label={질문.질문문} value={목록.some((s) => s.값 === 값) ? 값 : ""} onChange={(e) => e.target.value && onChange(e.target.value)}>
+        <option value="" disabled>
+          해당하는 것을 골라 주세요
+        </option>
+        {목록.map((s) => (
+          <option key={s.값} value={s.값}>
+            {s.라벨}
+          </option>
+        ))}
+      </select>
+      {모름.map(버튼)}
     </div>
   );
 }

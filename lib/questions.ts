@@ -80,17 +80,31 @@ const 기본선택지: 확인질문선택지[] = [
 const 문자 = (o: Record<string, unknown>, 키: string): string =>
   typeof o[키] === "string" ? (o[키] as string).trim() : "";
 
-/** 주의: 서버가 받는 답은 예·아니오·모름 세 값뿐입니다. 그 밖의 값은 버리고, 하나라도 빠지면 기본 세 버튼을 그립니다. */
+const 모름선택지 = 기본선택지[2];
+
+/**
+ * 서버 선택지를 그대로 받습니다. 예아니오 사실 · LLM 이 쓴 질문은 예 · 아니오 · 모르겠어요, 선택지형 사실은
+ * 사실 정의의 선택지 + 모르겠어요가 옵니다. 고른 `값` 을 그대로 `/api/judge` `답변` 으로 보내면 서버가 저장해 둔 선택지와 대조합니다.
+ * 라벨 · 값이 빈 항목은 버리고 같은 값은 처음 것만 남깁니다. 2개 미만이면 기본 세 버튼을 그립니다.
+ * 주의: 「모르겠어요」(값 모름)는 늘 고를 수 있어야 해서 빠져 있으면 끝에 붙입니다. 서버는 선택지에 없는 모름도 받습니다.
+ */
 function 선택지정리(값: unknown): 확인질문선택지[] {
   if (!Array.isArray(값)) return 기본선택지;
-  const 정리 = 값.flatMap((s): 확인질문선택지[] => {
-    if (typeof s !== "object" || s === null) return [];
+  const 정리: 확인질문선택지[] = [];
+  for (const s of 값) {
+    if (typeof s !== "object" || s === null) continue;
     const o = s as Record<string, unknown>;
     const 라벨 = 문자(o, "라벨");
     const 값칸 = 문자(o, "값");
-    return 라벨 && 기본선택지.some((b) => b.값 === 값칸) ? [{ 라벨, 값: 값칸 }] : [];
-  });
-  return 기본선택지.every((b) => 정리.some((s) => s.값 === b.값)) ? 정리 : 기본선택지;
+    if (라벨 && 값칸 && !정리.some((x) => x.값 === 값칸)) 정리.push({ 라벨, 값: 값칸 });
+  }
+  if (정리.length < 2) return 기본선택지;
+  return 정리.some((x) => x.값 === 모름선택지.값) ? 정리 : [...정리, 모름선택지];
+}
+
+/** 선택지가 기본 세 개(예 · 아니오 · 모름)인 질문인가. 이 질문은 지금 모양 그대로 그립니다. */
+export function 기본선택지인가(선택지: 확인질문선택지[]): boolean {
+  return 선택지.length === 기본선택지.length && 기본선택지.every((b) => 선택지.some((s) => s.값 === b.값));
 }
 
 function 근거정리(값: unknown): 확인질문근거 | null {

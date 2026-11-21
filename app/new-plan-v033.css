@@ -76,3 +76,14 @@ body .app-shell .new-plan-page-v033 .form-actions>button:first-child:not(.draft-
 /* v074 규칙(docs/design-system.md §5): 자금 확인 카드 「잘 모르겠어요」 - 보조 버튼 M 단계. 카드 답 버튼(.research-answer)은 그대로 */
 body .app-shell .new-plan-page-v033 .research-unknown{display:flex;margin-top:var(--space-3)}
 body .app-shell .new-plan-page-v033 .research-unknown button.outline{height:32px;min-height:32px;gap:6px;padding:0 var(--space-3);border-color:var(--control)!important;border-radius:var(--radius-control);color:var(--text);font-size:13px;font-weight:500;line-height:20px}
+/* v074 규칙(docs/design-system.md §5): 선택지형 확인 질문(사실 정의의 선택지 + 모르겠어요). 6개까지 줄바꿈되는 L 단계 버튼, 넘으면 L 단계 목록 + 「모르겠어요」 버튼.
+   예 · 아니오 · 모르겠어요 질문(.confirm-question-options)은 그대로. 지출 계획 재점검 창(.plan-recheck-modal)도 같은 카드를 써서 함께 둡니다. 최소 폭 140 은 위 세 버튼 폭과 맞춘 값 */
+body .app-shell .new-plan-page-v033 .confirm-question-choices,body .app-shell .plan-recheck-modal .confirm-question-choices{display:flex;flex-wrap:wrap;justify-content:flex-start;gap:var(--space-2);width:100%;margin:0;padding:0}
+body .app-shell .new-plan-page-v033 .confirm-question-choices button,body .app-shell .plan-recheck-modal .confirm-question-choices button{display:inline-flex;align-items:center;justify-content:center;flex:0 1 auto;min-width:140px;max-width:100%;min-height:40px;height:auto;margin:0;padding:10px var(--space-4);border:1px solid var(--control)!important;border-radius:var(--radius-control);background:var(--white);color:var(--text);font-size:14px;font-weight:500;line-height:20px;text-align:center;white-space:normal;overflow-wrap:anywhere}
+body .app-shell .new-plan-page-v033 .confirm-question-choices button.active,body .app-shell .plan-recheck-modal .confirm-question-choices button.active{border-color:var(--brand)!important;background:var(--brand-soft)!important;color:var(--brand)}
+body .app-shell .new-plan-page-v033 .confirm-question-choices.is-list,body .app-shell .plan-recheck-modal .confirm-question-choices.is-list{display:grid;grid-template-columns:minmax(0,1fr) auto}
+body .app-shell .new-plan-page-v033 .confirm-question-choices select,body .app-shell .plan-recheck-modal .confirm-question-choices select{width:100%;height:40px;padding:0 var(--space-4);border:1px solid var(--control);border-radius:var(--radius-control);background:var(--white);color:var(--text);font-size:14px;font-weight:400;line-height:20px}
+@media(max-width:760px){
+  body .app-shell .new-plan-page-v033 .confirm-question-choices button,body .app-shell .plan-recheck-modal .confirm-question-choices button{flex:1 1 140px}
+  body .app-shell .new-plan-page-v033 .confirm-question-choices.is-list,body .app-shell .plan-recheck-modal .confirm-question-choices.is-list{grid-template-columns:1fr}
+}
