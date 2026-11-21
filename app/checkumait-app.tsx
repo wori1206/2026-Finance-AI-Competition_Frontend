@@ -32,7 +32,7 @@ import {
 } from "../lib/attachments";
 import { 지금출처, 출처구독, 출처문구 } from "../lib/data-source";
 import { 인증켜짐, 로그인 as supabase로그인, 가입 as supabase가입, 로그아웃 as supabase로그아웃, 이메일 as supabase이메일, 팀이름 as supabase팀이름, 팀이름쓰기 as supabase팀이름쓰기, 온보딩기록읽기, 온보딩마침, 재설정링크읽기, 재설정끝내기, 재설정메일보내기, 새비밀번호저장 } from "../lib/supabase";
-import { 상세를계획으로, 판정제목, 행동문구, 조건칸상태, 시각표기, L3등록사실, L3현재문서요약짓기, 조문연결셈, 문서명보기, 답표기, 로조사, 부가세확정, 부가세표기, 부가세질문id, 정규화저장값, 문의처표기, 문의완료항목, 문의완료설명, type L3현재문서요약 } from "../lib/adapt";
+import { 상세를계획으로, 판정제목, 행동문구, 조건칸상태, 시각표기, L3등록사실, L3현재문서요약짓기, 조문연결셈, 문서명보기, 답표기, 로조사, 부가세확정, 부가세표기, 부가세질문id, 정규화저장값, 문의처표기, 문의완료항목, 문의완료설명, 문의완료설명보기, type L3현재문서요약 } from "../lib/adapt";
 import { 질문가져오기, 추가입력초기값, 추가입력값만들기, 기본선택지인가, type 질문결과, type 조사후보, type 조사답변 } from "../lib/questions";
 import type { 진행항목 } from "../lib/sse";
 // 주의: `데모종료` 는 남깁니다 — 「계정 없이 둘러보기」를 없앴어도 예전에 받아 둔
@@ -10012,7 +10012,9 @@ function ScheduleDetailModal({
           </div>
           <div className="wide">
             <dt>메모</dt>
-            <dd>{item.memo || "등록된 메모가 없습니다."}</dd>
+            {/* 자동으로 만든 「담당자 문의 완료」 의 설명은 결제 전 확인과 같이 그 계획의 지금 문의처로 보입니다(문의완료설명보기).
+                계획 상세를 받지 않은 계획(문의 초안을 모름)이나 사용자가 쓴 메모는 저장된 글 그대로입니다. */}
+            <dd>{문의완료설명보기(item.title, item.memo, plan) || "등록된 메모가 없습니다."}</dd>
           </div>
         </dl>
         <label className="schedule-detail-completion">
