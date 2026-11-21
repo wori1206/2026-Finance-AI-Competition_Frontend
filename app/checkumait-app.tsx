@@ -9803,8 +9803,13 @@ function ScheduleFormModal({
   close: () => void;
   save: (item: ScheduleItem) => void;
 }) {
+  // 메모 칸에 처음 보일 글. 자동으로 만든 「담당자 문의 완료」 설명이면 일정 상세와 같이 그 계획의 지금 문의처 글(문의완료설명보기),
+  //    사용자가 쓴 메모는 글자 그대로입니다. 열 때 한 번만 정합니다.
+  const [처음메모] = useState(() =>
+    item ? 문의완료설명보기(item.title, item.memo, plans.find((p) => p.id === item.planId)) : undefined,
+  );
   const [draft, setDraft] = useState<ScheduleItem>(
-    item || {
+    item ? { ...item, memo: 처음메모 ?? undefined } : {
       id: `s-${Date.now()}`,
       planId: plans[0]?.id || "other",
       title: "",
@@ -9952,7 +9957,15 @@ function ScheduleFormModal({
           <button
             className="primary"
             disabled={!draft.title.trim() || !draft.planId}
-            onClick={() => save({ ...draft, title: draft.title.trim() })}
+            // 메모를 고치지 않았으면(처음 보인 글 그대로) 화면용으로 바꾼 글이 서버 저장값을 덮지 않게 원래 저장값을 보냅니다.
+            //    고쳤으면 고친 글을 저장합니다. 다른 칸은 지금처럼 draft 그대로입니다.
+            onClick={() =>
+              save({
+                ...draft,
+                title: draft.title.trim(),
+                ...(item && draft.memo === 처음메모 ? { memo: item.memo } : {}),
+              })
+            }
           >
             {item ? "수정 저장" : "일정 추가"}
           </button>
