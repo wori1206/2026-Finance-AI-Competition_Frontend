@@ -6,11 +6,13 @@
  *  · 그라데이션 위 작은 글자는 대비 4.5:1 이상(--text-on-brand)
  * 이 화면은 .app-shell 밖이라 옛 공통 버튼 규칙이 일부만 닿습니다. 겹치는 값만 !important 로 덮습니다.
  */
-.login-v076{min-height:100vh;display:grid;place-items:center;padding:var(--space-6) max(var(--space-4),env(safe-area-inset-right,0px)) var(--space-6) max(var(--space-4),env(safe-area-inset-left,0px));background:var(--login-backdrop);color:var(--text)}
-.login-v076-shell{width:min(1120px,100%);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,558px);gap:var(--space-2);padding:var(--space-3);border-radius:var(--radius-hero);background:#fff;box-shadow:var(--shadow-shell)}
+/* v077: 시안의 「회색 바탕 + 가운데 카드」는 큰 화면에서 작게 떠 보여서, 흰 바탕을 꽉 채우는 반반 화면으로 바꿨습니다(사용자 결정).
+   왼쪽 입력 · 오른쪽 브랜드 패널이 화면 높이만큼, 패널은 가장자리에서 12 띄우고 모서리 14. */
+.login-v076{min-height:100vh;background:#fff;color:var(--text)}
+.login-v076-shell{min-height:100vh;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));padding:var(--space-3)}
 
 /* 왼쪽: 입력 */
-.login-v076-main{display:flex;flex-direction:column;gap:var(--space-5);padding:var(--space-7) var(--space-4)}
+.login-v076-main{display:flex;flex-direction:column;justify-content:center;gap:var(--space-5);padding:var(--space-7) max(var(--space-4),env(safe-area-inset-left,0px))}
 .login-v076-main>*{width:min(368px,100%);margin-inline:auto}
 .login-v076-main .login-brand{display:flex}
 .login-v076-main .login-brand .brand-logo .brand-logo-full{height:30px}
@@ -40,12 +42,14 @@
 .login-v076-form>.login-v076-demo{width:100%;height:40px!important;min-height:40px!important;display:inline-flex;align-items:center;justify-content:center;gap:var(--space-2);padding:0 var(--space-4)!important;border:1px solid var(--control)!important;border-radius:var(--radius-control)!important;background:#fff!important;color:var(--text)!important;font-size:14px!important;font-weight:500;line-height:20px}
 
 /* 오른쪽: 브랜드 패널 */
-.login-v076-brand{position:relative;min-width:0;display:flex;flex-direction:column;gap:var(--space-5);overflow:hidden;padding:var(--space-7) var(--space-7) var(--space-6);border-radius:var(--radius-card);background:var(--surface-brand-gradient)}
+.login-v076-brand{position:relative;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:var(--space-5);overflow:hidden;padding:var(--space-7);border-radius:var(--radius-hero);background:var(--surface-brand-gradient)}
+/* 넓은 화면에서도 글 폭이 퍼지지 않게 가운데 520 폭에 모읍니다 */
+.login-v076-brand>*{width:min(100%,520px);margin-inline:auto}
 .login-v076-eyebrow{margin:0;color:var(--text-on-brand);font-size:11px;font-weight:700;line-height:16px}
 .login-v076-brand h2{margin:0;color:var(--text-on-brand-strong);font-size:36px;font-weight:700;line-height:44px;letter-spacing:-.8px}
 .login-v076-lead{margin:0;color:var(--text-on-brand);font-size:14px;line-height:21px}
 /* 미리보기 카드: 시안처럼 겹쳐 기울입니다(장식, 위치는 시안 값) */
-.login-v076-preview{position:relative;width:min(430px,100%);height:364px;margin-top:var(--space-2)}
+.login-v076-preview{position:relative;height:364px;margin-top:var(--space-2)}
 .login-v076-plan,.login-v076-judge{position:absolute;display:flex;flex-direction:column;align-items:flex-start;gap:var(--space-2);padding:var(--space-5);border-radius:var(--radius-card);background:#fff;box-shadow:var(--shadow-raised)}
 .login-v076-plan{top:12px;left:16px;width:332px;transform:rotate(-3deg)}
 .login-v076-judge{top:208px;left:152px;width:276px;transform:rotate(4deg)}
@@ -61,7 +65,7 @@
 .login-v076-plan>.status>svg{display:none}
 .login-v076-plan>.status::before{content:"";width:5px;height:5px;flex:0 0 5px;border-radius:50%;background:var(--status-warn-dot)}
 /* 「AI 사전 점검」 칩: M 단계 */
-.login-v076-chip{position:absolute;top:8px;right:8px;height:32px;display:inline-flex;align-items:center;padding:0 var(--space-3);border-radius:var(--radius-control);background:var(--primary-border);color:#fff;font-size:13px;font-weight:500;line-height:20px;box-shadow:var(--shadow-raised);transform:rotate(5deg)}
+.login-v076-chip{position:absolute;top:8px;left:292px;height:32px;display:inline-flex;align-items:center;padding:0 var(--space-3);border-radius:var(--radius-control);background:var(--primary-border);color:#fff;font-size:13px;font-weight:500;line-height:20px;box-shadow:var(--shadow-raised);transform:rotate(5deg)}
 
 /* 좁은 화면: 브랜드 패널을 숨기고 입력만 */
 @media(max-width:960px){
