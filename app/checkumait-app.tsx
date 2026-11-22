@@ -5538,6 +5538,18 @@ const 작성예시 = [
   "랜딩페이지 디자인 외주 330만원 부가세 포함, 스튜디오 오브에 맡길 예정. 11월 말",
 ];
 
+/**
+ * 입력 칸 하나에 주 버튼 하나인 단계에서 Enter 를 누르면 그 버튼을 누른 것과 같게 합니다(버튼의 onClick 을 그대로 부름).
+ * 버튼이 꺼져 있으면(빈 입력 · 진행 중) click() 은 아무 일도 하지 않습니다(HTML 명세).
+ * 주의: 한글 입력기 조합 중의 Enter(isComposing · keyCode 229)는 글자 확정용이라 넘깁니다. 넘기지 않으면 문장이 끝나기 전에 시작되거나 두 번 시작됩니다.
+ *    Shift+Enter 는 줄바꿈으로 둡니다.
+ */
+function 주버튼Enter처리(e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>, 버튼: HTMLButtonElement | null) {
+  if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing || e.keyCode === 229) return;
+  e.preventDefault();
+  버튼?.click();
+}
+
 function NewPlanPage({
   save,
   판정시작,
@@ -5620,6 +5632,8 @@ function NewPlanPage({
   // 안내를 받은 지출 항목 글. 지출 항목이 이 글과 달라지면 안내를 지웁니다.
   const 거절된품목 = useRef<string | null>(null);
   const 지출항목칸 = useRef<HTMLInputElement>(null);
+  // 아래 footer 의 주 버튼(「AI로 정리하기」 · 「규정 확인하기」 …). 한 칸 입력 단계에서 Enter 로 누릅니다(주버튼Enter처리).
+  const 주버튼 = useRef<HTMLButtonElement>(null);
   // ── 서버 연동 상태 ──
   // 주의: 예전에는 첫 후보 하나만 들고 있었습니다(`서버추천: string`). 서버는 후보를
   //    '여러 개' 줄 수 있고 그때는 배지도 여러 개 붙어야 하므로 배열로 들고 갑니다.
@@ -6310,6 +6324,8 @@ function NewPlanPage({
               value={원문}
               maxLength={2000}
               onChange={(e) => set원문(e.target.value)}
+              // Enter 는 「AI로 정리하기」 를 누른 것과 같습니다. 줄바꿈은 Shift+Enter.
+              onKeyDown={(e) => 주버튼Enter처리(e, 주버튼.current)}
               placeholder={"업무용 노트북을 구매하려고 해요.\n앱 개발과 테스트에 쓰고, 예산은 150만 원 정도예요."}
             />
             <div className="new-plan-examples">
@@ -6577,7 +6593,7 @@ function NewPlanPage({
             {조사확인단계 && 분류없음?.다음행동 === "설명입력" && (
               <label className="research-correct">
                 품목 설명
-                <input maxLength={1000} value={품목설명} onChange={(e) => set품목설명(e.target.value)} placeholder="예: 팀원 5명이 쓰는 디자인 협업 도구 연간 구독이에요." />
+                <input maxLength={1000} value={품목설명} onChange={(e) => set품목설명(e.target.value)} onKeyDown={(e) => 주버튼Enter처리(e, 주버튼.current)} placeholder="예: 팀원 5명이 쓰는 디자인 협업 도구 연간 구독이에요." />
               </label>
             )}
             {조사확인단계 && !분류없음 && !!조사후보들.length && <조사확인 후보={조사후보들} 답={조사답} 변경={(v) => set조사답((이전) => ({ ...이전, [v.id]: v }))} />}
@@ -6587,7 +6603,7 @@ function NewPlanPage({
                 <p>확인된 공개 정보가 없어요.</p>
                 <label className="research-correct">
                   어떤 제품·서비스인지 한 문장으로 알려 주시면 분류에 함께 써요. (선택)
-                  <input maxLength={1000} value={품목설명} onChange={(e) => set품목설명(e.target.value)} placeholder="예: 팀원 5명이 쓰는 디자인 협업 도구 연간 구독이에요." />
+                  <input maxLength={1000} value={품목설명} onChange={(e) => set품목설명(e.target.value)} onKeyDown={(e) => 주버튼Enter처리(e, 주버튼.current)} placeholder="예: 팀원 5명이 쓰는 디자인 협업 도구 연간 구독이에요." />
                 </label>
               </section>
             )}
@@ -6669,6 +6685,7 @@ function NewPlanPage({
           임시저장
         </button>
         <button
+          ref={주버튼}
           className="primary"
           disabled={
             categoryLoading ||
