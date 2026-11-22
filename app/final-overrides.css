@@ -3,7 +3,6 @@
 .onboarding-nav .login-brand>.brand-word{width:auto!important;height:auto!important;display:inline!important;place-items:initial!important;border-radius:0!important;background:transparent!important;color:#171717!important;font-size:18px!important;font-weight:750!important;line-height:1!important}
 .onboarding-nav .login-brand>.brand-word>span{width:auto!important;height:auto!important;display:inline!important;border-radius:0!important;background:transparent!important;color:#176b5b!important}
 .onboarding-nav .login-brand>span:first-child{width:29px!important;height:29px!important;display:grid!important;place-items:center!important}
-.onboarding-hero-copy>.login-kicker{transform:translate(4px,-10px)!important}
 .home-v3-attention>footer,.home-v3-attention>footer>svg{color:#176b5b!important}
 
 /* App-shell branding follows the onboarding logo exactly. */
@@ -339,40 +338,7 @@ body .app-shell .expense-v5 .ai-before-checks>header button.outline:focus-visibl
 }
 
 /* My page: profile first, then the current benefit program and its rules. */
-.my-page{width:100%;max-width:1180px!important}
-.my-profile-card{margin-bottom:30px;overflow:hidden;border:1px solid #e2e6e4;border-radius:8px;background:#fff}
-.my-profile-card>header{min-height:92px;display:flex;align-items:center;justify-content:space-between;gap:20px;padding:20px 24px;border-bottom:1px solid #e8ebe9}
-.my-profile-summary{display:flex;align-items:center;gap:14px}
-.my-profile-avatar{width:52px;height:52px;display:grid;place-items:center;border-radius:50%;background:#e8f4ef;color:#176b5b;font-size:18px;font-weight:800}
-.my-profile-summary h2{margin:0;font-size:19px;font-weight:780}
-.my-profile-summary p{margin:5px 0 0;color:#69716d;font-size:12px}
-.my-profile-actions{display:flex;align-items:center;gap:9px}
-.my-profile-actions .outline{height:32px;display:inline-flex;align-items:center;gap:6px;padding:0 11px}
 .benefit-status{height:30px;display:inline-flex;align-items:center;gap:5px;padding:0 10px;border-radius:999px;background:#eaf6f1;color:#176b5b;font-size:11px;font-weight:700;white-space:nowrap}
-.my-profile-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin:0;padding:4px 24px 16px}
-.my-profile-grid>div{min-width:0;padding:17px 20px 15px;border-right:1px solid #e8ebe9;border-bottom:1px solid #edf0ee}
-.my-profile-grid>div:nth-child(3n+1){padding-left:0}
-.my-profile-grid>div:nth-child(3n){padding-right:0;border-right:0}
-.my-profile-grid>div:nth-last-child(-n+3){border-bottom:0}
-.my-profile-grid dt{color:#727a76;font-size:11px}
-.my-profile-grid dd{margin:7px 0 0;color:#202522;font-size:14px;font-weight:650;overflow-wrap:anywhere}
-.my-business-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin:0 0 14px;padding:0 2px}
-.my-business-heading h2{margin:0;font-size:21px;font-weight:780}
-.my-business-heading p{margin:6px 0 0;color:#707874;font-size:12px}
-.my-business-heading button{height:34px;padding-inline:13px}
-.my-page .rules-overview{align-items:center;gap:24px}
-.business-period-grid{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:0;margin:0}
-.business-period-grid>div{min-width:140px;padding:3px 18px;border-left:1px solid #e5e8e6}
-.business-period-grid dt{color:#737b77;font-size:10px}
-.business-period-grid dd{margin:6px 0 0;color:#222725;font-size:13px;font-weight:700;white-space:nowrap}
-.my-page .rule-library article{grid-template-columns:92px minmax(0,1fr)!important}
-.my-profile-edit-modal{width:min(620px,calc(100vw - 36px))!important}
-.my-profile-edit-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;padding:20px 24px}
-.my-profile-edit-grid label{min-width:0}
-.my-profile-edit-grid label>span{display:block;margin-bottom:7px;color:#626b67;font-size:11px;font-weight:700}
-.my-profile-edit-grid input,.my-profile-edit-grid select{width:100%;height:40px;padding:0 11px;border:1px solid #dfe4e1;border-radius:5px;background:#fff;color:#242a27;font-size:13px;outline:0}
-.my-profile-edit-grid input:focus,.my-profile-edit-grid select:focus{border-color:#6da792;box-shadow:0 0 0 2px rgba(31,126,100,.09)}
-.my-profile-edit-grid input[readonly]{border-color:#e4e7e5;background:#f5f6f5;color:#7b827f;cursor:not-allowed}
 .status-checking{border-color:var(--schedule-need-border);background:var(--schedule-need-bg);color:var(--schedule-need-text)}
 .status-checking svg{animation:judgeCheckingPulse 1.4s ease-in-out infinite}
 @keyframes judgeCheckingPulse{50%{opacity:.35}}
@@ -393,29 +359,8 @@ body .app-shell .expense-v5 .ai-before-checks>header button.outline:focus-visibl
 .confirm-modal>p{margin:0;padding:18px 20px;color:var(--color-secondary);font-size:13px;line-height:1.6}
 .confirm-modal .confirm-danger{min-width:72px;height:40px;padding:0 18px;white-space:nowrap;border:0;border-radius:var(--radius-sm);background:var(--color-danger);color:var(--color-surface);font-weight:700;cursor:pointer}
 .confirm-modal .confirm-danger:hover{filter:brightness(.92)}
-.profile-fixed-label{margin-left:5px;color:#999f9c;font-size:9px;font-weight:600}
 .institution-file-replace{height:34px!important;display:inline-flex!important;align-items:center!important;gap:6px!important;flex:0 0 auto;padding:0 12px!important;cursor:pointer}
 .institution-file-replace input{position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none}
-@media(max-width:800px){
-  .my-profile-grid{grid-template-columns:1fr 1fr;padding-inline:18px}
-  .my-profile-grid>div{padding:16px 18px;border-right:1px solid #e8ebe9}
-  .my-profile-grid>div:nth-child(3n+1){padding-left:18px}
-  .my-profile-grid>div:nth-child(3n){padding-right:18px;border-right:1px solid #e8ebe9}
-  .my-profile-grid>div:nth-child(2n+1){padding-left:0}
-  .my-profile-grid>div:nth-child(2n){padding-right:0;border-right:0}
-  .my-profile-grid>div:nth-last-child(-n+3){border-bottom:1px solid #edf0ee}
-  .my-profile-grid>div:nth-last-child(-n+2){border-bottom:0}
-  .my-page .rules-overview{align-items:flex-start;flex-direction:column}
-  .business-period-grid{width:100%;grid-template-columns:1fr}
-  .business-period-grid>div{padding:10px 0;border-left:0;border-top:1px solid #e5e8e6}
-}
-@media(max-width:560px){
-  .my-profile-card>header,.my-business-heading,.my-profile-actions{align-items:flex-start;flex-direction:column}
-  .my-profile-grid{grid-template-columns:1fr}
-  .my-profile-grid>div{padding:15px 0;border-right:0!important;border-bottom:1px solid #edf0ee!important}
-  .my-profile-grid>div:last-child{border-bottom:0!important}
-  .my-profile-edit-grid{grid-template-columns:1fr;padding:18px}
-}
 
 /* New-plan attachments are selectable and remain aligned within the field card. */
 .field-grid .file-field{display:block!important;min-height:0!important;padding:16px!important}
@@ -482,7 +427,6 @@ body .app-shell .expense-v5 .ai-before-checks>header button.outline:focus-visibl
 .schedule-v2 .schedule-v2-legend i.done{background:#9ca3af!important}
 
 /* Align the onboarding copy and login form with the top of the right demo. */
-.onboarding-landing .onboarding-hero-copy{padding-top:24px!important}
 
 /* Consistent strong headings for schedule dialogs. */
 .schedule-create-modal>header h2,
@@ -569,24 +513,11 @@ body .app-shell .expense-v5 .ai-before-checks>header button.outline:focus-visibl
 .sidebar .account-row>.more-button:hover{background:#f1f2f2!important}
 
 /* Demo sign-in leads into first-use setup before showing seeded sample data. */
-.onboarding-landing>.onboarding-nav{height:68px}
-.onboarding-login-note{color:#727a76;font-size:11px;font-weight:600}
-.onboarding-landing .onboarding-hero{padding-top:48px}
-.onboarding-landing .onboarding-hero-copy{padding-top:72px}
-.onboarding-login-form{width:min(430px,100%);display:grid;gap:12px;margin-top:34px;padding:20px;border:1px solid #dfe4e1;border-radius:8px;background:#fff;box-shadow:0 8px 28px rgba(24,42,35,.06)}
-.onboarding-login-form>div{display:grid;grid-template-columns:1fr;gap:12px}
-.onboarding-login-form label{min-width:0;display:grid;gap:7px;color:#4c5551;font-size:11px;font-weight:700}
-.onboarding-login-form input{width:100%;height:42px;padding:0 11px;border:1px solid #dfe4e1;border-radius:5px;background:#fff;color:#202622;font-size:12px;outline:0}
-.onboarding-login-form input:focus{border-color:#6da792;box-shadow:0 0 0 2px rgba(31,126,100,.09)}
-.onboarding-login-form>button{width:100%;height:44px!important;min-height:44px!important}
-.onboarding-login-form>small{color:#8a918e;font-size:10px;text-align:center}
-.onboarding-login-form>button.onboarding-demo-link{width:auto;height:auto!important;min-height:0!important;margin:0 auto;padding:5px 8px;border:0;background:none;color:var(--color-secondary);font-size:10.5px;font-weight:600;text-decoration:underline;cursor:pointer}
 .onboarding-demo-notice{max-width:560px;display:flex;align-items:center;gap:11px;margin:12px auto 0;padding:15px 18px;border:1px solid #d9e8e1;border-radius:7px;background:#f4faf7;color:#176b5b;text-align:left}
 .onboarding-demo-notice>svg{flex:0 0 auto}
 .onboarding-demo-notice b,.onboarding-demo-notice small{display:block}
 .onboarding-demo-notice b{font-size:12px}
 .onboarding-demo-notice small{margin-top:4px;color:#60736b;font-size:10.5px;line-height:1.45}
-@media(max-width:700px){.onboarding-login-note{display:none}.onboarding-landing .onboarding-hero-copy{padding-top:42px}.onboarding-login-form>div{grid-template-columns:1fr}}
 
 /* Shared AI response-generation feedback. */
 .ai-typing-status{min-height:48px;display:flex;align-items:center;gap:5px;padding:11px 14px;border:1px solid #e0e5e2;border-radius:4px 12px 12px 12px;background:#fff}
@@ -609,20 +540,6 @@ body .app-shell .schedule-v2 .schedule-v2-calendar .schedule-v2-grid>div>button.
 }
 
 /* Onboarding first-screen alignment and login rhythm. */
-.onboarding-landing .onboarding-hero-copy h1{font-weight:700!important}
-.onboarding-landing .onboarding-demo{transform:translateX(22px)}
-@media(min-width:981px){
-  .onboarding-landing .onboarding-hero{grid-template-rows:repeat(4,auto);row-gap:0}
-  .onboarding-landing .onboarding-hero-copy{grid-column:1;grid-row:1/5;display:grid;grid-template-rows:subgrid;row-gap:0}
-  .onboarding-landing .onboarding-demo{grid-column:2;grid-row:2/5;align-self:start;padding-top:0}
-}
-.onboarding-landing .demo-plan-card,.onboarding-landing .demo-result-card{width:min(100%,380px);padding:18px 20px}
-.onboarding-landing .demo-plan-card h2{margin-top:18px;font-size:19px}
-.onboarding-landing .demo-plan-card>strong{font-size:24px}
-.onboarding-landing .demo-plan-card dl{gap:9px;margin-top:16px;padding-top:13px}
-.onboarding-landing .demo-result-card h3{margin-top:11px;font-size:17px}
-.onboarding-landing .demo-result-card ul{gap:7px;margin-top:12px;padding-top:12px}
-.onboarding-login-form>button{margin-top:8px}
 
 /* One-plan AI recheck questions. */
 .plan-recheck-modal{width:min(620px,calc(100vw - 36px));max-height:min(760px,calc(100vh - 40px));overflow:auto;border:1px solid #dfe5e2;border-radius:10px;background:#fff;box-shadow:0 22px 60px rgba(22,35,30,.18)}
@@ -637,7 +554,6 @@ body .app-shell .schedule-v2 .schedule-v2-calendar .schedule-v2-grid>div>button.
 .selection-delete{color:#b6423c!important}
 .expense-v5-checks>label{grid-template-columns:18px minmax(0,1fr)!important}
 .schedule-check-list>div{grid-template-columns:minmax(0,1fr) 138px!important}
-@media(max-width:980px){.onboarding-landing .onboarding-demo{transform:none}}
 
 /* Lightweight analysis between basic information and AI category recommendation. */
 .category-analysis-backdrop{position:fixed;inset:0;z-index:120;display:grid;place-items:center;padding:20px;background:rgba(20,29,25,.42);backdrop-filter:blur(2px)}
@@ -751,7 +667,6 @@ body .app-shell .home-v3 .home-v3-schedule-row>em.done{
 }
 
 /* Tighter team-name and email rhythm in My Page. */
-.my-profile-summary p{margin-top:2px!important}
 
 /* Completed execution is visible next to the expected spending date. */
 .plans-v2-native-table .planned-date-cell{display:table-cell;vertical-align:middle;white-space:nowrap}
@@ -808,10 +723,6 @@ body .app-shell .home-v3 .home-v3-schedule-row>em.done{
 .floating-chat>header>button{color:#fff!important}
 
 /* Search-and-select host institution in My Page. */
-.my-profile-edit-grid .my-host-search{position:relative}
-.my-profile-edit-grid .my-host-search>div:first-of-type{position:relative}
-.my-profile-edit-grid .my-host-search>div:first-of-type>svg{position:absolute;z-index:1;top:50%;left:11px;transform:translateY(-50%);color:#7a827e;pointer-events:none}
-.my-profile-edit-grid .my-host-search input{padding-left:34px}
 .my-host-results{position:absolute!important;z-index:12;top:68px;right:0;left:0;overflow:hidden;border:1px solid #dfe4e1;border-radius:6px;background:#fff;box-shadow:0 10px 24px rgba(24,39,32,.12)}
 .my-host-results button{width:100%;min-height:42px;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 11px;border:0;border-bottom:1px solid #edf0ee;background:#fff;color:#29302d;font-size:12px;text-align:left}
 .my-host-results button:last-of-type{border-bottom:0}
@@ -838,10 +749,6 @@ button:disabled,.primary:disabled,.outline:disabled{border-color:var(--color-bor
 button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--color-focus-ring)!important;outline-offset:2px!important}
 
 /* Cards and primary surfaces */
-:where(.summary-card,.panel,.table-panel,.card,.calendar-card,.chat-workspace,.rules-overview,.home-v3-status,.home-v3-panel,.plans-v2-table,.schedule-v2-metrics>article,.schedule-v2-calendar,.schedule-v2-upcoming,.expense-v5-card,.expense-v5-section,.my-profile-card){
-  border-color:var(--color-border-subtle)!important;
-  box-shadow:var(--shadow-surface)!important;
-}
 :where(.project-mini,.metric,.v3-rule-row,.expense-v5-prep-grid>section,.ai-before-checks,.ai-basis){border-color:var(--color-border-subtle)!important}
 
 /* Inputs and selects */
@@ -1053,12 +960,6 @@ pre.ai-inquiry-text{
 .file-replace-modal .file-replace-notice>span{flex:none;color:#3987c8}
 
 /* 주의: 「수정 불가」 칸이 편집 가능한 칸과 똑같이 보이면 라벨을 안 읽고 입력을 시도합니다. */
-.my-profile-edit-grid input[readonly]{
-  background:#f1f4f2!important;
-  border-color:#dde3e0!important;
-  color:#6c736f!important;
-  cursor:not-allowed;
-}
 
 /* ══ 써도돼요 로고 ══════════════════════════════════════════════════
    주의: 워드마크와 심볼을 '둘 다' 넣어 두고 하나만 보입니다 — 메뉴를 접었다 펼
@@ -1216,7 +1117,7 @@ pre.ai-inquiry-text{
 /* 폰 너비: workspace.css 의 max-width:800 규칙은 globals.css 맨 위 @import 로 먼저 읽혀서 globals.css 의 일반 규칙에 진다.
    그래서 폰에서도 사이드바 여백 236px 이 남아 본문이 154px 로 줄었다. 진 선언을 여기서 다시 적고, 같은 이유로 깨진 폰 화면을 함께 고친다.
    .sidebar 너비를 고정해야 --sidebar:0 일 때 닫힌 사이드바 내용이 본문 위로 튀어나오지 않는다. */
-@media(max-width:800px){:root{--sidebar:0px}.sidebar{width:236px}.main-area{margin-left:0}.topbar{padding:0 16px}.page{padding:24px 16px 80px}.page-heading{align-items:flex-start}.metric-row{grid-template-columns:repeat(2,1fr)}.summary-stats{grid-template-columns:1fr}.summary-stats div{border-right:0;border-bottom:1px solid var(--line)}.home-grid{grid-template-columns:1fr}.action-row{grid-template-columns:90px 1fr 16px}.project-hero{min-height:220px}.home-status-reference .home-v3-metrics{grid-template-columns:repeat(2,1fr)}.plans-v2-table-scroll{overflow-x:auto!important}.plans-v2-native-table{min-width:760px!important}.plans-v2-tools{flex-wrap:wrap}.plans-v2-table>footer{min-width:0}.expense-v5 .expense-v5-checks>label{height:auto!important}.my-profile-grid>div,.my-profile-grid>div:nth-child(3n+1){padding-left:0}.schedule-v2-calendar>header{position:sticky;left:0;width:calc(100vw - 34px);min-width:0;flex-wrap:wrap;justify-content:center;gap:8px;padding:12px 14px}.schedule-v2-calendar>header>div:first-child{position:static;transform:none}.schedule-v2-calendar>header>div:last-child{margin-left:0}.schedule-detail-empty{padding:14px 16px}}
+@media(max-width:800px){:root{--sidebar:0px}.sidebar{width:236px}.main-area{margin-left:0}.topbar{padding:0 16px}.page{padding:24px 16px 80px}.page-heading{align-items:flex-start}.metric-row{grid-template-columns:repeat(2,1fr)}.summary-stats{grid-template-columns:1fr}.summary-stats div{border-right:0;border-bottom:1px solid var(--line)}.home-grid{grid-template-columns:1fr}.action-row{grid-template-columns:90px 1fr 16px}.project-hero{min-height:220px}.home-status-reference .home-v3-metrics{grid-template-columns:repeat(2,1fr)}.plans-v2-table-scroll{overflow-x:auto!important}.plans-v2-native-table{min-width:760px!important}.plans-v2-tools{flex-wrap:wrap}.plans-v2-table>footer{min-width:0}.expense-v5 .expense-v5-checks>label{height:auto!important}.schedule-v2-calendar>header{position:sticky;left:0;width:calc(100vw - 34px);min-width:0;flex-wrap:wrap;justify-content:center;gap:8px;padding:12px 14px}.schedule-v2-calendar>header>div:first-child{position:static;transform:none}.schedule-v2-calendar>header>div:last-child{margin-left:0}.schedule-detail-empty{padding:14px 16px}}
 @media(max-width:760px){.home-v3-project{min-height:285px!important}.home-v3-project dl{right:21px;bottom:65px;left:21px}.home-v3-project dl>div+div{padding-left:0!important}}
 
 
@@ -1256,7 +1157,6 @@ input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-ou
 }
 
 /* 내 정보 수정 창의 × 누르는 영역 */
-.my-profile-edit-modal>header>button{flex:none;width:32px;height:32px;display:grid;place-items:center}
 
 
 
@@ -1268,9 +1168,6 @@ input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-ou
 
 
 /* 비밀번호 찾기 */
-.login-forgot-link{justify-self:end;margin-top:-4px;padding:4px 2px;border:0;background:none;color:var(--color-secondary);font-size:11px;font-weight:600;cursor:pointer}
-.login-forgot-link:hover{color:var(--color-brand);text-decoration:underline}
-.onboarding-login-form>small.login-success{color:var(--color-brand);font-weight:600}
 .recovery-page{width:min(520px,100%);margin:0 auto;padding:56px 16px 72px;text-align:center}
 .recovery-page>h1{margin:0;color:var(--color-text);font-size:28px;font-weight:760;letter-spacing:-.02em}
 .recovery-page>p{margin:10px 0 28px;color:var(--color-secondary);font-size:14px;line-height:1.6}
@@ -1337,26 +1234,8 @@ input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-ou
 .move-schedule-list li b{flex:none;font-weight:650;color:#16231e}
 .move-schedule-list li.more{justify-content:center;color:#6f7773}
 @media (max-width:620px){.recheck-required-modal>footer{flex-wrap:wrap}.recheck-required-modal>footer button{flex:1 1 auto}}
-
-.institution-review-button{display:block;margin-top:8px}
 .item-author{font-weight:400;font-size:12px;color:#66716c}
-.team-card{display:block;margin:0 0 30px}
-.team-card .card-head>div{display:block}
-.team-card .section-copy{margin:0;padding:16px 20px}
-.team-card>.file-replace-notice{margin:0 20px 16px}
-.team-actions{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;padding:16px 20px}
-.team-actions small,.team-code small{color:#66716c;font-size:12px;line-height:1.5}
-.team-form{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;width:100%}
-.team-form label{display:grid;gap:6px;flex:1 1 220px;font-size:13px;font-weight:600}
-.team-form input,.onboarding-invite input{height:40px;width:100%;padding:0 12px;border:1px solid #d7dcd9;border-radius:6px;background:#fff;font:inherit;font-weight:400}
-.team-members{display:grid;gap:0;margin:0;padding:0;list-style:none}
-.team-members li{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;min-height:56px;box-sizing:border-box;padding:10px 20px;border-bottom:1px solid #eff1f0;font-size:13px}
-.team-members li>span{min-width:0;overflow-wrap:anywhere}
-.team-members em{margin-left:6px;padding:2px 7px;border-radius:4px;background:#eef1ef;color:#4a5550;font-size:11px;font-weight:650;font-style:normal;vertical-align:1px}
-.team-members em.lead{background:var(--brand-soft);color:var(--brand)}
-.team-code{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid #eff1f0;background:#fafbfa}
-.team-code b{font-size:18px;letter-spacing:.06em}
-.team-code small{flex:1 1 220px}
+.onboarding-invite input{height:40px;width:100%;padding:0 12px;border:1px solid #d7dcd9;border-radius:6px;background:#fff;font:inherit;font-weight:400}
 .onboarding-invite{display:grid;gap:8px;margin-top:14px}
 .onboarding-invite label{display:grid;gap:6px;font-size:13px;font-weight:600}
 .onboarding-invite small{color:#66716c;font-size:12px}

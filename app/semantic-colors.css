@@ -1,8 +1,8 @@
 /* CHECKUMAIT neutral semantic color system. */
 html,body,.app-shell,.main-area,.sidebar,.main-area:has(.expense-detail-page),.main-area:has(.expense-detail-redesign){background:#fcfcfc}
 .topbar{background:rgba(252,252,252,.94)}
-.chat-page,.page:has(.rules-overview){max-width:1320px}
-.summary-card,.panel,.table-panel,.card,.calendar-card,.chat-workspace,.rules-overview,.v3-ai-card,.v3-rule-row,.v4-stage-card,.v4-progress-card{border-color:#e5e5e5;background:#fff;box-shadow:var(--shadow)}
+.chat-page{max-width:1320px}
+.summary-card,.panel,.table-panel,.card,.calendar-card,.chat-workspace,.v3-ai-card,.v3-rule-row,.v4-stage-card,.v4-progress-card{border-color:#e5e5e5;background:#fff;box-shadow:var(--shadow)}
 .outline,.icon-button,.more-square,.search-box,input,textarea,select{border-color:#e5e5e5;color:#171717}
 .primary{border-color:#176b5b;background:#176b5b}.primary:hover{border-color:#125447;background:#125447}
 .side-nav button{color:#666}.side-nav button:hover,.side-nav button.active{background:#f2f2f2;color:#171717}.side-nav button.active svg{color:#176b5b}
@@ -30,10 +30,10 @@ html,body,.app-shell,.main-area,.sidebar,.main-area:has(.expense-detail-page),.m
 .outline{border:1px solid #dfe3e1!important;box-shadow:none!important;outline:none!important}
 .outline:hover{border-color:#d4dad7!important;box-shadow:none!important;outline:none!important}
 .outline:focus{border-color:#cfd8d4!important;box-shadow:none!important;outline:none!important}
-.app-shell button,.onboarding-landing button,.onboarding-setup button{box-shadow:none!important;outline:none!important}
+.app-shell button,.onboarding-setup button{box-shadow:none!important;outline:none!important}
 /* v074: 키보드로 이동할 때 초점 위치가 보이도록(마우스 클릭에는 안 보임) */
-:is(.app-shell,.onboarding-landing,.onboarding-setup) :is(button,a,select,summary,[tabindex]):focus-visible,.outline:focus-visible{outline:2px solid var(--focus-ring)!important;outline-offset:2px!important}
-.app-shell button:not(.primary):not(.selected):not(.active),.onboarding-landing button:not(.primary):not(.selected):not(.active),.onboarding-setup button:not(.primary):not(.selected):not(.active),label.outline{border-color:#dfe3e1!important}
+:is(.app-shell,.onboarding-setup,.login-v076) :is(button,a,input,select,summary,[tabindex]):focus-visible,.outline:focus-visible{outline:2px solid var(--focus-ring)!important;outline-offset:2px!important}
+.app-shell button:not(.primary):not(.selected):not(.active),.onboarding-setup button:not(.primary):not(.selected):not(.active),label.outline{border-color:#dfe3e1!important}
 
 /* Standard text CTAs share one control height across onboarding and the app. */
 .primary:not(.small),.outline:not(.small),label.outline:not(.small){height:40px!important;min-height:40px!important}
@@ -44,8 +44,7 @@ html,body,.app-shell,.main-area,.sidebar,.main-area:has(.expense-detail-page),.m
 .schedule-v2-breadcrumb{font-size:12px}.schedule-v2-metrics small{font-size:13px}.schedule-v2-metrics b{font-size:27px}
 .schedule-v2-calendar>header h2{font-size:20px}.schedule-v2-week span{font-size:11px}.schedule-v2-grid>div>span{font-size:12px}.schedule-v2-grid>div>button{font-size:10.5px}
 .schedule-v2-upcoming h2{font-size:17px}.schedule-v2-upcoming time b{font-size:13px}.schedule-v2-upcoming time small{font-size:10px}.schedule-v2-upcoming label>span b{font-size:13px}.schedule-v2-upcoming label>span small{font-size:11px}.schedule-v2-upcoming label>em{font-size:10.5px}
-.rules-overview b{font-size:12px}.rules-overview h2{font-size:20px}.rules-overview p{font-size:13px}
-.rule-library article b{font-size:14px}.rule-library article small{font-size:12px}.auto-badge,.institution-badge{font-size:11px}.strict-table>div:not(.card-head){font-size:13px}.strict-table .strict-head{font-size:11.5px}.rule-caution p{font-size:12.5px}
+.institution-badge{font-size:11px}.strict-table>div:not(.card-head){font-size:13px}.strict-table .strict-head{font-size:11.5px}
 .detail-top h1{font-size:31px;font-weight:760}.detail-top p{font-size:14px}.breadcrumb{font-size:12px}.stepper{font-size:13px}
 .form-card h2{font-size:20px}.section-copy{font-size:13px}.field-grid label{position:relative;font-size:13px}.field-grid input,.field-grid textarea,.field-grid select{font-size:14px}.file-drop span{font-size:12px}.category-grid button{font-size:13px}.question{font-size:13px}.question button{font-size:12px}.info-note,.auto-check-note span{font-size:12px}
 .field-grid .file-field{min-height:126px;display:flex;align-items:flex-start;flex-direction:column;gap:8px;padding:16px;border:1px dashed #d9dddb;border-radius:6px;background:#fcfcfc}
@@ -79,9 +78,6 @@ html,body,.app-shell,.main-area,.sidebar,.main-area:has(.expense-detail-page),.m
 .expense-v5 .detail-actions .more-square{width:40px}
 
 /* Final layout pass: onboarding, dashboard, navigation, tables, detail and calendar. */
-.onboarding-hero-copy{padding-top:108px}
-.onboarding-hero-copy .login-kicker{margin-bottom:58px}
-.onboarding-hero-copy .onboarding-start-cta{width:300px;height:78px!important;min-height:78px!important;margin-top:76px;padding:16px 46px!important;font-size:20px}
 .institution-results button b{font-weight:600}
 
 .side-nav .nav-separated{position:relative;height:42px;margin-top:22px;padding-top:0;border-top:0;border-radius:6px}
@@ -132,10 +128,9 @@ html,body,.app-shell,.main-area,.sidebar,.main-area:has(.expense-detail-page),.m
 .schedule-v2-grid>div>button.need{border-color:#edbd72!important;background:#ffedcf!important;color:#a65300!important}
 .schedule-v2-grid>div>button.done{border-color:#cbd1ce!important;background:#e8ebe9!important;color:#68706c!important}
 
-@media(max-width:700px){.onboarding-hero-copy{padding-top:56px}.onboarding-hero-copy .login-kicker{margin-bottom:40px}.onboarding-hero-copy .onboarding-start-cta{width:100%;height:68px!important;min-height:68px!important;margin-top:52px}.home-status-reference .home-v3-metrics>div{padding:12px 14px!important}}
+@media(max-width:700px){.home-status-reference .home-v3-metrics>div{padding:12px 14px!important}}
 
 /* Precision pass requested for home density, plan grid, prep cards and sorting. */
-.onboarding-hero-copy .onboarding-start-cta{width:260px;height:60px!important;min-height:60px!important;padding:10px 34px!important;font-size:17px}
 
 .home-v3-overview{grid-template-columns:minmax(300px,.72fr) minmax(0,1.28fr)!important;align-items:stretch}
 .home-v3-project,.home-v3-status{min-height:218px!important}
@@ -462,7 +457,7 @@ body .app-shell .schedule-v2 .schedule-v2-calendar .schedule-v2-grid>div>button.
 .expense-v5-prep-grid>section>footer button{height:32px!important;padding-inline:11px!important;font-size:10px!important}
 
 @media(max-width:900px){.home-v3-overview{grid-template-columns:1fr!important}.plans-v2{--plan-grid:56px 230px 150px 180px 170px 190px 180px 48px}}
-@media(max-width:700px){.onboarding-hero-copy .onboarding-start-cta{width:100%;height:58px!important;min-height:58px!important}.expense-v5-prep-grid>section>header{min-height:62px!important;padding:12px 16px!important}.expense-v5-checks>label,.expense-v5-evidence-item{padding:9px 16px!important}}
+@media(max-width:700px){.expense-v5-prep-grid>section>header{min-height:62px!important;padding:12px 16px!important}.expense-v5-checks>label,.expense-v5-evidence-item{padding:9px 16px!important}}
 
 /* Final brand, dashboard, detail, chat and schedule refinements. */
 .brand-mark,.login-brand>span:not(.brand-word){
