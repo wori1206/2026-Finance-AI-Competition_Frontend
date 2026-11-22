@@ -6912,13 +6912,24 @@ function 추가입력칸목록({
   );
 }
 
+/** 결과 화면의 목록 칸에 그릴 것이 있는지. 각 칸 컴포넌트와 「조건 자세히 보기」(조건자세히있음)가 같은 기준을 씁니다. */
+const 목록있음 = (항목?: readonly unknown[]) => !!항목?.length;
+const 확인한내용있음 = (항목?: 사용자답변항목[], 조건?: 확인한조건항목[]) => 목록있음(항목) || 목록있음(조건);
+/** 「조건 자세히 보기」 안의 칸이 하나라도 그려지는지. 모두 비면 펼쳐도 빈 묶음이라 묶음째 그리지 않습니다. */
+function 조건자세히있음(plan: ExpensePlan): boolean {
+  return (
+    [plan.조건, plan.금지조건, plan.기한조건, plan.해당시조건, plan.공통사항, plan.근거경로, plan.용어풀이].some(목록있음) ||
+    확인한내용있음(plan.사용자답변, plan.확인한조건)
+  );
+}
+
 /**
  * 결과 화면의 「확인한 내용」. 답한 내용이 없는 판정(옛 계획·재점검)에는 그리지 않습니다.
  * `조건` 은 질문 화면 선택 칸(거래 상대 등)의 답입니다. 「해당 없음」이면 그 답으로 빠진 「안 되는 경우」 문장을 아래에 둡니다.
  * 주의: 답은 증빙이 아니라서 판정은 확인 필요로 남습니다. 문장을 지우지 않고 여기로 옮겨 보여 주는 이유입니다.
  */
 function 확인한내용({ 항목, 조건 }: { 항목?: 사용자답변항목[]; 조건?: 확인한조건항목[] }) {
-  if (!항목?.length && !조건?.length) return null;
+  if (!확인한내용있음(항목, 조건)) return null;
   return (
     <section className="ai-confirmed">
       <b>확인한 내용</b>
@@ -7070,7 +7081,7 @@ function 코드판정카드({
 
 /** 결과 화면의 조건·근거 경로 목록. 비어 있으면 그리지 않습니다. */
 function 결과문장목록({ 제목, 항목 }: { 제목: string; 항목?: string[] }) {
-  if (!항목?.length) return null;
+  if (!항목 || !목록있음(항목)) return null;
   return (
     <section className="ai-confirmed">
       <b>{제목}</b>
@@ -7122,7 +7133,7 @@ function 꼭알아야할것({ plan }: { plan: ExpensePlan }) {
 
 /** v031: 「조건·근거 자세히 보기」 안의 조건 묶음. 제목과 개수만 보이고, 필요한 묶음만 폅니다. */
 function 결과접는묶음({ 제목, 항목 }: { 제목: string; 항목?: string[] }) {
-  if (!항목?.length) return null;
+  if (!항목 || !목록있음(항목)) return null;
   return (
     <details className="ai-confirmed ai-confirmed-fold">
       <summary>
@@ -7144,7 +7155,7 @@ function 결과접는묶음({ 제목, 항목 }: { 제목: string; 항목?: strin
 
 /** 결과 화면의 어려운 말 풀이. 비어 있으면 그리지 않습니다. */
 function 결과용어풀이({ 항목 }: { 항목?: 용어풀이항목[] }) {
-  if (!항목?.length) return null;
+  if (!항목 || !목록있음(항목)) return null;
   return (
     <section className="ai-confirmed ai-term-list">
       <b>어려운 말 풀이</b>
@@ -8047,7 +8058,8 @@ function PlanDetail({
                 ))}
               </section>
             )}
-            {/* v031: 조건 전체·근거 경로·확인한 내용·용어는 필요한 사람만 폅니다. */}
+            {/* v031: 조건 전체·근거 경로·확인한 내용·용어는 필요한 사람만 폅니다. 안의 칸이 모두 비면 묶음째 그리지 않습니다. */}
+            {조건자세히있음(plan) && (
             <details className="ai-basis-more">
               <summary>조건 자세히 보기</summary>
             <결과접는묶음 제목="이번 지출에 영향 있는 조건" 항목={plan.조건} />
@@ -8059,6 +8071,7 @@ function PlanDetail({
             <확인한내용 항목={plan.사용자답변} 조건={plan.확인한조건} />
             <결과용어풀이 항목={plan.용어풀이} />
             </details>
+            )}
             {/* 주의: 저장된 최신 판정에만 평가를 받습니다. 재점검하면 번호가 바뀌어 칸이 새로 열립니다. */}
             {plan.latestDecisionId != null && !plan.저장안됨 && plan.status !== "재점검 필요" && (
               <결과평가칸
