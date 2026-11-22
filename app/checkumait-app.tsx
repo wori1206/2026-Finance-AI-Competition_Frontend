@@ -7626,8 +7626,9 @@ function PlanDetail({
     window.setTimeout(() => set준비탭반짝(false), 1800);
   };
   // v070: 문의 초안이 있는 「확인 필요」 면 결제 전 확인에 「담당자 문의 완료」 를 한 번 넣습니다(서버 할일).
+  //    저장되지 않은 결과(저장안됨)는 서버가 계획에 붙이지 않아, 넣은 뒤 계획을 다시 읽으면 화면의 결과와 문의 초안이 사라지므로 넣지 않습니다.
   const 문의항목필요 =
-    !!plan && API켜짐() && plan.status === "확인 필요" && !!plan.문의초안 && !plan.aiChecks.some((c) => c.label === 문의완료항목);
+    !!plan && API켜짐() && !plan.저장안됨 && plan.status === "확인 필요" && !!plan.문의초안 && !plan.aiChecks.some((c) => c.label === 문의완료항목);
   useEffect(() => {
     if (!plan || !문의항목필요 || 문의항목추가중.has(plan.id)) return;
     문의항목추가중.add(plan.id);
