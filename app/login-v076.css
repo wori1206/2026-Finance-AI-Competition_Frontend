@@ -1,0 +1,72 @@
+/*
+ * v076: 로그인 — Figma 「새로 만든 거 / 로그인」(532:636).
+ * 시안 값이 디자인 시스템과 다르면 시스템을 따릅니다(docs/design-system.md):
+ *  · 입력칸 · 로그인 버튼은 XL 단계(48 · 14/20 · 좌우 16 · 모서리 6), 입력칸은 흰 바탕 + --control 테두리
+ *  · 글자는 글자 단계(제목 30/40 · 큰 문구 36/44 · 카드 제목 18/28 · 최소 11px), 모서리 4종, 간격 4px 단위
+ *  · 그라데이션 위 작은 글자는 대비 4.5:1 이상(--text-on-brand)
+ * 이 화면은 .app-shell 밖이라 옛 공통 버튼 규칙이 일부만 닿습니다. 겹치는 값만 !important 로 덮습니다.
+ */
+.login-v076{min-height:100vh;display:grid;place-items:center;padding:var(--space-6) max(var(--space-4),env(safe-area-inset-right,0px)) var(--space-6) max(var(--space-4),env(safe-area-inset-left,0px));background:var(--login-backdrop);color:var(--text)}
+.login-v076-shell{width:min(1120px,100%);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,558px);gap:var(--space-2);padding:var(--space-3);border-radius:var(--radius-hero);background:#fff;box-shadow:var(--shadow-shell)}
+
+/* 왼쪽: 입력 */
+.login-v076-main{display:flex;flex-direction:column;gap:var(--space-5);padding:var(--space-7) var(--space-4)}
+.login-v076-main>*{width:min(368px,100%);margin-inline:auto}
+.login-v076-main .login-brand{display:flex}
+.login-v076-main .login-brand .brand-logo .brand-logo-full{height:30px}
+.login-v076-intro{display:grid;gap:var(--space-2)}
+.login-v076-intro h1{margin:0;color:var(--text-strong);font-size:30px;font-weight:700;line-height:40px;letter-spacing:-.6px}
+.login-v076-intro p{margin:0;color:var(--sub);font-size:14px;line-height:21px;letter-spacing:-.15px}
+.login-v076-form{display:flex;flex-direction:column;gap:var(--space-5)}
+.login-v076-form>div{display:grid;gap:var(--space-4)}
+.login-v076-form label{display:grid;gap:var(--space-2)}
+.login-v076-form label>span{color:var(--text-strong);font-size:12px;font-weight:500;line-height:16px}
+/* XL 입력칸 */
+.login-v076-form input{width:100%;height:48px;padding:0 var(--space-4);border:1px solid var(--control);border-radius:var(--radius-control);background:#fff;color:var(--text);font:inherit;font-size:14px;line-height:20px}
+.login-v076-form input::placeholder{color:var(--muted)}
+.login-v076-form input:focus{border-color:var(--brand);outline:none}
+.login-v076-form input:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+/* 비밀번호 찾기: 비밀번호 칸 아래 오른쪽 텍스트 버튼 */
+.login-v076 .text-button{display:inline-flex;align-items:center;gap:var(--space-1);padding:0;border:0;background:none;color:var(--brand);font:inherit;font-size:13px;font-weight:500;line-height:20px;letter-spacing:-.15px;cursor:pointer}
+.login-v076 .text-button:disabled{opacity:.5;cursor:not-allowed}
+.login-v076-forgot{justify-self:end;margin-top:calc(var(--space-2) * -1)}
+/* XL 로그인 버튼 */
+.login-v076-form>.primary.large{width:100%;height:48px!important;min-height:48px!important;padding:0 var(--space-4)!important;border:1px solid var(--primary-border)!important;border-radius:var(--radius-control)!important;background:var(--primary-bg)!important;color:#fff!important;font-size:14px!important;font-weight:500;line-height:20px}
+.login-v076-form>.primary.large:disabled{opacity:.55;cursor:not-allowed}
+.login-v076-error{color:var(--red);font-size:13px;line-height:20px;text-align:center}
+.login-v076-form>.login-success{color:var(--brand);font-size:13px;font-weight:500;line-height:20px;text-align:center}
+.login-v076-signup{display:flex;align-items:center;justify-content:center;gap:var(--space-2);margin:0;color:var(--sub);font-size:13px;line-height:20px}
+/* 시연용 계정: L 단계 보조 버튼 */
+.login-v076-form>.login-v076-demo{width:100%;height:40px!important;min-height:40px!important;display:inline-flex;align-items:center;justify-content:center;gap:var(--space-2);padding:0 var(--space-4)!important;border:1px solid var(--control)!important;border-radius:var(--radius-control)!important;background:#fff!important;color:var(--text)!important;font-size:14px!important;font-weight:500;line-height:20px}
+
+/* 오른쪽: 브랜드 패널 */
+.login-v076-brand{position:relative;min-width:0;display:flex;flex-direction:column;gap:var(--space-5);overflow:hidden;padding:var(--space-7) var(--space-7) var(--space-6);border-radius:var(--radius-card);background:var(--surface-brand-gradient)}
+.login-v076-eyebrow{margin:0;color:var(--text-on-brand);font-size:11px;font-weight:700;line-height:16px}
+.login-v076-brand h2{margin:0;color:var(--text-on-brand-strong);font-size:36px;font-weight:700;line-height:44px;letter-spacing:-.8px}
+.login-v076-lead{margin:0;color:var(--text-on-brand);font-size:14px;line-height:21px}
+/* 미리보기 카드: 시안처럼 겹쳐 기울입니다(장식, 위치는 시안 값) */
+.login-v076-preview{position:relative;width:min(430px,100%);height:364px;margin-top:var(--space-2)}
+.login-v076-plan,.login-v076-judge{position:absolute;display:flex;flex-direction:column;align-items:flex-start;gap:var(--space-2);padding:var(--space-5);border-radius:var(--radius-card);background:#fff;box-shadow:var(--shadow-raised)}
+.login-v076-plan{top:12px;left:16px;width:332px;transform:rotate(-3deg)}
+.login-v076-judge{top:208px;left:152px;width:276px;transform:rotate(4deg)}
+.login-v076-plan>b,.login-v076-judge>b{color:var(--text-strong);font-size:18px;font-weight:700;line-height:28px}
+.login-v076-plan>strong{color:var(--text-strong);font-size:24px;font-weight:700;line-height:32px}
+.login-v076-plan dl{display:grid;gap:var(--space-1);margin:0}
+.login-v076-plan dl>div{display:grid;grid-template-columns:56px auto;gap:var(--space-3)}
+.login-v076-plan :is(dt,dd){margin:0;color:var(--text-meta);font-size:11px;line-height:16px}
+.login-v076-judge>span{color:var(--brand);font-size:11px;font-weight:700;line-height:16px}
+.login-v076-judge>small{color:var(--text-meta);font-size:11px;line-height:16px}
+/* 상태 배지: S 단계(지출 계획 표와 같은 모양) */
+.login-v076-plan>.status{height:24px;display:inline-flex;align-items:center;gap:var(--space-1);padding:0 var(--space-2);border:0;border-radius:var(--radius-xs);background:var(--status-warn-bg);color:var(--status-warn-text);font-size:12px;font-weight:500;line-height:16px}
+.login-v076-plan>.status>svg{display:none}
+.login-v076-plan>.status::before{content:"";width:5px;height:5px;flex:0 0 5px;border-radius:50%;background:var(--status-warn-dot)}
+/* 「AI 사전 점검」 칩: M 단계 */
+.login-v076-chip{position:absolute;top:8px;right:8px;height:32px;display:inline-flex;align-items:center;padding:0 var(--space-3);border-radius:var(--radius-control);background:var(--primary-border);color:#fff;font-size:13px;font-weight:500;line-height:20px;box-shadow:var(--shadow-raised);transform:rotate(5deg)}
+
+/* 좁은 화면: 브랜드 패널을 숨기고 입력만 */
+@media(max-width:960px){
+  .login-v076-shell{grid-template-columns:1fr}
+  .login-v076-brand{display:none}
+  .login-v076-main{padding:var(--space-6) var(--space-2)}
+}
+@media(prefers-reduced-motion:reduce){.login-v076 *{transition:none!important}}

@@ -3,7 +3,6 @@
 .onboarding-nav .login-brand>.brand-word{width:auto!important;height:auto!important;display:inline!important;place-items:initial!important;border-radius:0!important;background:transparent!important;color:#171717!important;font-size:18px!important;font-weight:750!important;line-height:1!important}
 .onboarding-nav .login-brand>.brand-word>span{width:auto!important;height:auto!important;display:inline!important;border-radius:0!important;background:transparent!important;color:#176b5b!important}
 .onboarding-nav .login-brand>span:first-child{width:29px!important;height:29px!important;display:grid!important;place-items:center!important}
-.onboarding-hero-copy>.login-kicker{transform:translate(4px,-10px)!important}
 .home-v3-attention>footer,.home-v3-attention>footer>svg{color:#176b5b!important}
 
 /* App-shell branding follows the onboarding logo exactly. */
@@ -482,7 +481,6 @@ body .app-shell .expense-v5 .ai-before-checks>header button.outline:focus-visibl
 .schedule-v2 .schedule-v2-legend i.done{background:#9ca3af!important}
 
 /* Align the onboarding copy and login form with the top of the right demo. */
-.onboarding-landing .onboarding-hero-copy{padding-top:24px!important}
 
 /* Consistent strong headings for schedule dialogs. */
 .schedule-create-modal>header h2,
@@ -569,24 +567,11 @@ body .app-shell .expense-v5 .ai-before-checks>header button.outline:focus-visibl
 .sidebar .account-row>.more-button:hover{background:#f1f2f2!important}
 
 /* Demo sign-in leads into first-use setup before showing seeded sample data. */
-.onboarding-landing>.onboarding-nav{height:68px}
-.onboarding-login-note{color:#727a76;font-size:11px;font-weight:600}
-.onboarding-landing .onboarding-hero{padding-top:48px}
-.onboarding-landing .onboarding-hero-copy{padding-top:72px}
-.onboarding-login-form{width:min(430px,100%);display:grid;gap:12px;margin-top:34px;padding:20px;border:1px solid #dfe4e1;border-radius:8px;background:#fff;box-shadow:0 8px 28px rgba(24,42,35,.06)}
-.onboarding-login-form>div{display:grid;grid-template-columns:1fr;gap:12px}
-.onboarding-login-form label{min-width:0;display:grid;gap:7px;color:#4c5551;font-size:11px;font-weight:700}
-.onboarding-login-form input{width:100%;height:42px;padding:0 11px;border:1px solid #dfe4e1;border-radius:5px;background:#fff;color:#202622;font-size:12px;outline:0}
-.onboarding-login-form input:focus{border-color:#6da792;box-shadow:0 0 0 2px rgba(31,126,100,.09)}
-.onboarding-login-form>button{width:100%;height:44px!important;min-height:44px!important}
-.onboarding-login-form>small{color:#8a918e;font-size:10px;text-align:center}
-.onboarding-login-form>button.onboarding-demo-link{width:auto;height:auto!important;min-height:0!important;margin:0 auto;padding:5px 8px;border:0;background:none;color:var(--color-secondary);font-size:10.5px;font-weight:600;text-decoration:underline;cursor:pointer}
 .onboarding-demo-notice{max-width:560px;display:flex;align-items:center;gap:11px;margin:12px auto 0;padding:15px 18px;border:1px solid #d9e8e1;border-radius:7px;background:#f4faf7;color:#176b5b;text-align:left}
 .onboarding-demo-notice>svg{flex:0 0 auto}
 .onboarding-demo-notice b,.onboarding-demo-notice small{display:block}
 .onboarding-demo-notice b{font-size:12px}
 .onboarding-demo-notice small{margin-top:4px;color:#60736b;font-size:10.5px;line-height:1.45}
-@media(max-width:700px){.onboarding-login-note{display:none}.onboarding-landing .onboarding-hero-copy{padding-top:42px}.onboarding-login-form>div{grid-template-columns:1fr}}
 
 /* Shared AI response-generation feedback. */
 .ai-typing-status{min-height:48px;display:flex;align-items:center;gap:5px;padding:11px 14px;border:1px solid #e0e5e2;border-radius:4px 12px 12px 12px;background:#fff}
@@ -609,20 +594,6 @@ body .app-shell .schedule-v2 .schedule-v2-calendar .schedule-v2-grid>div>button.
 }
 
 /* Onboarding first-screen alignment and login rhythm. */
-.onboarding-landing .onboarding-hero-copy h1{font-weight:700!important}
-.onboarding-landing .onboarding-demo{transform:translateX(22px)}
-@media(min-width:981px){
-  .onboarding-landing .onboarding-hero{grid-template-rows:repeat(4,auto);row-gap:0}
-  .onboarding-landing .onboarding-hero-copy{grid-column:1;grid-row:1/5;display:grid;grid-template-rows:subgrid;row-gap:0}
-  .onboarding-landing .onboarding-demo{grid-column:2;grid-row:2/5;align-self:start;padding-top:0}
-}
-.onboarding-landing .demo-plan-card,.onboarding-landing .demo-result-card{width:min(100%,380px);padding:18px 20px}
-.onboarding-landing .demo-plan-card h2{margin-top:18px;font-size:19px}
-.onboarding-landing .demo-plan-card>strong{font-size:24px}
-.onboarding-landing .demo-plan-card dl{gap:9px;margin-top:16px;padding-top:13px}
-.onboarding-landing .demo-result-card h3{margin-top:11px;font-size:17px}
-.onboarding-landing .demo-result-card ul{gap:7px;margin-top:12px;padding-top:12px}
-.onboarding-login-form>button{margin-top:8px}
 
 /* One-plan AI recheck questions. */
 .plan-recheck-modal{width:min(620px,calc(100vw - 36px));max-height:min(760px,calc(100vh - 40px));overflow:auto;border:1px solid #dfe5e2;border-radius:10px;background:#fff;box-shadow:0 22px 60px rgba(22,35,30,.18)}
@@ -637,7 +608,6 @@ body .app-shell .schedule-v2 .schedule-v2-calendar .schedule-v2-grid>div>button.
 .selection-delete{color:#b6423c!important}
 .expense-v5-checks>label{grid-template-columns:18px minmax(0,1fr)!important}
 .schedule-check-list>div{grid-template-columns:minmax(0,1fr) 138px!important}
-@media(max-width:980px){.onboarding-landing .onboarding-demo{transform:none}}
 
 /* Lightweight analysis between basic information and AI category recommendation. */
 .category-analysis-backdrop{position:fixed;inset:0;z-index:120;display:grid;place-items:center;padding:20px;background:rgba(20,29,25,.42);backdrop-filter:blur(2px)}
@@ -1268,9 +1238,6 @@ input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-ou
 
 
 /* 비밀번호 찾기 */
-.login-forgot-link{justify-self:end;margin-top:-4px;padding:4px 2px;border:0;background:none;color:var(--color-secondary);font-size:11px;font-weight:600;cursor:pointer}
-.login-forgot-link:hover{color:var(--color-brand);text-decoration:underline}
-.onboarding-login-form>small.login-success{color:var(--color-brand);font-weight:600}
 .recovery-page{width:min(520px,100%);margin:0 auto;padding:56px 16px 72px;text-align:center}
 .recovery-page>h1{margin:0;color:var(--color-text);font-size:28px;font-weight:760;letter-spacing:-.02em}
 .recovery-page>p{margin:10px 0 28px;color:var(--color-secondary);font-size:14px;line-height:1.6}

@@ -48,6 +48,7 @@ import "./detail-v033.css";
 import "./new-plan-v033.css";
 import "./plans-v073.css";
 import "./schedule-v073.css";
+import "./login-v076.css";
 
 const won = (value: number) => `${value.toLocaleString("ko-KR")}원`;
 /** 일정 상태의 화면 이름. 저장 값(`집행 예정`·`준비 필요`)은 서버와 맞춰 그대로 둡니다. */
@@ -2416,59 +2417,6 @@ export default function CheckumaitApp() {
   );
 }
 
-function OnboardingDemo() {
-  return (
-    <section className="onboarding-demo" aria-label="AI 점검 결과 예시">
-      <div className="demo-plan-card">
-        <header>
-          <span>실제 AI 점검 예시</span>
-          <Status value="확인 필요" />
-        </header>
-        <h2>UI 디자인 외주 제작</h2>
-        <strong>3,000,000원</strong>
-        <dl>
-          <div>
-            <dt>예상 비목</dt>
-            <dd>외주용역비</dd>
-          </div>
-          <div>
-            <dt>예상 집행일</dt>
-            <dd>2026.09.30</dd>
-          </div>
-          <div>
-            <dt>거래처</dt>
-            <dd>㈜디자인랩</dd>
-          </div>
-        </dl>
-      </div>
-      <div className="demo-result-card">
-        <span className="demo-result-label">
-          <Icon name="sparkSolid" size={14} />
-          AI 종합 판단
-        </span>
-        <h3>결제 전에 확인이 필요해요</h3>
-        <p>
-          과업 범위와 가격 적정성을 확인할 수 있도록 아래 자료를 준비해주세요.
-        </p>
-        <ul>
-          <li className="done">
-            <Icon name="check" size={14} />
-            사업 목적과 직접 관련성 확인
-          </li>
-          <li>
-            <i />
-            비교견적 첨부 필요
-          </li>
-          <li>
-            <i />
-            계약서·과업내용 준비
-          </li>
-        </ul>
-      </div>
-    </section>
-  );
-}
-
 const 시연이메일 = "prototype@ssudo.kr";
 
 function Login({
@@ -3100,29 +3048,21 @@ function Login({
     );
   }
 
+  // v076: 로그인 — Figma 「새로 만든 거 / 로그인」(532:636). 왼쪽 입력 · 오른쪽 브랜드 패널, 크기 · 색은 docs/design-system.md 단계 · 토큰.
   if (step === "welcome")
     return (
-      <main className="onboarding-landing">
-        <header className="onboarding-nav">
-          <div className="login-brand static">
-            <BrandWord />
-          </div>
-          <span className="onboarding-login-note">회원가입 후 초기 설정이 진행됩니다.</span>
-        </header>
-        <section className="onboarding-hero">
-          <div className="onboarding-hero-copy">
-            <p className="login-kicker">사업비 사전 점검 AI 서비스</p>
-            <h1>
-              사업비, 쓰기 전에
-              <br />
-              <em>AI가 먼저</em> 확인해드려요.
-            </h1>
-            <p>
-              지출 계획을 입력하면 비목부터 사전절차, 필요 증빙, 위험요소까지
-              현재 사업 기준으로 미리 점검합니다.
-            </p>
+      <main className="login-v076">
+        <div className="login-v076-shell">
+          <section className="login-v076-main" aria-labelledby="login-v076-title">
+            <div className="login-brand static">
+              <BrandWord />
+            </div>
+            <div className="login-v076-intro">
+              <h1 id="login-v076-title">다시 만나 반가워요</h1>
+              <p>로그인하고 사업비 지출을 미리 점검하세요.</p>
+            </div>
             <form
-              className="onboarding-login-form"
+              className="login-v076-form"
               onSubmit={async (event) => {
                 event.preventDefault();
                 if (!loginEmail.trim() || !loginPassword.trim()) return;
@@ -3181,7 +3121,7 @@ function Login({
                 {인증켜짐 && (
                   <button
                     type="button"
-                    className="login-forgot-link"
+                    className="text-button login-v076-forgot"
                     onClick={() => {
                       set찾기이메일(loginEmail);
                       set찾기상태("입력");
@@ -3201,29 +3141,31 @@ function Login({
               >
                 {로그인중 ? "확인하는 중…" : "로그인"}
               </button>
-              {/* 계정이 없는 사람의 입구. 가입을 마치면 온보딩으로 이어집니다. */}
-              <button
-                type="button"
-                className="outline large"
-                disabled={로그인중}
-                onClick={() => {
-                  set로그인오류(null);
-                  setStep("signup");
-                }}
-              >
-                회원가입
-              </button>
               {로그인오류 && (
-                <small style={{ color: "var(--red, #c23b3b)" }}>{로그인오류}</small>
+                <small className="login-v076-error" role="alert">{로그인오류}</small>
               )}
               {변경완료 && !로그인오류 && (
                 <small className="login-success" role="status">비밀번호를 변경했습니다. 새 비밀번호로 로그인해 주세요.</small>
               )}
-              <small>계정이 없으신가요? 회원가입 후 참여 사업과 주관기관을 설정하면 바로 이용할 수 있습니다.</small>
+              {/* 계정이 없는 사람의 입구. 가입을 마치면 온보딩으로 이어집니다. */}
+              <p className="login-v076-signup">
+                처음 이용하시나요?
+                <button
+                  type="button"
+                  className="text-button"
+                  disabled={로그인중}
+                  onClick={() => {
+                    set로그인오류(null);
+                    setStep("signup");
+                  }}
+                >
+                  회원가입
+                </button>
+              </p>
               {/* 주의: 비밀번호는 코드에 넣지 않습니다. 시연 때 직접 입력합니다. */}
               <button
                 type="button"
-                className="onboarding-demo-link"
+                className="outline login-v076-demo"
                 onClick={() => {
                   setLoginEmail(시연이메일);
                   setLoginPassword("");
@@ -3232,41 +3174,52 @@ function Login({
                 }}
               >
                 시연용 계정으로 접근하기
+                <span aria-hidden="true">→</span>
               </button>
             </form>
-          </div>
-          <OnboardingDemo />
-        </section>
-        <section className="onboarding-feature-strip" aria-label="주요 기능">
-          <article>
-            <Icon name="plans" />
-            <div>
-              <b>비목 자동 판단</b>
-              <span>지출 목적에 맞는 비목을 추천해요.</span>
+          </section>
+          <aside className="login-v076-brand">
+            <p className="login-v076-eyebrow">사업비 사전 점검 AI 서비스</p>
+            <h2>
+              써도 될까, 고민될 땐
+              <br />
+              써도돼요.
+            </h2>
+            <p className="login-v076-lead">
+              지출 계획부터 필요한 증빙까지.
+              <br />
+              사업비를 쓰기 전, 더 확실하게.
+            </p>
+            {/* 장식용 미리보기: 화면 낭독기에는 읽히지 않게 합니다. */}
+            <div className="login-v076-preview" aria-hidden="true">
+              <div className="login-v076-plan">
+                <Status value="확인 필요" />
+                <b>UI 디자인 외주 제작</b>
+                <strong>3,000,000원</strong>
+                <dl>
+                  <div>
+                    <dt>관련 비목</dt>
+                    <dd>외주용역비</dd>
+                  </div>
+                  <div>
+                    <dt>집행 예정</dt>
+                    <dd>2026.09.30</dd>
+                  </div>
+                </dl>
+              </div>
+              <div className="login-v076-judge">
+                <span>✦ AI 종합 판단</span>
+                <b>
+                  계약 전, 과업 범위를
+                  <br />
+                  명확히 해주세요.
+                </b>
+                <small>비교견적 · 계약서 · 과업내용</small>
+              </div>
+              <span className="login-v076-chip">✦ AI 사전 점검</span>
             </div>
-          </article>
-          <article>
-            <Icon name="rules" />
-            <div>
-              <b>규정·기준 점검</b>
-              <span>현재 사업과 기관 기준을 함께 확인해요.</span>
-            </div>
-          </article>
-          <article>
-            <Icon name="check" />
-            <div>
-              <b>필요 증빙 안내</b>
-              <span>결제 전후에 필요한 자료를 정리해요.</span>
-            </div>
-          </article>
-          <article>
-            <Icon name="calendar" />
-            <div>
-              <b>사전절차 체크</b>
-              <span>승인·견적·계약 일정을 놓치지 않게 해요.</span>
-            </div>
-          </article>
-        </section>
+          </aside>
+        </div>
       </main>
     );
 
