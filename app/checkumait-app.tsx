@@ -8,9 +8,9 @@ import type { 기준문서정보,
   PlanStatus,
   ScheduleItem,
 } from "../lib/types";
-import type { 서버팀, 비목후보, 답변항목, 확인질문, 사용자답변항목, 판정피드백, 부가세구분, 분류값, 추가입력칸, 용어풀이항목, 코드판정값, 확인한조건항목 } from "../lib/server-types";
+import type { 서버팀, 비목후보, 답변항목, 확인질문, 확인질문선택지, 사용자답변항목, 판정피드백, 부가세구분, 분류값, 추가입력칸, 용어풀이항목, 코드판정값, 확인한조건항목 } from "../lib/server-types";
 import { API켜짐 } from "../lib/config";
-import { 판정실행, 판정실패오류, 판정실패문장, 판정요청오류문장, 판정요청오류안내, 새멱등키 } from "../lib/judge";
+import { 판정실행, 판정실패오류, 판정실패설명, 새멱등키 } from "../lib/judge";
 import { 다시시도오류, 정규화하기, type 정규화출력 } from "../lib/normalize";
 import { 인증오류 } from "../lib/http";
 import { 할일추가, 계획목록, 계획상세, 비목목록, 계획추가, 계획수정, 규정업로드, 규정처리기다리기, 규정적용, 규정거절, 조문연결저장, L3현재문서목록, 팀조회, 팀만들기, 초대코드재발급, 팀들어가기, 팀나가기, 팀원내보내기, 계획삭제, 일정수정, 피드백저장 } from "../lib/api";
@@ -32,8 +32,8 @@ import {
 } from "../lib/attachments";
 import { 지금출처, 출처구독, 출처문구 } from "../lib/data-source";
 import { 인증켜짐, 로그인 as supabase로그인, 가입 as supabase가입, 로그아웃 as supabase로그아웃, 이메일 as supabase이메일, 팀이름 as supabase팀이름, 팀이름쓰기 as supabase팀이름쓰기, 온보딩기록읽기, 온보딩마침, 재설정링크읽기, 재설정끝내기, 재설정메일보내기, 새비밀번호저장 } from "../lib/supabase";
-import { 상세를계획으로, 판정제목, 행동문구, 조건칸상태, 시각표기, L3등록사실, L3현재문서요약짓기, 조문연결셈, 문서명보기, 답표기, 로조사, 부가세확정, 부가세표기, 부가세질문id, 정규화저장값, type L3현재문서요약 } from "../lib/adapt";
-import { 질문가져오기, 추가입력초기값, 추가입력값만들기, type 질문결과, type 조사후보, type 조사답변 } from "../lib/questions";
+import { 상세를계획으로, 판정제목, 행동문구, 조건칸상태, 시각표기, L3등록사실, L3현재문서요약짓기, 조문연결셈, 문서명보기, 답표기, 로조사, 부가세확정, 부가세표기, 부가세질문id, 정규화저장값, 문의처표기, 문의완료항목, 문의완료설명, 문의완료설명보기, 자동문의완료설명인가, type L3현재문서요약 } from "../lib/adapt";
+import { 질문가져오기, 추가입력초기값, 추가입력값만들기, 기본선택지인가, type 질문결과, type 조사후보, type 조사답변 } from "../lib/questions";
 import type { 진행항목 } from "../lib/sse";
 // 주의: `데모종료` 는 남깁니다 — 「계정 없이 둘러보기」를 없앴어도 예전에 받아 둔
 //    데모 토큰이 브라우저에 2시간 남아 있을 수 있고, 그게 로그인 조회를 가로챕니다.
@@ -1223,8 +1223,6 @@ function 판정색(value: PlanStatus): "risk" | "warn" | "safe" | "draft" {
   return value === "위험" ? "risk" : value === "특이사항 없음" ? "safe" : value === "확인 필요" ? "warn" : "draft";
 }
 
-/** v070: 문의 초안이 있는 「확인 필요」 계획의 결제 전 확인에 넣는 항목. 이 글자로 있는지 찾습니다. */
-const 문의완료항목 = "담당자 문의 완료";
 /** v070: 「담당자 문의 완료」 를 넣고 있는 계획 id. 같은 항목을 두 번 만들지 않게 합니다(개발 모드 효과 두 번 실행 포함). */
 const 문의항목추가중 = new Set<string>();
 
@@ -1580,7 +1578,7 @@ export default function CheckumaitApp() {
     작업바꾸기((이전) => [...이전, { ...입력, 키, 멱등키: 새멱등키(), 최소화: !!입력.접힘, 접은적: !!입력.접힘 }]);
     return true;
   };
-  const 판정끝 = (키: number, 판정된계획?: ExpensePlan, 오류?: string, 기록?: 판정기록, 다시점검?: boolean, 요청오류?: boolean) => {
+  const 판정끝 = (키: number, 판정된계획?: ExpensePlan, 오류?: string, 기록?: 판정기록, 다시점검?: boolean, 실패원인?: string | null) => {
     const 작업 = 작업Ref.current.find((j) => j.키 === 키);
     if (!작업) return;
     if (기록) {
@@ -1590,7 +1588,7 @@ export default function CheckumaitApp() {
     // 판정실패(AI 연결 실패): 작업을 지우지 않고 「다시 점검」 을 보입니다. 입력 · 답은 작업에 그대로 남아 같은 내용으로 다시 부릅니다.
     //    「닫기」 를 눌러야 시작한 화면에 실패를 알립니다(`판정실패닫기`).
     if (다시점검) {
-      작업바꾸기((이전) => 이전.map((j) => (j.키 === 키 ? { ...j, 결과: { 오류, 다시점검: true, 요청오류 } } : j)));
+      작업바꾸기((이전) => 이전.map((j) => (j.키 === 키 ? { ...j, 결과: { 오류, 다시점검: true, 실패원인: 실패원인 ?? null } } : j)));
       if (작업.최소화) notify(`'${작업.계획.name}' 점검을 마치지 못했습니다. 다시 점검해 주세요.`);
       탭제목알림("점검 실패 · 써도돼요");
       return;
@@ -2162,7 +2160,7 @@ export default function CheckumaitApp() {
               key={작업.키}
               이름={작업.계획.name}
               순번={순번}
-              요청오류={작업.결과.요청오류 === true}
+              실패원인={작업.결과.실패원인}
               다시점검={() => 다시점검(작업.키)}
               닫기={() => 판정실패닫기(작업)}
             />
@@ -2176,8 +2174,9 @@ export default function CheckumaitApp() {
               <Icon name="alert" size={18} />
               <span>
                 <b>{작업.계획.name}</b>
-                <small title={작업.결과.요청오류 ? 판정요청오류문장 : 판정실패문장}>
-                  {작업.결과.요청오류 ? 판정요청오류문장 : 판정실패문장}
+                {/* 펼친 실패 화면과 같은 원인별 제목(판정실패설명) */}
+                <small title={판정실패설명(작업.결과.실패원인).제목}>
+                  {판정실패설명(작업.결과.실패원인).제목}
                 </small>
               </span>
               <button onClick={() => 다시점검(작업.키)}>다시 점검</button>
@@ -2249,7 +2248,7 @@ export default function CheckumaitApp() {
               }}
               펼치기={() => 작업바꾸기((이전) => 이전.map((j) => (j.키 === 작업.키 ? { ...j, 최소화: false } : j)))}
               onComplete={(판정된계획, 기록) => 판정끝(작업.키, 판정된계획, undefined, 기록)}
-              onFail={(메시지, 기록, 다시점검, 요청오류) => 판정끝(작업.키, undefined, 메시지, 기록, 다시점검, 요청오류)}
+              onFail={(메시지, 기록, 다시점검, 실패원인) => 판정끝(작업.키, undefined, 메시지, 기록, 다시점검, 실패원인)}
             />
           ),
         )}
@@ -4151,8 +4150,60 @@ const 조사유형이름: Record<string, string> = {
   증빙안내: "증빙 발급 안내",
   업체이용조건: "업체 이용 조건",
 };
-// v056: 거래 유형 확인 문장(후보 `종류` 거래유형)은 공개 정보가 아니라 「거래 유형」 으로 표기합니다.
-const 유형표기 = (유형: string, 종류?: string) => (종류 === "거래유형" ? "거래 유형" : 조사유형이름[유형] ?? "공개 정보");
+/**
+ * 하나만 고르는 확인 카드(응답 `재조사.종류`, 후보 `종류`)의 화면 글. 서버가 쓴 확인 문장이라 공개 정보 · 출처 줄을 그리지 않습니다.
+ * v056 거래유형: 거래 유형 확인 카드. 자금: 이 지출을 어느 자금으로 집행하는지 묻는 자금 확인 카드.
+ * 제목은 짧게 둡니다. 왜 묻는지 · 무엇을 고르는지는 서버 안내(`분류안내`)가 제목 아래에 말하므로 같은 말을 되풀이하지 않습니다.
+ * `직접입력` 이 null 이면 [직접 입력하기] 를 그리지 않습니다. 자금 카드의 정정은 서버가 쓰지 않습니다(품목 설명도 확인한 자금도 되지 않음).
+ * `모름` 이 있으면 후보들 아래에 그 라벨의 버튼을 둡니다(자금 카드 「잘 모르겠어요」). 누르면 모든 후보에 [맞아요] 가 아닌 기존 답 값
+ *    「직접입력」 + `정정` 으로 답해 바로 보냅니다(서버가 받는 답 값은 맞아요 · 직접입력 둘뿐이고 직접입력에는 정정이 꼭 있어야 함).
+ *    서버는 모든 후보에 답이 왔고 [맞아요] 가 없으면 자금 미확정으로 「분류 없음」 길(설명입력 | 판정)로 넘깁니다.
+ * 주의: 여기 없는 종류는 지금의 재조사 카드(공개 정보 확인)로 그립니다. 객체의 기본 속성 이름(constructor 등)이 와도 걸리지 않게 객체 자신의 키로만 찾습니다.
+ */
+const 단일확인카드글: Record<string, { 제목: string; 머리글: string; 설명: string; 표기: string; 직접입력: string | null; 모름: { 라벨: string; 정정: string } | null }> = {
+  거래유형: { 제목: "거래 유형을 확인해 주세요", 머리글: "거래 유형 확인", 설명: "고른 설명으로 규정 질문을 준비합니다.", 표기: "거래 유형", 직접입력: "어떤 제품·서비스인지 한 문장으로 알려 주세요.", 모름: null },
+  자금: { 제목: "자금을 확인해 주세요", 머리글: "자금 확인", 설명: "고른 자금의 규정으로 질문을 준비합니다.", 표기: "자금", 직접입력: null,
+    모름: { 라벨: "잘 모르겠어요", 정정: "어느 자금으로 집행할지 잘 모르겠어요." } },
+};
+const 자기키 = (o: object, 키: string) => Object.prototype.hasOwnProperty.call(o, 키);
+const 단일카드글 = (종류?: string) => (종류 && 자기키(단일확인카드글, 종류) ? 단일확인카드글[종류] : undefined);
+// v056: 거래 유형 · 자금 확인 문장은 공개 정보가 아니라 그 카드 이름(「거래 유형」 · 「자금」)으로 표기합니다. 모르는 유형은 「공개 정보」.
+const 유형표기 = (유형: string, 종류?: string) => 단일카드글(종류)?.표기 ?? (자기키(조사유형이름, 유형) ? 조사유형이름[유형] : "공개 정보");
+/**
+ * 다음 질문 요청에 실을 `재조사답변`. 카드 종류(응답 `재조사.종류`)가 직접 입력을 받지 않으면(자금 확인) 「직접입력」 답은 싣지 않습니다.
+ * 주 버튼의 켜짐 조건도 이 결과로 봅니다(보낼 답이 없으면 꺼짐).
+ */
+function 재조사답변만들기(답: Record<string, 조사답변>, 카드종류?: string): 조사답변[] {
+  const 카드글 = 단일카드글(카드종류);
+  const 값들 = Object.values(답);
+  // 「잘 모르겠어요」 로 만든 답(모든 후보가 직접입력 + 그 카드의 모름 정정)은 그대로 보냅니다.
+  if (카드글?.모름 && 값들.length && 값들.every((a) => 모름답인가(a, 카드종류))) return 값들;
+  return 값들.filter((a) => a.답 !== "직접입력" || 카드글?.직접입력 !== null);
+}
+/** 카드의 「잘 모르겠어요」 로 만든 답인가(직접입력 + 그 카드의 모름 정정 문장). */
+function 모름답인가(a: 조사답변, 카드종류?: string): boolean {
+  const 모름 = 단일카드글(카드종류)?.모름;
+  return !!모름 && a.답 === "직접입력" && a.정정 === 모름.정정;
+}
+/** 「잘 모르겠어요」 를 눌렀을 때의 답: 카드의 모든 후보에 직접입력 + 모름 정정. 모름이 없는 카드(거래 유형 등)면 빈 값. */
+function 모름답만들기(후보: 조사후보[], 카드종류?: string): Record<string, 조사답변> {
+  const 모름 = 단일카드글(카드종류)?.모름;
+  if (!모름) return {};
+  return Object.fromEntries(후보.map((c): [string, 조사답변] => [c.id, { id: c.id, 답: "직접입력", 정정: 모름.정정 }]));
+}
+/**
+ * 새 재조사 카드(응답 `재조사`)를 받았을 때 앞 카드의 답 중 남길 것. 카드가 연달아 와도(거래 유형 → 자금, 자금 → 거래 유형 등)
+ * 앞 카드의 답이 다음 카드로 넘어가 제출되지 않게 합니다.
+ * - 카드 종류가 바뀌면 모두 버립니다.
+ * - 같은 종류면 새 후보 id 에 있는 답만 남깁니다. 같은 카드(같은 후보 id)가 다시 오면 고른 답이 그대로 보이고, 다시 보내도 같은 답이 갑니다.
+ * - v056: 거래 유형 · 자금 확인 카드는 하나만 고르므로 하나까지만 남깁니다.
+ * - 「잘 모르겠어요」 답은 남기지 않습니다(같은 카드가 다시 오면 처음부터 고릅니다. 일부만 남으면 서버가 미확정으로 받지 않음).
+ */
+function 재조사답남기기(이전: Record<string, 조사답변>, 이전종류: string | undefined, 새후보: 조사후보[], 새종류: string | undefined): Record<string, 조사답변> {
+  if (이전종류 !== 새종류) return {};
+  const 남길답 = 새후보.flatMap((c): [string, 조사답변][] => (이전[c.id] && !모름답인가(이전[c.id], 새종류) ? [[c.id, 이전[c.id]]] : []));
+  return Object.fromEntries(단일카드글(새종류) ? 남길답.slice(0, 1) : 남길답);
+}
 
 /** 페이지 발췌를 화면용 글로 바꿉니다. 마크다운 기호만 지우고 글자는 바꾸지 않습니다(서버의 발췌 값은 그대로 둡니다). */
 function 발췌글(글: string): string {
@@ -4176,8 +4227,8 @@ function 조사카드({ 항목, children }: { 항목: 조사후보 & { 답?: str
   const 인용 = 발췌글(출처들.find((c) => c.발췌)?.발췌 || 항목.내용 || "");
   const 질문 = 항목.질문?.trim();
   const 발췌바로 = !질문 || 항목.질문종류 === "기본";
-  // v056: 거래 유형 확인 문장은 서버가 쓴 문장이라 출처가 없습니다. 출처 줄(「출처 보기」 · 「출처 주소 없음」)을 그리지 않습니다.
-  const 출처없음 = 항목.종류 === "거래유형" && !!질문;
+  // v056: 거래 유형 · 자금 확인 문장은 서버가 쓴 문장이라 출처가 없습니다. 출처 줄(「출처 보기」 · 「출처 주소 없음」)을 그리지 않습니다.
+  const 출처없음 = !!단일카드글(항목.종류) && !!질문;
   const 사이트 = (
     <span className="research-sites">
       {출처들.map((c, i) => (
@@ -4235,8 +4286,11 @@ function 조사안내({ 결과화면 = false }: { 결과화면?: boolean }) {
 /**
  * 확인할 후보 목록. `단일선택`(v056 거래 유형 확인 카드)이면 머리글을 `머리글` 로 바꾸고 「검색 결과 N건」 · 공개 정보 안내를 빼며,
  * 하나만 고릅니다(다른 후보의 답을 지우는 것은 `변경` 을 넘긴 쪽이 합니다).
+ * `카드종류` 를 넘기면(재조사 카드: 응답 `재조사.종류`, 없으면 null) 후보마다의 `종류` 대신 그 값으로 배지 · 출처 줄 · 직접 입력을 정합니다.
+ * 넘기지 않으면(공개 정보 후보 목록) 지금처럼 후보의 `종류` 를 봅니다.
+ * `모름` 을 넘기면(자금 카드) 후보들 아래에 그 버튼을 둡니다. 누르면 넘긴 쪽이 답을 만들어 바로 보냅니다.
  */
-function 조사확인({ 후보, 답, 변경, 검색어, 단일선택 = false, 머리글 }: { 후보: 조사후보[]; 답: Record<string, 조사답변>; 변경: (v: 조사답변) => void; 검색어?: string; 단일선택?: boolean; 머리글?: string }) {
+function 조사확인({ 후보, 답, 변경, 검색어, 단일선택 = false, 머리글, 카드종류, 모름 }: { 후보: 조사후보[]; 답: Record<string, 조사답변>; 변경: (v: 조사답변) => void; 검색어?: string; 단일선택?: boolean; 머리글?: string; 카드종류?: string | null; 모름?: { 라벨: string; 누름: () => void; 꺼짐?: boolean } }) {
   const 답한수 = 후보.filter((c) => 답[c.id]).length;
   return (
     <section className="research-results">
@@ -4248,11 +4302,15 @@ function 조사확인({ 후보, 답, 변경, 검색어, 단일선택 = false, �
         </div>
       </header>
       {!단일선택 && <조사안내 />}
-      {후보.map((항목) => (
+      {후보.map((원항목) => {
+        const 항목 = 카드종류 === undefined ? 원항목 : { ...원항목, 종류: 카드종류 ?? undefined };
+        // 직접 입력을 받지 않는 카드(자금 확인)는 [맞아요] 만 그립니다. 모르는 종류 · 공개 정보 후보는 지금처럼 둘 다.
+        const 직접입력글 = 단일카드글(항목.종류)?.직접입력;
+        return (
         <조사카드 key={항목.id} 항목={항목}>
           <div className="research-answer" role="group" aria-label={`${유형표기(항목.유형, 항목.종류)} 정보가 맞는지 확인`}>
             {/* v047: 서버 값은 「맞아요」 · 「직접입력」 두 가지입니다. 화면 글자는 「직접 입력하기」. */}
-            {([["맞아요", "맞아요"], ["직접입력", "직접 입력하기"]] as const).map(([값, 라벨]) => (
+            {([["맞아요", "맞아요"], ["직접입력", "직접 입력하기"]] as const).filter(([값]) => 값 !== "직접입력" || 직접입력글 !== null).map(([값, 라벨]) => (
               <button
                 type="button"
                 key={값}
@@ -4263,14 +4321,21 @@ function 조사확인({ 후보, 답, 변경, 검색어, 단일선택 = false, �
               </button>
             ))}
           </div>
-          {답[항목.id]?.답 === "직접입력" && (
+          {답[항목.id]?.답 === "직접입력" && 직접입력글 !== null && (
             <label className="research-correct">
-              어떤 제품·서비스인지 한 문장으로 알려 주세요.
+              {직접입력글 ?? "어떤 제품·서비스인지 한 문장으로 알려 주세요."}
               <input maxLength={1000} value={답[항목.id]?.정정 ?? ""} onChange={(e) => 변경({ id: 항목.id, 답: "직접입력", 정정: e.target.value })} />
             </label>
           )}
         </조사카드>
-      ))}
+        );
+      })}
+      {/* 자금 카드: 어느 자금인지 끝내 모르면 여기서 빠져나갑니다. 보조 버튼 M 단계(docs/design-system.md §5, new-plan-v033.css). */}
+      {모름 && (
+        <div className="research-unknown" role="group" aria-label="자금을 모를 때">
+          <button type="button" className="outline small" disabled={모름.꺼짐} onClick={모름.누름}>{모름.라벨}</button>
+        </div>
+      )}
     </section>
   );
 }
@@ -4313,8 +4378,9 @@ type 판정작업 = 판정시작입력 & {
   숨김?: boolean;
   /** 한 번이라도 접었으면 시작한 페이지가 이미 없을 수 있어 최상단이 끝까지 맡습니다. */
   접은적?: boolean;
-  /** 다시점검 = AI 연결 실패로 판정을 못 냈다(서버 `판정실패`). 같은 입력으로 다시 점검할 수 있게 작업을 남겨 둡니다. */
-  결과?: { 오류?: string; 저장안됨?: boolean; 다시점검?: boolean; 요청오류?: boolean };
+  /** 다시점검 = AI 연결 실패로 판정을 못 냈다(서버 `판정실패`). 같은 입력으로 다시 점검할 수 있게 작업을 남겨 둡니다.
+   *  실패원인 = 서버 `판정실패원인` 값 그대로(화면에 내지 않는 값, 화면 글은 판정실패설명). */
+  결과?: { 오류?: string; 저장안됨?: boolean; 다시점검?: boolean; 실패원인?: string | null };
 };
 
 function AiCheckingOverlay({
@@ -4385,7 +4451,7 @@ function AiCheckingOverlay({
   /** 기록은 이번 판정에서 받은 작업 내역입니다. 결과 화면의 「작업 내역 보기」가 씁니다. */
   onComplete: (판정된계획?: ExpensePlan, 기록?: 판정기록) => void;
   /** `다시점검` 은 AI 연결 실패로 판정을 못 냈을 때 true 입니다. 최상단이 「다시 점검」 을 보입니다. */
-  onFail?: (메시지: string, 기록?: 판정기록, 다시점검?: boolean, 요청오류?: boolean) => void;
+  onFail?: (메시지: string, 기록?: 판정기록, 다시점검?: boolean, 실패원인?: string | null) => void;
 }) {
   const [, setStage] = useState(0);
   const [설명, set설명] = useState("");
@@ -4475,7 +4541,7 @@ function AiCheckingOverlay({
         if (!살아있음) return;
         진행중.current = null;          // 다음 시도는 새로 부를 수 있게
         const 메시지 = e instanceof Error ? e.message : "점검에 실패했습니다";
-        if (onFail) onFail(메시지, 기록(), e instanceof 판정실패오류, e instanceof 판정실패오류 && e.요청오류);
+        if (onFail) onFail(메시지, 기록(), e instanceof 판정실패오류, e instanceof 판정실패오류 ? e.원인 : null);
         else onComplete(undefined, 기록());
       });
 
@@ -4544,19 +4610,21 @@ function AiCheckingOverlay({
 /**
  * 판정실패 화면. AI 연결이 끝내 실패해 판정을 못 냈을 때 점검 화면 자리에 그립니다.
  * 판정이 아니므로 판정 배지 · 문의 초안을 보이지 않습니다. 「다시 점검」 은 입력 · 답을 그대로 다시 보냅니다.
- * v062: `요청오류`(AI 모델이 이 요청 자체를 받지 않음)면 연결 문장 대신 다시 점검해도 같을 수 있다는 안내와 다음 행동을 보입니다.
+ * `실패원인`(서버 `판정실패원인` 값 그대로)에 따라 제목 · 안내가 바뀝니다(판정실패설명). 최소화된 작업 표시도 같은 제목을 씁니다.
+ * v062: 요청오류(AI 모델이 이 요청 자체를 받지 않음)면 연결 문장 대신 다시 점검해도 같을 수 있다는 안내와 다음 행동을 보입니다.
  */
-function 판정실패화면({ 이름, 순번, 요청오류, 다시점검, 닫기 }: {
-  이름: string; 순번: number; 요청오류?: boolean; 다시점검: () => void; 닫기: () => void;
+function 판정실패화면({ 이름, 순번, 실패원인, 다시점검, 닫기 }: {
+  이름: string; 순번: number; 실패원인?: string | null; 다시점검: () => void; 닫기: () => void;
 }) {
+  const 설명 = 판정실패설명(실패원인);
   return (
     <section className="page judge-run" aria-labelledby={`judge-fail-title-${순번}`} role="alert">
       <header className="judge-run-head">
         <small>{이름}</small>
-        <h1 id={`judge-fail-title-${순번}`}>{요청오류 ? 판정요청오류문장 : 판정실패문장}</h1>
+        <h1 id={`judge-fail-title-${순번}`}>{설명.제목}</h1>
       </header>
       <p className="judge-run-note">
-        {요청오류 ? 판정요청오류안내 : "입력하고 답한 내용은 그대로 두었어요. 다시 점검하면 같은 내용으로 다시 확인해요."}
+        {설명.안내}
         <br />
         이번 점검 결과는 저장되지 않았어요.
       </p>
@@ -5541,9 +5609,10 @@ function NewPlanPage({
   const [분류없음, set분류없음] = useState<{ 다음행동: string; 안내: string } | null>(null);
   const [재조사후보, set재조사후보] = useState<조사후보[]>([]);
   const [재조사답, set재조사답] = useState<Record<string, 조사답변>>({});
-  // v056: 재조사 후보가 거래 유형 확인 문장인가(응답 `재조사.종류` 거래유형). 그러면 하나만 고르는 거래 유형 확인 카드로 보입니다.
+  // v056: 재조사 후보가 거래 유형 · 자금 확인 문장인가(응답 `재조사.종류` 거래유형 · 자금). 그러면 하나만 고르는 확인 카드로 보입니다.
+  //    모르는 종류는 지금의 재조사 카드(공개 정보 확인)로 보입니다.
   const [재조사종류, set재조사종류] = useState<string | undefined>();
-  const 거래유형카드 = 재조사종류 === "거래유형";
+  const 단일카드 = 단일카드글(재조사종류);
   // v057: 지출 항목이 사려는 것의 이름이 아니라는 서버 안내(입력검증). 있으면 화면 1 에 머물러 지출 항목을 다시 받거나 한 문장 설명을 받습니다.
   const [입력검증안내, set입력검증안내] = useState<{ 다음행동: "품목재입력" | "설명입력"; 안내: string } | null>(null);
   // 몇 번째 입력인가(서버 `입력검증_시도`). 지출 아님 응답마다 +1, 지출 · 건너뜀 응답에서 1 로 돌립니다.
@@ -6057,8 +6126,8 @@ function NewPlanPage({
       ...(조사확인단계 ? { 조사ID, 조사답변: Object.values(조사답), ...(품목설명.trim() ? { 품목설명: 품목설명.trim() } : {}) } : {}),
       // v057: 지출 항목이 두 번 지출이 아니라고 해 받은 한 문장 설명은 첫 요청에 싣습니다(서버가 품목 조사 · 분류 자료로 씀).
       ...(!조사확인단계 && 입력검증안내?.다음행동 === "설명입력" && 품목설명.trim() ? { 품목설명: 품목설명.trim() } : {}),
-      // v056: 거래 유형 확인 카드는 고른 후보 하나만 보냅니다(재조사답 에 답한 후보만 있음).
-      ...(조사확인단계 && 재조사후보.length ? { 재조사답변: Object.values(재조사답) } : {}),
+      // v056: 거래 유형 · 자금 확인 카드는 고른 후보 하나만 보냅니다(재조사답 에 답한 후보만 있음). 자금 카드는 직접 입력 답을 싣지 않습니다.
+      ...(조사확인단계 && 재조사후보.length ? { 재조사답변: 재조사답변만들기(재조사답, 재조사종류) } : {}),
     }, (항목) => { if (살아있음) { 진행Ref.current = 진행추가(진행Ref.current, 항목); set진행항목들(진행Ref.current); } }).then((r) => {
       if (!살아있음) return;
       // 주의: id(Q1…)는 묶음마다 다시 매겨져 옛 답이 다른 질문의 답으로 나가면 안 됩니다.
@@ -6082,14 +6151,12 @@ function NewPlanPage({
         if (조사다시시도.current) { set조사후보들([]); set조사답({}); }
         if (r.다음행동 === "재조사확인") {
           set재조사후보(r.재조사후보 ?? []);
-          // v056: 후보 종류가 바뀌면 앞 답을 버립니다. 거래 유형 확인 카드는 하나만 고르므로 남길 답도 하나까지입니다.
-          set재조사답((이전) => {
-            if (재조사종류 !== r.재조사종류) return {};
-            const 남길답 = (r.재조사후보 ?? []).flatMap((c): [string, 조사답변][] => (이전[c.id] ? [[c.id, 이전[c.id]]] : []));
-            return Object.fromEntries(r.재조사종류 === "거래유형" ? 남길답.slice(0, 1) : 남길답);
-          });
+          set재조사답((이전) => 재조사답남기기(이전, 재조사종류, r.재조사후보 ?? [], r.재조사종류));
           set재조사종류(r.재조사종류);
         }
+        // 서버가 보낸 재조사 카드에 고를 후보가 없었다(lib/questions 가 다시시도 로 바꿈). 앞 카드의 후보 · 답을 남기면
+        //    「다시 시도」 가 이미 보낸 답을 또 보내므로 버립니다. 다시 보내면 서버가 아직 답하지 않은 카드를 다시 줍니다.
+        if (r.재조사후보없음) { set재조사후보([]); set재조사답({}); set재조사종류(undefined); }
         set조사확인단계(true);
         set검색기록(진행Ref.current);
         set연동오류(null);
@@ -6099,6 +6166,11 @@ function NewPlanPage({
       }
       set분류없음(null);
       조사다시시도.current = false;
+      // 확인 카드 단계가 끝났습니다(분류됨 · 공개 정보 확인 · 질문). 답은 서버 조사 세션에 있으므로 앞 카드의 후보 · 답을 버립니다.
+      //    남기면 「이전」 으로 돌아가 다시 받은 공개 정보 확인 요청에 지난 카드의 `재조사답변` 이 실립니다.
+      set재조사후보([]);
+      set재조사답({});
+      set재조사종류(undefined);
       if (!조사확인단계) {
         set조사후보들(r.조사후보 ?? []);
         set직접확인들(r.사용자확인 ?? []);
@@ -6197,8 +6269,8 @@ function NewPlanPage({
       .finally(() => set저장중(false));
   };
   const 작업중 = 정리중 || categoryLoading || questionsLoading || 저장중;
-  // v056: 지금 거래 유형 확인 카드를 보이고 있다(공개 검색 결과가 아니므로 제목 · 안내 글을 바꿉니다).
-  const 거래유형카드확인중 = 조사확인단계 && 분류없음?.다음행동 === "재조사확인" && 거래유형카드 && !!재조사후보.length;
+  // v056: 지금 거래 유형 · 자금 확인 카드를 보이고 있다(공개 검색 결과가 아니므로 제목 · 안내 글을 그 카드 글로 바꿉니다).
+  const 단일카드확인중 = 조사확인단계 && 분류없음?.다음행동 === "재조사확인" && !!단일카드 && !!재조사후보.length ? 단일카드 : undefined;
   // v057: 지출 항목이 아니라는 안내를 받은 그대로다. 주 버튼은 [고쳐 쓰기] 하나뿐입니다(그대로 진행하는 버튼 없음).
   //    지출 항목을 고치면 위 입력 변경 효과가 안내를 지워 다시 [AI 점검하기] 가 됩니다.
   const 고쳐쓰기 = 입력검증안내?.다음행동 === "품목재입력";
@@ -6450,7 +6522,7 @@ function NewPlanPage({
         )}
         {step === 3 && (
           <>
-            <h2 className="additional-check-title new-plan-big">{조사확인단계 ? (거래유형카드확인중 ? "거래 유형을 확인해 주세요" : "공개 정보를 확인해 주세요") : "몇 가지만 추가로 확인할게요"}</h2>
+            <h2 className="additional-check-title new-plan-big">{조사확인단계 ? (단일카드확인중?.제목 ?? "공개 정보를 확인해 주세요") : "몇 가지만 추가로 확인할게요"}</h2>
             {!조사확인단계 && (
               <p className="new-plan-summary">
                 {[name, amount ? won(Number(amount)) : "", 새경로 ? (분류안내 ? "" : 서버분류?.표시문) : 선택분류?.표시문 ?? category].filter(Boolean).join(" · ")}
@@ -6465,7 +6537,7 @@ function NewPlanPage({
             )}
             <p className="section-copy additional-check-copy" hidden={!조사확인단계 && API켜짐()}>
               {조사확인단계
-                ? (거래유형카드확인중 ? "고른 설명으로 규정 질문을 준비합니다." : "검색한 내용이 맞는지 확인해 주세요. 확인한 내용으로 규정 질문을 준비합니다.")
+                ? (단일카드확인중?.설명 ?? "검색한 내용이 맞는지 확인해 주세요. 확인한 내용으로 규정 질문을 준비합니다.")
                 : API켜짐()
                 ? "입력한 지출에 맞춰 규정에서 확인할 사항을 골랐어요."
                 : category === "지급수수료"
@@ -6485,14 +6557,21 @@ function NewPlanPage({
                 <span>{분류없음.안내}</span>
               </p>
             )}
-            {/* v056: 거래 유형 확인 카드는 하나만 고릅니다. 한 후보에 답하면 다른 후보의 답을 지웁니다. */}
+            {/* v056: 거래 유형 · 자금 확인 카드는 하나만 고릅니다. 한 후보에 답하면 다른 후보의 답을 지웁니다. */}
             {조사확인단계 && 분류없음?.다음행동 === "재조사확인" && !!재조사후보.length && (
               <조사확인
                 후보={재조사후보}
                 답={재조사답}
-                단일선택={거래유형카드}
-                머리글={거래유형카드 ? "거래 유형 확인" : undefined}
-                변경={(v) => set재조사답((이전) => (거래유형카드 ? { [v.id]: v } : { ...이전, [v.id]: v }))}
+                단일선택={!!단일카드}
+                머리글={단일카드?.머리글}
+                카드종류={재조사종류 ?? null}
+                // 자금 카드만: 「잘 모르겠어요」 → 모든 후보를 직접입력 + 모름 정정으로 답하고 주 버튼과 같은 길(같은 요청)로 바로 보냅니다.
+                모름={단일카드?.모름 ? {
+                  라벨: 단일카드.모름.라벨,
+                  꺼짐: 작업중,
+                  누름: () => { set재조사답(모름답만들기(재조사후보, 재조사종류)); setQuestionsLoading(true); },
+                } : undefined}
+                변경={(v) => set재조사답((이전) => (단일카드 ? { [v.id]: v } : { ...이전, [v.id]: v }))}
               />
             )}
             {조사확인단계 && 분류없음?.다음행동 === "설명입력" && (
@@ -6600,9 +6679,9 @@ function NewPlanPage({
             (step === 1 && 입력검증안내?.다음행동 === "설명입력" && !품목설명.trim()) ||
             (step >= 2 && !category && !새경로) ||
             (step === 3 && (서버질문.some((q) => !질문답변[q.id]) || (조사확인단계 && 조사후보들.some((c) => !조사답[c.id] || (조사답[c.id].답 === "직접입력" && !조사답[c.id].정정?.trim()))) ||
-              (분류없음?.다음행동 === "재조사확인" && (거래유형카드
-                // v056: 거래 유형 확인 카드는 하나를 고르면 됩니다(직접 입력이면 문장이 있어야 함).
-                ? !재조사후보.some((c) => 재조사답[c.id]) || 재조사후보.some((c) => 재조사답[c.id]?.답 === "직접입력" && !재조사답[c.id].정정?.trim())
+              (분류없음?.다음행동 === "재조사확인" && (단일카드
+                // v056: 거래 유형 · 자금 확인 카드는 하나를 고르면 됩니다(직접 입력이면 문장이 있어야 함). 보낼 답(자금 카드는 직접 입력 제외)으로 봅니다.
+                ? !재조사답변만들기(재조사답, 재조사종류).some((a) => 재조사후보.some((c) => c.id === a.id)) || 재조사후보.some((c) => 재조사답[c.id]?.답 === "직접입력" && !재조사답[c.id].정정?.trim())
                 : 재조사후보.some((c) => !재조사답[c.id] || (재조사답[c.id].답 === "직접입력" && !재조사답[c.id].정정?.trim())))) ||
               (분류없음?.다음행동 === "설명입력" && !품목설명.trim())))
           }
@@ -6685,6 +6764,7 @@ function 글에_나온_풀이(글: string, 풀이: 용어풀이항목[]): 용어
 /**
  * 3단계 확인 질문 한 개. 재점검 창이 함께 쓰는 `Question` 과 달리 이유와 규정 원문이 딸려 있습니다.
  * 주의: 세 버튼은 칸 너비까지 같게 둡니다. 「모르겠어요」가 작거나 흐리면 모른다고 답하기 어려워집니다.
+ * 선택지가 예 · 아니오 · 모르겠어요가 아닌 질문(선택지형 사실)은 `선택지묶음` 이 그립니다.
  */
 function 확인질문카드({
   질문,
@@ -6711,19 +6791,23 @@ function 확인질문카드({
           </p>
         ))}
       </div>
-      <div className="confirm-question-options" role="group" aria-label={질문.질문문}>
-        {질문.선택지.map((s) => (
-          <button
-            key={s.값}
-            type="button"
-            className={값 === s.값 ? "active" : ""}
-            aria-pressed={값 === s.값}
-            onClick={() => onChange(s.값)}
-          >
-            {s.라벨}
-          </button>
-        ))}
-      </div>
+      {기본선택지인가(질문.선택지) ? (
+        <div className="confirm-question-options" role="group" aria-label={질문.질문문}>
+          {질문.선택지.map((s) => (
+            <button
+              key={s.값}
+              type="button"
+              className={값 === s.값 ? "active" : ""}
+              aria-pressed={값 === s.값}
+              onClick={() => onChange(s.값)}
+            >
+              {s.라벨}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <선택지묶음 질문={질문} 값={값} onChange={onChange} />
+      )}
       {근거 && (
         <details className="confirm-question-source">
           <summary>
@@ -6738,6 +6822,45 @@ function 확인질문카드({
           </div>
         </details>
       )}
+    </div>
+  );
+}
+
+/** 선택지가 이 개수(「모르겠어요」 포함)를 넘으면 버튼 대신 목록(`<select>`)으로 그립니다. 6개면 버튼이 두 줄 안에 들고, 그보다 많으면 버튼 묶음이 길어져 읽기 어렵습니다. */
+const 선택지_버튼최대 = 6;
+
+/**
+ * 선택지형 사실 질문(사실 정의의 선택지 + 모르겠어요). 기본 세 버튼(예 · 아니오 · 모르겠어요) 질문은 `확인질문카드` 가 지금 모양으로 그립니다.
+ * 6개까지는 줄바꿈되는 버튼 묶음, 넘으면 목록 + 「모르겠어요」 버튼입니다. 목록에서도 「모르겠어요」는 버튼으로 따로 둬 늘 같은 크기로 보입니다.
+ */
+function 선택지묶음({ 질문, 값, onChange }: { 질문: 확인질문; 값?: string; onChange: (값: string) => void }) {
+  const 버튼 = (s: 확인질문선택지) => (
+    <button key={s.값} type="button" className={값 === s.값 ? "active" : ""} aria-pressed={값 === s.값} onClick={() => onChange(s.값)}>
+      {s.라벨}
+    </button>
+  );
+  if (질문.선택지.length <= 선택지_버튼최대) {
+    return (
+      <div className="confirm-question-choices" role="group" aria-label={질문.질문문}>
+        {질문.선택지.map(버튼)}
+      </div>
+    );
+  }
+  const 목록 = 질문.선택지.filter((s) => s.값 !== "모름");
+  const 모름 = 질문.선택지.filter((s) => s.값 === "모름");
+  return (
+    <div className="confirm-question-choices is-list" role="group" aria-label={질문.질문문}>
+      <select aria-label={질문.질문문} value={목록.some((s) => s.값 === 값) ? 값 : ""} onChange={(e) => e.target.value && onChange(e.target.value)}>
+        <option value="" disabled>
+          해당하는 것을 골라 주세요
+        </option>
+        {목록.map((s) => (
+          <option key={s.값} value={s.값}>
+            {s.라벨}
+          </option>
+        ))}
+      </select>
+      {모름.map(버튼)}
     </div>
   );
 }
@@ -6789,20 +6912,32 @@ function 추가입력칸목록({
   );
 }
 
+/** 결과 화면의 목록 칸에 그릴 것이 있는지. 각 칸 컴포넌트와 「조건 자세히 보기」(조건자세히있음)가 같은 기준을 씁니다. */
+const 목록있음 = (항목?: readonly unknown[]) => !!항목?.length;
+const 확인한내용있음 = (항목?: 사용자답변항목[], 조건?: 확인한조건항목[]) => 목록있음(항목) || 목록있음(조건);
+/** 「조건 자세히 보기」 안의 칸이 하나라도 그려지는지. 모두 비면 펼쳐도 빈 묶음이라 묶음째 그리지 않습니다. */
+function 조건자세히있음(plan: ExpensePlan): boolean {
+  return (
+    [plan.조건, plan.금지조건, plan.기한조건, plan.해당시조건, plan.공통사항, plan.근거경로, plan.용어풀이].some(목록있음) ||
+    확인한내용있음(plan.사용자답변, plan.확인한조건)
+  );
+}
+
 /**
  * 결과 화면의 「확인한 내용」. 답한 내용이 없는 판정(옛 계획·재점검)에는 그리지 않습니다.
  * `조건` 은 질문 화면 선택 칸(거래 상대 등)의 답입니다. 「해당 없음」이면 그 답으로 빠진 「안 되는 경우」 문장을 아래에 둡니다.
  * 주의: 답은 증빙이 아니라서 판정은 확인 필요로 남습니다. 문장을 지우지 않고 여기로 옮겨 보여 주는 이유입니다.
  */
 function 확인한내용({ 항목, 조건 }: { 항목?: 사용자답변항목[]; 조건?: 확인한조건항목[] }) {
-  if (!항목?.length && !조건?.length) return null;
+  if (!확인한내용있음(항목, 조건)) return null;
   return (
     <section className="ai-confirmed">
       <b>확인한 내용</b>
       <ul>
         {(조건 ?? []).map((c, index) => (
           <li key={`조건-${index}`}>
-            <span>{c.항목}</span>
+            {/* 서버가 `출처`(답하신 내용 · 공개 조사)를 주면 항목 옆에 S 단계 배지로 붙입니다(detail-v033.css). 없으면 지금처럼 항목만. */}
+            <span>{c.항목}{c.출처 && <> <span className="source-badge">{c.출처}</span></>}</span>
             <strong>{c.답}</strong>
             {c.문장.length > 0 && (
               <small>
@@ -6946,7 +7081,7 @@ function 코드판정카드({
 
 /** 결과 화면의 조건·근거 경로 목록. 비어 있으면 그리지 않습니다. */
 function 결과문장목록({ 제목, 항목 }: { 제목: string; 항목?: string[] }) {
-  if (!항목?.length) return null;
+  if (!항목 || !목록있음(항목)) return null;
   return (
     <section className="ai-confirmed">
       <b>{제목}</b>
@@ -6998,7 +7133,7 @@ function 꼭알아야할것({ plan }: { plan: ExpensePlan }) {
 
 /** v031: 「조건·근거 자세히 보기」 안의 조건 묶음. 제목과 개수만 보이고, 필요한 묶음만 폅니다. */
 function 결과접는묶음({ 제목, 항목 }: { 제목: string; 항목?: string[] }) {
-  if (!항목?.length) return null;
+  if (!항목 || !목록있음(항목)) return null;
   return (
     <details className="ai-confirmed ai-confirmed-fold">
       <summary>
@@ -7020,7 +7155,7 @@ function 결과접는묶음({ 제목, 항목 }: { 제목: string; 항목?: strin
 
 /** 결과 화면의 어려운 말 풀이. 비어 있으면 그리지 않습니다. */
 function 결과용어풀이({ 항목 }: { 항목?: 용어풀이항목[] }) {
-  if (!항목?.length) return null;
+  if (!항목 || !목록있음(항목)) return null;
   return (
     <section className="ai-confirmed ai-term-list">
       <b>어려운 말 풀이</b>
@@ -7125,7 +7260,7 @@ function 문의초안카드({
         <div className="ai-inquiry-title">
           <Icon name="fileText" size={20} />
           <div>
-            <b>{문의처 || "주관기관에"} 보낼 문의 초안</b>
+            <b>{문의처표기(문의처)} 보낼 문의 초안</b>
             <small>규정만으로 결론이 안 나서, 물어볼 내용을 정리했습니다.</small>
           </div>
         </div>
@@ -7502,14 +7637,16 @@ function PlanDetail({
     window.setTimeout(() => set준비탭반짝(false), 1800);
   };
   // v070: 문의 초안이 있는 「확인 필요」 면 결제 전 확인에 「담당자 문의 완료」 를 한 번 넣습니다(서버 할일).
+  //    저장되지 않은 결과(저장안됨)는 서버가 계획에 붙이지 않아, 넣은 뒤 계획을 다시 읽으면 화면의 결과와 문의 초안이 사라지므로 넣지 않습니다.
   const 문의항목필요 =
-    !!plan && API켜짐() && plan.status === "확인 필요" && !!plan.문의초안 && !plan.aiChecks.some((c) => c.label === 문의완료항목);
+    !!plan && API켜짐() && !plan.저장안됨 && plan.status === "확인 필요" && !!plan.문의초안 && !plan.aiChecks.some((c) => c.label === 문의완료항목);
   useEffect(() => {
     if (!plan || !문의항목필요 || 문의항목추가중.has(plan.id)) return;
     문의항목추가중.add(plan.id);
     할일추가(plan.id, {
       항목: 문의완료항목,
-      설명: "문의 초안으로 주관기관 담당자에게 확인하고 집행해도 된다는 답을 받았으면 체크해 주세요.",
+      // 저장되는 글은 만들 때의 문의처로 쓰고, 화면은 계획을 만들 때마다 지금 판정의 문의처로 다시 씁니다(lib/adapt.ts 문의완료설명맞춤).
+      설명: 문의완료설명(plan.문의처),
       구분: "결제전",
     })
       .then(() => 계획상세(plan.id))
@@ -7921,7 +8058,8 @@ function PlanDetail({
                 ))}
               </section>
             )}
-            {/* v031: 조건 전체·근거 경로·확인한 내용·용어는 필요한 사람만 폅니다. */}
+            {/* v031: 조건 전체·근거 경로·확인한 내용·용어는 필요한 사람만 폅니다. 안의 칸이 모두 비면 묶음째 그리지 않습니다. */}
+            {조건자세히있음(plan) && (
             <details className="ai-basis-more">
               <summary>조건 자세히 보기</summary>
             <결과접는묶음 제목="이번 지출에 영향 있는 조건" 항목={plan.조건} />
@@ -7933,6 +8071,7 @@ function PlanDetail({
             <확인한내용 항목={plan.사용자답변} 조건={plan.확인한조건} />
             <결과용어풀이 항목={plan.용어풀이} />
             </details>
+            )}
             {/* 주의: 저장된 최신 판정에만 평가를 받습니다. 재점검하면 번호가 바뀌어 칸이 새로 열립니다. */}
             {plan.latestDecisionId != null && !plan.저장안됨 && plan.status !== "재점검 필요" && (
               <결과평가칸
@@ -9667,6 +9806,21 @@ function SchedulePage({
   );
 }
 
+// 일정 상세 · 수정 창에서 연결된 계획의 상세를 따로 읽어야 하는지. 자동 「담당자 문의 완료」 설명이고, 계획이 목록 요약만 받은
+//    상태(lib/plan-service.ts 는 처음 20개 계획만 상세를 읽음)일 때입니다. 상세를 받은 계획에만 결제전확인수가 있습니다(상세를계획으로).
+//    계획이 없는 일정(기타)과 사용자가 쓴 메모는 읽지 않습니다.
+function 계획상세필요(item: ScheduleItem | undefined, plan: ExpensePlan | undefined): boolean {
+  return (
+    !!item &&
+    !!plan &&
+    item.planId !== "other" &&
+    API켜짐() &&
+    plan.결제전확인수 === undefined &&
+    item.title === 문의완료항목 &&
+    자동문의완료설명인가(item.memo)
+  );
+}
+
 function ScheduleFormModal({
   item,
   plans,
@@ -9678,8 +9832,14 @@ function ScheduleFormModal({
   close: () => void;
   save: (item: ScheduleItem) => void;
 }) {
+  const 연결계획 = item ? plans.find((p) => p.id === item.planId) : undefined;
+  // 메모 칸에 처음 보일 글. 자동으로 만든 「담당자 문의 완료」 설명이면 일정 상세와 같이 그 계획의 지금 문의처 글(문의완료설명보기),
+  //    사용자가 쓴 메모는 글자 그대로입니다. 열 때 정하고, 계획 상세를 읽은 뒤 한 번 더 정합니다(아래).
+  const [처음메모, set처음메모] = useState(() =>
+    item ? 문의완료설명보기(item.title, item.memo, 연결계획) : undefined,
+  );
   const [draft, setDraft] = useState<ScheduleItem>(
-    item || {
+    item ? { ...item, memo: 처음메모 ?? undefined } : {
       id: `s-${Date.now()}`,
       planId: plans[0]?.id || "other",
       title: "",
@@ -9689,6 +9849,30 @@ function ScheduleFormModal({
       memo: "",
     },
   );
+  const 상세필요 = 계획상세필요(item, 연결계획);
+  // 사용자가 메모를 고치기 시작했는지. 상세를 읽는 동안 고쳤으면 읽은 뒤에도 사용자 글을 덮지 않습니다.
+  const 메모고침 = useRef(false);
+  // 계획 상세를 받지 않은 계획이면 지출 상세 화면과 같은 경로(계획상세 → 상세를계획으로)로 그 계획 하나의 상세를 읽습니다.
+  //    읽는 동안은 저장된 글이 보이고, 읽기에 실패하면 저장된 글 그대로 둡니다(오류 알림 없음).
+  //    메모를 고치지 않았으면 처음 메모와 메모 칸을 함께 바꾸므로 「고치지 않았으면 원래 저장값 유지」 는 그대로입니다.
+  useEffect(() => {
+    if (!item || !상세필요) return;
+    let 살아있음 = true;
+    void 계획상세(item.planId)
+      .then(상세를계획으로)
+      .then(
+        (상세계획) => {
+          if (!살아있음 || 메모고침.current) return;
+          const 새메모 = 문의완료설명보기(item.title, item.memo, 상세계획);
+          set처음메모(새메모);
+          setDraft((d) => ({ ...d, memo: 새메모 ?? undefined }));
+        },
+        () => undefined,
+      );
+    return () => {
+      살아있음 = false;
+    };
+  }, [item, 상세필요]);
   // 주의: 규정 점검이 다시 쓰는 값은 고쳐도 사라지므로 잠급니다. 계획을 옮기는 API 는 없어 수정 때 잠급니다.
   const 지출일줄 = !!item?.지출일연동;
   const 잠김 = 지출일줄 || (!!item && 점검일정인가(item));
@@ -9813,7 +9997,10 @@ function ScheduleFormModal({
                 maxLength={500}
                 disabled={잠김}
                 value={draft.memo || ""}
-                onChange={(e) => setDraft({ ...draft, memo: e.target.value })}
+                onChange={(e) => {
+                  메모고침.current = true;
+                  setDraft({ ...draft, memo: e.target.value });
+                }}
                 placeholder="추가로 기록할 내용을 입력하세요."
               />
               <small>{(draft.memo || "").length}/500</small>
@@ -9827,7 +10014,15 @@ function ScheduleFormModal({
           <button
             className="primary"
             disabled={!draft.title.trim() || !draft.planId}
-            onClick={() => save({ ...draft, title: draft.title.trim() })}
+            // 메모를 고치지 않았으면(처음 보인 글 그대로) 화면용으로 바꾼 글이 서버 저장값을 덮지 않게 원래 저장값을 보냅니다.
+            //    고쳤으면 고친 글을 저장합니다. 다른 칸은 지금처럼 draft 그대로입니다.
+            onClick={() =>
+              save({
+                ...draft,
+                title: draft.title.trim(),
+                ...(item && draft.memo === 처음메모 ? { memo: item.memo } : {}),
+              })
+            }
           >
             {item ? "수정 저장" : "일정 추가"}
           </button>
@@ -9852,6 +10047,26 @@ function ScheduleDetailModal({
   toggleComplete: () => void;
   edit: () => void;
 }) {
+  // 계획 상세를 받지 않은 계획이면 수정 창과 같이 그 계획 하나의 상세를 읽어 메모 표시에만 씁니다(계획상세필요).
+  //    읽는 동안 · 실패하면 저장된 글이 보입니다. 다른 일정으로 바뀌면 그 계획의 상세가 아니므로 쓰지 않습니다.
+  const 상세필요 = 계획상세필요(item, plan);
+  const [읽은계획, set읽은계획] = useState<ExpensePlan | null>(null);
+  useEffect(() => {
+    if (!상세필요) return;
+    let 살아있음 = true;
+    void 계획상세(item.planId)
+      .then(상세를계획으로)
+      .then(
+        (상세계획) => {
+          if (살아있음) set읽은계획(상세계획);
+        },
+        () => undefined,
+      );
+    return () => {
+      살아있음 = false;
+    };
+  }, [item.planId, 상세필요]);
+  const 메모계획 = 읽은계획 && 읽은계획.id === item.planId ? 읽은계획 : plan;
   const related = plan
     ? `${plan.name} · ${비목표기(plan.category) || "비목 미정"} · ${won(plan.amount)}`
     : item.planId === "other"
@@ -9887,7 +10102,9 @@ function ScheduleDetailModal({
           </div>
           <div className="wide">
             <dt>메모</dt>
-            <dd>{item.memo || "등록된 메모가 없습니다."}</dd>
+            {/* 자동으로 만든 「담당자 문의 완료」 의 설명은 결제 전 확인과 같이 그 계획의 지금 문의처로 보입니다(문의완료설명보기).
+                계획 상세를 받지 않은 계획은 위에서 상세를 읽은 뒤 바뀝니다. 사용자가 쓴 메모는 저장된 글 그대로입니다. */}
+            <dd>{문의완료설명보기(item.title, item.memo, 메모계획) || "등록된 메모가 없습니다."}</dd>
           </div>
         </dl>
         <label className="schedule-detail-completion">
