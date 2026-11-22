@@ -49,11 +49,10 @@
   /* v074 크기 규칙(docs/design-system.md): 간격은 4px 단위, 모서리는 4종 */
   --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:24px;--space-6:32px;--space-7:48px;
   --radius-xs:4px;--radius-control:6px;--radius-card:10px;--radius-hero:14px;
-  /* v076 로그인: 바깥 바탕 · 브랜드 패널(그라데이션과 그 위 글자, 대비 4.5:1 이상) · 떠 있는 카드 그림자 */
-  --login-backdrop:#eef1ee;
+  /* v076 로그인: 브랜드 패널(그라데이션과 그 위 글자, 대비 4.5:1 이상) · 떠 있는 카드 그림자 */
   --surface-brand-gradient:linear-gradient(121deg,#b0deba 14%,#e8f2d4 54%,#fadec7 86%);
   --text-on-brand-strong:#1f4630;--text-on-brand:#41604b;
-  --shadow-shell:0 18px 52px -8px rgba(31,46,33,.07);--shadow-raised:0 12px 28px -4px rgba(15,51,26,.13);
+  --shadow-raised:0 12px 28px -4px rgba(15,51,26,.13);
   /* v076 마이페이지: 옅은 회색 안내 상자(기준 안내 · 아래 안내) · 읽기 전용 칸 */
   --surface-muted:#f5f7f6;
 }
