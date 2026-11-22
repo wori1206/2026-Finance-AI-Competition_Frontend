@@ -1,8 +1,8 @@
 /* CHECKUMAIT neutral semantic color system. */
 html,body,.app-shell,.main-area,.sidebar,.main-area:has(.expense-detail-page),.main-area:has(.expense-detail-redesign){background:#fcfcfc}
 .topbar{background:rgba(252,252,252,.94)}
-.chat-page,.page:has(.rules-overview){max-width:1320px}
-.summary-card,.panel,.table-panel,.card,.calendar-card,.chat-workspace,.rules-overview,.v3-ai-card,.v3-rule-row,.v4-stage-card,.v4-progress-card{border-color:#e5e5e5;background:#fff;box-shadow:var(--shadow)}
+.chat-page{max-width:1320px}
+.summary-card,.panel,.table-panel,.card,.calendar-card,.chat-workspace,.v3-ai-card,.v3-rule-row,.v4-stage-card,.v4-progress-card{border-color:#e5e5e5;background:#fff;box-shadow:var(--shadow)}
 .outline,.icon-button,.more-square,.search-box,input,textarea,select{border-color:#e5e5e5;color:#171717}
 .primary{border-color:#176b5b;background:#176b5b}.primary:hover{border-color:#125447;background:#125447}
 .side-nav button{color:#666}.side-nav button:hover,.side-nav button.active{background:#f2f2f2;color:#171717}.side-nav button.active svg{color:#176b5b}
@@ -44,8 +44,7 @@ html,body,.app-shell,.main-area,.sidebar,.main-area:has(.expense-detail-page),.m
 .schedule-v2-breadcrumb{font-size:12px}.schedule-v2-metrics small{font-size:13px}.schedule-v2-metrics b{font-size:27px}
 .schedule-v2-calendar>header h2{font-size:20px}.schedule-v2-week span{font-size:11px}.schedule-v2-grid>div>span{font-size:12px}.schedule-v2-grid>div>button{font-size:10.5px}
 .schedule-v2-upcoming h2{font-size:17px}.schedule-v2-upcoming time b{font-size:13px}.schedule-v2-upcoming time small{font-size:10px}.schedule-v2-upcoming label>span b{font-size:13px}.schedule-v2-upcoming label>span small{font-size:11px}.schedule-v2-upcoming label>em{font-size:10.5px}
-.rules-overview b{font-size:12px}.rules-overview h2{font-size:20px}.rules-overview p{font-size:13px}
-.rule-library article b{font-size:14px}.rule-library article small{font-size:12px}.auto-badge,.institution-badge{font-size:11px}.strict-table>div:not(.card-head){font-size:13px}.strict-table .strict-head{font-size:11.5px}.rule-caution p{font-size:12.5px}
+.institution-badge{font-size:11px}.strict-table>div:not(.card-head){font-size:13px}.strict-table .strict-head{font-size:11.5px}
 .detail-top h1{font-size:31px;font-weight:760}.detail-top p{font-size:14px}.breadcrumb{font-size:12px}.stepper{font-size:13px}
 .form-card h2{font-size:20px}.section-copy{font-size:13px}.field-grid label{position:relative;font-size:13px}.field-grid input,.field-grid textarea,.field-grid select{font-size:14px}.file-drop span{font-size:12px}.category-grid button{font-size:13px}.question{font-size:13px}.question button{font-size:12px}.info-note,.auto-check-note span{font-size:12px}
 .field-grid .file-field{min-height:126px;display:flex;align-items:flex-start;flex-direction:column;gap:8px;padding:16px;border:1px dashed #d9dddb;border-radius:6px;background:#fcfcfc}

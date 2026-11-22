@@ -1,0 +1,90 @@
+/*
+ * v076: 마이페이지 — Figma 「새로 만든 거 / 07-C 마이페이지 · 07-D 정보 수정」.
+ * 섹션 제목 + 흰 카드 + 「아이콘 · 항목명 | 값」 줄. 시안 값이 디자인 시스템과 다르면 시스템을 따릅니다(docs/design-system.md):
+ *  · 줄 64(위아래 12 + 40), 작은 버튼 M 32, 취소 · 저장 · 입력칸 L 40, 배지 XS 20
+ *  · 제목 30/40 · 섹션 제목 18/28 · 본문 14/20 · 보조 12/18, 모서리 4종, 간격 4px 단위, 옅은 회색 상자는 --surface-muted
+ * 옛 공통 버튼 규칙(!important)을 덮어야 하는 크기 값만 !important 로 씁니다.
+ */
+.app-shell .mypage-v076{max-width:1044px;display:flex;flex-direction:column;gap:var(--space-6);padding-top:var(--space-6);padding-bottom:var(--space-7)}
+.app-shell .mypage-v076>h1{margin:0;color:var(--text-strong);font-size:30px;font-weight:700;line-height:40px;letter-spacing:-.8px}
+
+/* 섹션 */
+.mypage-v076-section{display:flex;flex-direction:column;gap:var(--space-3);min-width:0}
+.mypage-v076-section>header{min-height:40px;display:flex;align-items:center;justify-content:space-between;gap:var(--space-3)}
+.mypage-v076-section>header h2{margin:0;color:var(--text-strong);font-size:18px;font-weight:700;line-height:28px;letter-spacing:-.15px}
+
+/* 카드 · 줄 */
+.mypage-v076-card{display:grid;padding:0 var(--space-5);border:1px solid var(--border-card);border-radius:var(--radius-card);background:#fff;box-shadow:var(--shadow-card)}
+.mypage-v076-card.is-two{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:var(--space-6)}
+.mypage-v076-row{min-width:0;min-height:64px;display:grid;grid-template-columns:240px minmax(0,1fr);align-items:center;column-gap:var(--space-4);padding:var(--space-3) 0}
+.mypage-v076-row.is-narrow{grid-template-columns:136px minmax(0,1fr)}
+.mypage-v076-row.is-top{align-items:start;padding:var(--space-4) 0}
+/* 줄 사이 선: 한 줄 카드는 둘째 줄부터, 두 칸 카드는 둘째 행(셋째 칸)부터 위에 긋습니다 */
+.mypage-v076-card:not(.is-two)>.mypage-v076-row+.mypage-v076-row,
+.mypage-v076-card.is-two>.mypage-v076-row:nth-child(n+3){border-top:1px solid var(--border-card)}
+.mypage-v076-label{min-height:28px;display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2);padding-right:var(--space-3);border-right:1px solid var(--control);color:var(--sub);font-size:14px;font-weight:500;line-height:20px}
+.mypage-v076-label>img{flex:none}
+.mypage-v076-value{min-width:0;color:var(--text-strong);font-size:14px;font-weight:500;line-height:20px;overflow-wrap:anywhere}
+.mypage-v076-stack{min-width:0;display:grid;gap:var(--space-1)}
+/* 수정 불가 칸: 읽기 전용 입력 오른쪽에 배지 */
+.mypage-v076-value.is-locked{display:flex;align-items:center;gap:var(--space-2)}
+.mypage-v076-stack>small,.mypage-v076-sub{color:var(--sub);font-size:12px;font-weight:400;line-height:18px}
+.mypage-v076-actions{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2)}
+.mypage-v076-actions>small{color:var(--sub);font-size:12px;font-weight:400;line-height:18px}
+
+/* 배지 — XS 단계(20 · 11/16 · 좌우 6 · 모서리 4) */
+.mypage-v076-badge{height:20px;flex:none;display:inline-flex;align-items:center;padding:0 6px;border-radius:var(--radius-xs);font-size:11px;font-style:normal;font-weight:500;line-height:16px;white-space:nowrap}
+.mypage-v076-badge.is-brand{background:var(--brand-soft);color:var(--brand)}
+.mypage-v076-badge.is-info{background:var(--status-checking-bg);color:var(--status-checking-text)}
+.mypage-v076-badge.is-warn{background:var(--status-warn-bg);color:var(--status-warn-text)}
+.mypage-v076-badge.is-risk{background:var(--status-risk-bg);color:var(--status-risk-text)}
+.mypage-v076-badge.is-muted{background:var(--status-draft-bg);color:var(--status-draft-text)}
+
+/* 버튼 — M(32) · L(40) 단계 */
+.app-shell .mypage-v076 :is(.outline,.primary).mypage-v076-m{height:32px!important;min-height:32px!important;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 var(--space-3)!important;border-radius:var(--radius-control)!important;font-size:13px!important;font-weight:500;line-height:20px;white-space:nowrap}
+.app-shell .mypage-v076 :is(.outline,.primary).mypage-v076-l{height:40px!important;min-height:40px!important;display:inline-flex;align-items:center;justify-content:center;padding:0 var(--space-4)!important;border-radius:var(--radius-control)!important;font-size:14px!important;font-weight:500;line-height:20px}
+.app-shell .mypage-v076 .primary:is(.mypage-v076-m,.mypage-v076-l){border:1px solid var(--primary-border)!important;background:var(--primary-bg)!important;color:#fff!important}
+.app-shell .mypage-v076 :is(.mypage-v076-m,.mypage-v076-l):disabled{opacity:.55;cursor:not-allowed}
+/* 파일 등록: 숨긴 파일 칸을 감싼 라벨이 버튼 모양 */
+.mypage-v076-file{position:relative;cursor:pointer}
+.mypage-v076-file>input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.mypage-v076-file:focus-within{outline:2px solid var(--focus-ring);outline-offset:2px}
+
+/* 입력 — L 단계(40 · 14/20 · 좌우 16 · 모서리 6) */
+.mypage-v076-input{width:100%;height:40px;padding:0 var(--space-4);border:1px solid var(--control);border-radius:var(--radius-control);background:#fff;color:var(--text);font:inherit;font-size:14px;font-weight:400;line-height:20px}
+.mypage-v076-input::placeholder{color:var(--muted)}
+.mypage-v076-input:focus{border-color:var(--brand);outline:none}
+.mypage-v076-input:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+.mypage-v076-input:is([readonly],:disabled){background:var(--surface-muted);color:var(--sub);cursor:default}
+.mypage-v076-actions>.mypage-v076-input{flex:1 1 200px;width:auto}
+
+/* 사업 관리 기준 */
+.mypage-v076-doc-title{color:var(--text-strong);font-size:13px;font-weight:500;line-height:20px}
+.mypage-v076-actions>.mypage-v076-doc-title{min-height:32px;display:inline-flex;align-items:center}
+.mypage-v076-guide{display:flex;gap:var(--space-4);margin-top:var(--space-1);padding:var(--space-3) var(--space-4);border-radius:var(--radius-control);background:var(--surface-muted);color:var(--sub);font-size:12px;line-height:18px}
+.mypage-v076-guide>b{flex:none;font-weight:500}
+.mypage-v076-guide>ul{display:grid;gap:2px;margin:0;padding-left:var(--space-4);list-style:disc}
+.mypage-v076-guide li{list-style:disc}
+.mypage-v076-doc-item{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:start;gap:var(--space-3);margin-top:var(--space-2);padding-top:var(--space-3);border-top:1px solid var(--border-card)}
+.mypage-v076-doc-item b{color:var(--text-strong);font-size:13px;font-weight:500;line-height:20px;overflow-wrap:anywhere}
+
+/* 팀 */
+.mypage-v076-members{display:grid;gap:var(--space-2);margin:0;padding:0;list-style:none}
+.mypage-v076-members>li{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2)}
+.mypage-v076-code{font-size:14px;font-weight:700;line-height:20px;letter-spacing:.04em}
+
+/* 안내 · 섹션 아래 짧은 문장 */
+.mypage-v076-note{margin:0;color:var(--sub);font-size:12px;line-height:18px}
+.mypage-v076-note.is-error{color:var(--red)}
+.mypage-v076-caution{display:grid;gap:var(--space-1);padding:var(--space-4);border-radius:var(--radius-control);background:var(--surface-muted);color:var(--sub);font-size:12px;line-height:18px}
+.mypage-v076-caution>b{font-weight:700}
+.mypage-v076-caution>p{margin:0}
+
+@media(max-width:760px){
+  .mypage-v076-card.is-two{grid-template-columns:1fr}
+  .mypage-v076-card.is-two>.mypage-v076-row:nth-child(n+2){border-top:1px solid var(--border-card)}
+  .mypage-v076-row,.mypage-v076-row.is-narrow{grid-template-columns:1fr;row-gap:var(--space-2)}
+  .mypage-v076-label{border-right:0}
+  .mypage-v076-doc-item{grid-template-columns:auto minmax(0,1fr)}
+  .mypage-v076-doc-item>button{grid-column:2}
+}

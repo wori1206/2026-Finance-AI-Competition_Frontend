@@ -49,6 +49,7 @@ import "./new-plan-v033.css";
 import "./plans-v073.css";
 import "./schedule-v073.css";
 import "./login-v076.css";
+import "./mypage-v076.css";
 
 const won = (value: number) => `${value.toLocaleString("ko-KR")}원`;
 /** 일정 상태의 화면 이름. 저장 값(`집행 예정`·`준비 필요`)은 서버와 맞춰 그대로 둡니다. */
@@ -10324,101 +10325,103 @@ function 팀카드({
   const 대표 = 팀?.내역할 === "대표";
   const 다른구성원있음 = (팀?.구성원.length ?? 0) > 1;
   const 만료일 = 팀?.초대코드_만료 ? new Date(팀.초대코드_만료) : null;
+  // v076: 마이페이지 새 배치(섹션 제목 + 흰 카드 + 「항목 | 값」 줄)에 맞춘 팀 섹션. 동작은 그대로입니다.
   return (
-    <section className="card team-card">
-      <header className="card-head">
-        <div>
-          <h2>{팀 ? `팀 · ${팀.팀이름}` : "팀"}</h2>
-          <p>
-            {팀
-              ? `${팀.사업명} · 구성원이 지출 계획·점검 결과·일정·첨부를 함께 봅니다.`
-              : "팀원과 지출 계획·점검 결과·일정·첨부를 함께 보려면 팀을 만들거나 초대 코드를 입력하세요."}
-          </p>
-        </div>
+    <section className="mypage-v076-section">
+      <header>
+        <h2>팀</h2>
+        {팀 && (
+          <button className="outline mypage-v076-m" disabled={처리중 || (대표 && 다른구성원있음)} onClick={() => void 나가기()}>
+            {대표 ? "팀 닫기" : "팀 나가기"}
+          </button>
+        )}
       </header>
-      {상태 === "실패" && <p className="section-copy">팀 정보를 불러오지 못했습니다. 새로고침해 주세요.</p>}
-      {상태 === "표시" && !팀 && (
-        <div className="team-actions">
-          {입력 === null && (
-            <>
-              <button
-                className="outline"
-                onClick={() => {
-                  set팀이름입력(계정팀이름);
-                  set입력("만들기");
-                }}
-              >
-                팀 만들기
-              </button>
-              <button className="outline" onClick={() => set입력("코드")}>초대 코드 입력</button>
-            </>
+      <div className="mypage-v076-card">
+        <정보줄 아이콘="team" 이름="팀">
+          {상태 === "실패" && <span className="mypage-v076-sub">팀 정보를 불러오지 못했습니다. 새로고침해 주세요.</span>}
+          {팀 && (
+            <span className="mypage-v076-stack">
+              <span>{팀.팀이름}</span>
+              <small>{팀.사업명} · 구성원이 지출 계획·점검 결과·일정·첨부를 함께 봅니다.</small>
+            </span>
           )}
-          {입력 === "만들기" && (
-            <div className="team-form">
-              <label>
-                팀 이름
-                <input value={팀이름입력} maxLength={40} autoFocus onChange={(e) => set팀이름입력(e.target.value)} />
-              </label>
-              <button className="primary" disabled={!팀이름입력.trim() || 처리중} onClick={() => void 만들기()}>만들기</button>
-              <button className="outline" disabled={처리중} onClick={() => set입력(null)}>취소</button>
-            </div>
+          {상태 === "표시" && !팀 && 입력 === null && (
+            <span className="mypage-v076-stack">
+              <small>팀원과 지출 계획·점검 결과·일정·첨부를 함께 보려면 팀을 만들거나 초대 코드를 입력하세요.</small>
+              <span className="mypage-v076-actions">
+                <button
+                  className="outline mypage-v076-m"
+                  onClick={() => {
+                    set팀이름입력(계정팀이름);
+                    set입력("만들기");
+                  }}
+                >
+                  팀 만들기
+                </button>
+                <button className="outline mypage-v076-m" onClick={() => set입력("코드")}>초대 코드 입력</button>
+              </span>
+            </span>
           )}
-          {입력 === "코드" && (
-            <div className="team-form">
-              <label>
-                초대 코드
-                <input value={코드입력} maxLength={20} autoFocus placeholder="예: ABCD-2345" onChange={(e) => set코드입력(e.target.value)} />
-              </label>
-              <button className="primary" disabled={!코드입력.trim() || 처리중} onClick={() => void 들어가기()}>들어가기</button>
-              <button className="outline" disabled={처리중} onClick={() => set입력(null)}>취소</button>
-            </div>
+          {상태 === "표시" && !팀 && 입력 === "만들기" && (
+            <span className="mypage-v076-actions">
+              <input className="mypage-v076-input" aria-label="팀 이름" placeholder="팀 이름" value={팀이름입력} maxLength={40} autoFocus onChange={(e) => set팀이름입력(e.target.value)} />
+              <button className="primary mypage-v076-m" disabled={!팀이름입력.trim() || 처리중} onClick={() => void 만들기()}>만들기</button>
+              <button className="outline mypage-v076-m" disabled={처리중} onClick={() => set입력(null)}>취소</button>
+            </span>
           )}
-        </div>
-      )}
-      {팀 && (
-        <>
-          <ul className="team-members">
-            {팀.구성원.map((사람) => (
-              <li key={사람.account_id}>
-                <span>
-                  {사람.이메일}
-                  {사람.나 && <em>나</em>}
-                  {사람.대표 && <em className="lead">대표</em>}
-                </span>
-                {대표 && !사람.나 && (
-                  <button className="outline small" disabled={처리중} onClick={() => void 내보내기(사람.account_id, 사람.이메일)}>
-                    내보내기
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-          {대표 && (
-            <div className="team-code">
+          {상태 === "표시" && !팀 && 입력 === "코드" && (
+            <span className="mypage-v076-actions">
+              <input className="mypage-v076-input" aria-label="초대 코드" value={코드입력} maxLength={20} autoFocus placeholder="예: ABCD-2345" onChange={(e) => set코드입력(e.target.value)} />
+              <button className="primary mypage-v076-m" disabled={!코드입력.trim() || 처리중} onClick={() => void 들어가기()}>들어가기</button>
+              <button className="outline mypage-v076-m" disabled={처리중} onClick={() => set입력(null)}>취소</button>
+            </span>
+          )}
+        </정보줄>
+        {팀 && (
+          <정보줄 아이콘="email" 이름="구성원">
+            <ul className="mypage-v076-members">
+              {팀.구성원.map((사람) => (
+                <li key={사람.account_id}>
+                  <span>{사람.이메일}</span>
+                  {사람.나 && <em className="mypage-v076-badge is-muted">나</em>}
+                  {사람.대표 && <em className="mypage-v076-badge is-brand">대표</em>}
+                  {대표 && !사람.나 && (
+                    <button className="outline mypage-v076-m" disabled={처리중} onClick={() => void 내보내기(사람.account_id, 사람.이메일)}>
+                      내보내기
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </정보줄>
+        )}
+        {팀 && 대표 && (
+          <정보줄 아이콘="doc" 이름="초대 코드">
+            <span className="mypage-v076-stack">
               {보이는코드 ? (
                 <>
-                  <b>{보이는코드}</b>
-                  <button className="outline small" onClick={() => void 코드복사()}>복사</button>
+                  <span className="mypage-v076-actions">
+                    <b className="mypage-v076-code">{보이는코드}</b>
+                    <button className="outline mypage-v076-m" onClick={() => void 코드복사()}>복사</button>
+                    <button className="outline mypage-v076-m" disabled={처리중} onClick={() => void 코드재발급()}>새 코드 만들기</button>
+                  </span>
                   <small>이 화면을 벗어나면 다시 볼 수 없습니다. 팀원에게 지금 전달해 주세요.</small>
                 </>
               ) : (
-                <small>
-                  초대 코드는 만들 때만 볼 수 있습니다.
-                  {만료일 && (만료일.getTime() > Date.now() ? ` 지금 코드는 ${만료일.toLocaleDateString("ko-KR")}까지 쓸 수 있습니다.` : " 지금 코드는 쓸 수 없습니다. 초대하려면 새 코드를 만들어 주세요.")}
-                </small>
+                <span className="mypage-v076-actions">
+                  <small>
+                    초대 코드는 만들 때만 볼 수 있습니다.
+                    {만료일 && (만료일.getTime() > Date.now() ? ` 지금 코드는 ${만료일.toLocaleDateString("ko-KR")}까지 쓸 수 있습니다.` : " 지금 코드는 쓸 수 없습니다. 초대하려면 새 코드를 만들어 주세요.")}
+                  </small>
+                  <button className="outline mypage-v076-m" disabled={처리중} onClick={() => void 코드재발급()}>새 코드 만들기</button>
+                </span>
               )}
-              <button className="outline small" disabled={처리중} onClick={() => void 코드재발급()}>새 코드 만들기</button>
-            </div>
-          )}
-          <div className="team-actions">
-            <button className="outline small" disabled={처리중 || (대표 && 다른구성원있음)} onClick={() => void 나가기()}>
-              {대표 ? "팀 닫기" : "팀 나가기"}
-            </button>
-            {대표 && 다른구성원있음 && <small>다른 구성원을 먼저 내보내야 팀을 닫을 수 있습니다.</small>}
-          </div>
-        </>
-      )}
-      {오류 && <p className="file-replace-notice" role="alert"><span>ⓘ</span>{오류}</p>}
+            </span>
+          </정보줄>
+        )}
+      </div>
+      {대표 && 다른구성원있음 && <p className="mypage-v076-note">다른 구성원을 먼저 내보내야 팀을 닫을 수 있습니다.</p>}
+      {오류 && <p className="mypage-v076-note is-error" role="alert">{오류}</p>}
     </section>
   );
 }
@@ -10586,257 +10589,379 @@ function MyPage({
 
   const 규정목록 = use적용규정(profile.program);
 
+  // v076: 저장 버튼이 「내 정보」 제목 오른쪽으로 옮겨가 처리 내용을 함수로 뺐습니다(내용은 그대로).
+  const 저장하기 = () => {
+    // 주의: 협약을 '안 고쳤으면' 서버에 보내지 않습니다. 비교 기준은 수정 창을 연 때의 값입니다
+    //    (예시를 보여 주던 계정은 빈 값). 이 브라우저에만 있는 값은 안 고쳐도 보냅니다 —
+    //    안 보내면 화면에는 보이는데 판정에는 쓰이지 않는 상태가 계속됩니다.
+    const 기준 = 협약출처 === "서버" || 협약출처 === "이 브라우저" ? 협약 : 빈협약;
+    const 보낼값있음 =
+      !협약잠김 &&
+      (JSON.stringify(협약초안) !== JSON.stringify(기준) || 협약출처 === "이 브라우저");
+    // 주의: 일부만 넣으면 나머지가 0·빈 값으로 저장되어 판정의 전제가 됩니다.
+    //    다른 값을 바꾸기 전에 막습니다. 뒤에서 막으면 취소를 눌러도 팀 이름이 바뀌어 있습니다.
+    if (보낼값있음 && (!협약초안.시작일 || !협약초안.종료일 || !협약초안.정부지원)) {
+      notify("협약 시작일·종료일·정부지원금을 모두 입력해 주세요.");
+      return;
+    }
+    if (보낼값있음 && 협약초안.시작일 > 협약초안.종료일) {
+      notify("협약 시작일이 종료일보다 늦습니다.");
+      return;
+    }
+    // 화면은 먼저 바꿉니다 — 서버가 못 받아도 시연이 끊기면 안 됩니다.
+    setProfile(profileDraft);
+    // 주의: 팀 이름은 Supabase 계정에 붙여야 다음 로그인에도 남습니다.
+    //    실패해도 '막지 않습니다' — 화면 표기일 뿐입니다.
+    //    쓰기가 끝난 '뒤' 다시 읽습니다. 안 그러면 아래 effect 가
+    //    옛 값으로 방금 저장한 이름을 덮습니다.
+    팀이름기억(profileDraft.team.trim());
+    supabase팀이름쓰기(profileDraft.team)
+      .catch(() => false)
+      .finally(() => set팀갱신((n) => n + 1));
+    사업저장(profileDraft.program);
+    if (!보낼값있음) {
+      setEditingProfile(false);
+      notify(협약출처 === "실패"
+        ? "내 정보를 저장했습니다. 협약 정보는 불러오지 못해 저장하지 않았습니다."
+        : "내 정보를 저장했습니다.");
+      return;
+    }
+    const 이전협약 = 협약;
+    set협약(협약초안);
+    set협약저장중(true);
+    협약쓰기(협약초안)
+      .then(({ 결과, 사유, 경고 }) => {
+        // 주의: 서버가 받으면 서버 값이 기준이므로 로컬 값을 지웁니다. 게스트·mock 은 서버에
+        //    안 남아서 이 브라우저에 기억합니다. 서버가 거부하면(422 등) 기억하지 않고 화면도
+        //    되돌립니다 — 거부된 값이 화면에 남으면 판정이 쓰는 값과 어긋납니다.
+        if (결과 === "저장됨") {
+          협약잊기();
+          set협약출처("서버");
+          set협약경고(경고);
+        } else if (결과 === "실패") set협약(이전협약);
+        else {
+          협약기억(협약초안);
+          set협약출처("이 브라우저");
+        }
+        if (결과 !== "실패") {
+          setEditingProfile(false);
+          window.dispatchEvent(new Event(협약저장알림));
+        }
+        notify(
+          결과 === "저장됨"
+            ? "내 정보를 저장했습니다. 다음 점검부터 반영됩니다."
+            : 결과 === "서버가안받음"
+              ? "내 정보를 수정했습니다. (현재 mock 서버라 서버에는 저장되지 않습니다)"
+              : 결과 === "로그인필요"
+                ? "이 브라우저에만 저장했습니다. 로그인하면 서버에 저장되어 점검에 반영됩니다."
+                : 사유
+                  ? `서버에 저장하지 못했습니다. ${사유}`
+                  : "내 정보를 수정했지만 서버 저장에 실패했습니다.",
+        );
+      })
+      .finally(() => set협약저장중(false));
+  };
+
+  const 공통안내 = [
+    "써도돼요가 지출 사전점검에 우선 적용하는 기준입니다.",
+    ...Array.from(new Set(규정목록.map((규정) => 규정.설명).filter(Boolean))),
+  ];
+  const 협약편집안내 =
+    협약출처 === "실패"
+      ? "협약 정보를 불러오지 못해 지금은 팀 이름과 사업 중복 수혜 여부만 수정할 수 있습니다."
+      : 협약출처 === "조회중"
+        ? "협약 정보를 불러온 뒤에 수정할 수 있습니다."
+        : null;
+  const 현금 = 협약.자기부담;
+  const 현물 = 협약.자기부담현물;
+
+  // v076: Figma 「새로 만든 거 / 07-C 마이페이지 · 07-D 정보 수정」. 보기 ↔ 정보 수정은 같은 화면에서 바뀌고,
+  //   취소 · 저장은 「내 정보」 제목 오른쪽(수정 버튼 자리)에 둡니다. 이메일 · 선정 사업 · 주관기관은 수정 불가.
   return (
-    <div className="page my-page">
-      <header className="page-heading">
-        <div>
-          <h1>마이페이지</h1>
-          <p>내 정보와 현재 참여 중인 사업 정보를 확인하세요.</p>
-        </div>
-      </header>
-      <section className="my-profile-card">
+    <div className="page mypage-v076">
+      <h1>{editingProfile ? "정보 수정" : "마이페이지"}</h1>
+      <section className="mypage-v076-section">
         <header>
-          <div className="my-profile-summary">
-            <span className="my-profile-avatar">{profile.team.slice(0, 1)}</span>
-            <div>
-              <h2>{profile.team}</h2>
-              <p>{로그인이메일 || "로그인 정보 없음"}</p>
-            </div>
-          </div>
-          <div className="my-profile-actions">
+          <h2>내 정보</h2>
+          {editingProfile ? (
+            <span className="mypage-v076-actions">
+              <button className="outline mypage-v076-l" disabled={협약저장중} onClick={() => setEditingProfile(false)}>취소</button>
+              <button className="primary mypage-v076-l" disabled={!profileDraft.host.trim() || 협약저장중} onClick={저장하기}>
+                {협약저장중 ? "저장하는 중…" : "저장"}
+              </button>
+            </span>
+          ) : (
             <button
-              className="outline small"
+              className="outline mypage-v076-m"
               onClick={() => {
                 setProfileDraft(profile);
                 set협약초안(협약출처 === "서버" || 협약출처 === "이 브라우저" ? 협약 : 빈협약);
                 setEditingProfile(true);
               }}
             >
-              <Icon name="edit" size={14} />
-              내 정보 수정
+              수정
             </button>
-          </div>
+          )}
         </header>
-        <dl className="my-profile-grid">
-          <Info label="팀 이름" value={profile.team} />
-          <Info label="이메일" value={로그인이메일 || "로그인 정보 없음"} />
-          <Info label="선정 사업" value={profile.program} />
-          <Info label="주관기관" value={profile.host} />
-          <Info label="사업 중복 수혜 여부" value={profile.duplicateBenefit} />
-          <Info
-            label="적용 기준"
-            value={
-              지금기준파일
-                ? "사업 공통 규정 + 기관 세부기준"
-                : 기준문서.조회실패
-                  ? "기관 세부기준을 확인하지 못했습니다"
-                  : "사업 공통 규정"
-            }
-          />
-        </dl>
+        <div className="mypage-v076-card">
+          <정보줄 아이콘="team" 이름="팀명">
+            {editingProfile ? (
+              <input className="mypage-v076-input" aria-label="팀명" value={profileDraft.team} onChange={(event) => setProfileDraft((value) => ({ ...value, team: event.target.value }))} />
+            ) : (
+              profile.team
+            )}
+          </정보줄>
+          <정보줄 아이콘="email" 이름="이메일" 잠김={editingProfile}>
+            {editingProfile ? <input className="mypage-v076-input" aria-label="이메일" value={로그인이메일 || "로그인 정보 없음"} readOnly aria-readonly="true" /> : 로그인이메일 || "로그인 정보 없음"}
+          </정보줄>
+          <정보줄 아이콘="duplicate" 이름="사업 중복 수혜 여부">
+            {editingProfile ? (
+              <select className="mypage-v076-input" aria-label="사업 중복 수혜 여부" value={profileDraft.duplicateBenefit} onChange={(event) => setProfileDraft((value) => ({ ...value, duplicateBenefit: event.target.value }))}>
+                <option value="O">O</option>
+                <option value="X">X</option>
+              </select>
+            ) : (
+              profile.duplicateBenefit
+            )}
+          </정보줄>
+        </div>
       </section>
       <팀카드 notify={notify} 확인={확인} 계획수={계획수} />
-      <section className="my-business-heading">
-        <div>
-          <h2>사업 정보</h2>
-          <p>현재 사업에 적용되는 지원 정보와 기준을 확인하세요.</p>
+      <section className="mypage-v076-section">
+        <header>
+          <h2>참여 사업 정보</h2>
+        </header>
+        {/* 주의: 아래 협약 칸이 서버 기업 프로필의 `협약` 입니다. AI 점검이 「협약기간 밖 지출」·「사업비 초과」·
+            「현물 비율 한도」를 판단할 때 전제로 씁니다. 금액 이름은 백엔드 규정 용어 그대로(정부지원사업비 = 정부지원_현금,
+            자기부담사업비 = 자기부담_현금 + 자기부담_현물). 참여 사업 · 주관기관은 온보딩에서 정해 판정이 쓰므로 잠급니다. */}
+        <div className="mypage-v076-card is-two">
+          <정보줄 아이콘="program" 이름="선정 사업" 좁게 잠김={editingProfile}>
+            {editingProfile ? <input className="mypage-v076-input" aria-label="선정 사업" value={profileDraft.program} readOnly aria-readonly="true" /> : profile.program}
+          </정보줄>
+          <정보줄 아이콘="org" 이름="주관 기관" 좁게 잠김={editingProfile}>
+            {editingProfile ? <input className="mypage-v076-input" aria-label="주관 기관" value={profileDraft.host} readOnly aria-readonly="true" /> : profile.host}
+          </정보줄>
+          <정보줄 아이콘="calendar" 이름="협약 시작일" 좁게>
+            {editingProfile ? (
+              <input className="mypage-v076-input" aria-label="협약 시작일" type="date" disabled={협약잠김} value={협약초안.시작일} onChange={(event) => set협약초안((v) => ({ ...v, 시작일: event.target.value }))} />
+            ) : (
+              날짜표기(협약.시작일)
+            )}
+          </정보줄>
+          <정보줄 아이콘="calendar" 이름="협약 종료일" 좁게>
+            {editingProfile ? (
+              <input className="mypage-v076-input" aria-label="협약 종료일" type="date" disabled={협약잠김} value={협약초안.종료일} onChange={(event) => set협약초안((v) => ({ ...v, 종료일: event.target.value }))} />
+            ) : (
+              날짜표기(협약.종료일)
+            )}
+          </정보줄>
+          <정보줄 아이콘="money" 이름="정부지원사업비" 좁게>
+            {editingProfile ? (
+              <input className="mypage-v076-input" aria-label="정부지원사업비 (원)" inputMode="numeric" disabled={협약잠김} value={협약초안.정부지원.toLocaleString("ko-KR")} onChange={(event) => set협약초안((v) => ({ ...v, 정부지원: Number(event.target.value.replace(/[^0-9]/g, "")) || 0 }))} />
+            ) : (
+              원(협약.정부지원)
+            )}
+          </정보줄>
+          {editingProfile ? (
+            <>
+              <정보줄 아이콘="inkind" 이름="자기부담 현금" 좁게>
+                <input className="mypage-v076-input" aria-label="자기부담 현금 (원)" inputMode="numeric" disabled={협약잠김} value={협약초안.자기부담.toLocaleString("ko-KR")} onChange={(event) => set협약초안((v) => ({ ...v, 자기부담: Number(event.target.value.replace(/[^0-9]/g, "")) || 0 }))} />
+              </정보줄>
+              <정보줄 아이콘="inkind" 이름="자기부담 현물" 좁게>
+                {/* 주의: 현물은 비워 두면 「모름」, 0 이면 「현물 없음」입니다. 서버가 「현물은 총사업비의 20% 이하」
+                    같은 비율 한도를 이 값으로 계산하므로 빈 칸을 0 으로 바꾸지 않습니다. */}
+                <input
+                  className="mypage-v076-input"
+                  aria-label="자기부담 현물 (원), 없으면 0"
+                  inputMode="numeric"
+                  placeholder="모르면 비워 두세요 · 없으면 0"
+                  disabled={협약잠김}
+                  value={협약초안.자기부담현물 == null ? "" : 협약초안.자기부담현물.toLocaleString("ko-KR")}
+                  onChange={(event) => {
+                    const 숫자만 = event.target.value.replace(/[^0-9]/g, "");
+                    set협약초안((v) => ({ ...v, 자기부담현물: 숫자만 ? Number(숫자만) : null }));
+                  }}
+                />
+              </정보줄>
+            </>
+          ) : (
+            <정보줄 아이콘="inkind" 이름="자기부담사업비" 좁게>
+              <span className="mypage-v076-stack">
+                <span>{원(현금 + (현물 ?? 0))}</span>
+                <small>현금 {원(현금)} · 현물 {현물 == null ? "미입력" : 원(현물)}</small>
+              </span>
+            </정보줄>
+          )}
         </div>
-      </section>
-      <section className="rules-overview">
-        <div>
-          <span className="rule-mark">
-            <Icon name="rules" />
-          </span>
-          <div>
-            <b>현재 참여 사업</b>
-            <h2>{profile.program}</h2>
-            <p>{profile.host}</p>
-          </div>
-        </div>
-        <dl className="business-period-grid">
-          <div><dt>협약 시작일</dt><dd>{날짜표기(협약.시작일)}</dd></div>
-          <div><dt>협약 종료일</dt><dd>{날짜표기(협약.종료일)}</dd></div>
-          <div><dt>사업 지원비</dt><dd>{원(협약.정부지원 + 협약.자기부담)}</dd></div>
-          <div><dt>자기부담금 현물</dt><dd>{협약.자기부담현물 == null ? "미입력" : 원(협약.자기부담현물)}</dd></div>
-        </dl>
+        {editingProfile && 협약편집안내 && <p className="mypage-v076-note">{협약편집안내}</p>}
         {협약출처 === "서버" && <협약경고알림 줄들={협약경고} />}
         {협약출처 === "예시" && (
-          <p className="section-copy">아직 입력한 협약 정보가 없어 사업 예시 값을 보여 줍니다. 점검에는 쓰이지 않습니다.</p>
+          <p className="mypage-v076-note">아직 입력한 협약 정보가 없어 사업 예시 값을 보여 줍니다. 점검에는 쓰이지 않습니다.</p>
         )}
         {협약출처 === "이 브라우저" && (
-          <p className="section-copy">이 브라우저에만 남아 있는 값이라 점검에는 쓰이지 않습니다. 맞는 값이면 내 정보 수정에서 저장해 주세요.</p>
+          <p className="mypage-v076-note">이 브라우저에만 남아 있는 값이라 점검에는 쓰이지 않습니다. 맞는 값이면 수정에서 저장해 주세요.</p>
         )}
-        {협약출처 === "실패" && (
-          <p className="section-copy">협약 정보를 불러오지 못했습니다. 지금 보이는 값은 저장된 값이 아닙니다. 새로고침해 주세요.</p>
+        {협약출처 === "실패" && !editingProfile && (
+          <p className="mypage-v076-note">협약 정보를 불러오지 못했습니다. 지금 보이는 값은 저장된 값이 아닙니다. 새로고침해 주세요.</p>
         )}
-        {협약출처 === "조회중" && (
-          <p className="section-copy">협약 정보를 불러오는 중입니다.</p>
-        )}
+        {협약출처 === "조회중" && !editingProfile && <p className="mypage-v076-note">협약 정보를 불러오는 중입니다.</p>}
       </section>
-      <section className="card rule-library">
-        <header className="card-head">
-          <div>
-            <h2>공통 관리 기준</h2>
-            {/* 주의: 여기도 조사가 '이' → '가' 로 바뀝니다. */}
-            <p>써도돼요가 지출 사전점검에 우선 적용하는 기준입니다.</p>
-          </div>
+      <section className="mypage-v076-section" id="institution-criteria">
+        <header>
+          <h2>사업 관리 기준</h2>
         </header>
-        {/* 주의: 사업마다 적용 규정이 '다릅니다'. 예전에는 「창업중심대학사업 운영관리기준」이
-            하드코딩되어 있어서, 다른 사업을 골라도 화면은 창업중심대학 기준을 보고 있는 것처럼
-            읽혔습니다. 2026-09-07 부터 `GET /api/programs` 가 실제 우선순위규칙을 주므로
-            (`lib/norms.ts`), 초격차·모두의창업처럼 상위 규정이 하나 더 있는 사업도
-            서버가 준 줄 수 그대로 갈립니다. */}
-        {규정목록.map((규정) => (
-          <article key={규정.제목}>
-            <span className="auto-badge">자동 반영</span>
-            <div>
-              <b>{규정.제목}</b>
-              <small>{규정.설명}</small>
-            </div>
-          </article>
-        ))}
-      </section>
-      <section className="card rule-library" id="institution-criteria">
-        <header className="card-head">
-          <div>
-            <h2>주관기관 세부 지침</h2>
-            <p>
-              주관기관에서 받은 세부 지침·운영 가이드 문서(PDF·HWP)를 올려 주세요.
-              금액 기준·승인 절차·제출 양식을 판정에 함께 적용합니다.
-            </p>
-          </div>
-          {/* 주의: 고르자마자 바꾸지 않습니다 — 이 문서는 판정 기준이라 한 번 묻습니다.
-              서버가 .doc·.docx 를 415 로 거부하므로 고를 수 있게 두지 않습니다. */}
-          <label className="outline small institution-file-replace">
-            <input
-              type="file"
-              accept=".pdf,.hwp,.hwpx"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                event.target.value = "";
-                if (!file) return;
-                if (file.size > 30 * 1024 * 1024) {
-                  notify("기준 문서는 30MB 이하만 등록할 수 있습니다.");
-                  return;
-                }
-                set교체확인(file);
-              }}
-            />
-            <Icon name="upload" size={14} />
-            파일 등록
-          </label>
-        </header>
-        <article>
-          {/* 스캔본을 OCR 로 읽은 문서는 금액·조번호 오인식 가능성을 배지로 먼저 알립니다(안내 문구는 아래 small). */}
-          {(방금등록 ? 방금등록.ocr : 기준문서.ocr) ? (
-            <span className="institution-badge warn">OCR 인식</span>
-          ) : (
-            <span className="institution-badge">사용자 등록</span>
-          )}
-          <div>
-            <b>{지금기준파일 ?? (기준문서.조회실패 ? "기준 문서를 불러오지 못했습니다" : "등록된 기준 문서가 없습니다")}</b>
-            {/* 주의: 2026-11-03 — 여기 「2026.03.02 등록」이 하드코딩되어 있어서 어떤 문서든
-                같은 날짜로 보였습니다. 서버 `등록일` 을 쓰고, 문서가 없으면 판정이 무엇을 쓰는지 밝힙니다. */}
-            <small>
-              {방금등록
-                ? 방금등록.안내 ?? "방금 등록했습니다"
-                : 기준문서.안내 ??
-                  (기준문서.파일명
-                    ? 기준문서.등록일
-                      ? `${기준문서.등록일.replace(/-/g, ".")} 등록`
-                      : "등록됨"
-                    : 기준문서.조회실패
-                      ? "새로고침해 주세요. 문서가 없다는 뜻은 아닙니다."
-                      : "기관 세부기준 없이 공통 관리 기준만으로 판정합니다")}
-            </small>
-          </div>
-        </article>
-        {/* 방금 올린 문서를 서버에서 다시 읽기 전에는 이전 문서의 연결을 보이지 않습니다 */}
-        {기준문서.연결문서 && (!방금등록 || 방금등록.파일명 === 기준문서.연결문서.원본파일명) && (() => {
-          const 연결 = 기준문서.연결문서;
-          const 셈 = 조문연결셈(연결);
-          const 작성중 = 연결.연결상태 === "추천작성중";
-          const 옛판 = 셈.옛판 > 0 ? ` 옛 판 지침과 같은 문구가 있는 조문이 ${셈.옛판}개 있어요. 지금 판 기준과 다를 수 있어요.` : "";
-          const [제목, 설명, 버튼] = 작성중
-            ? ["조문 연결 추천을 만들고 있어요", "조문마다 어느 비목에 해당하는지 추천해요. 확인하기 전에는 모든 조문을 함께 보고 판정합니다.", "지금 보기"]
-            : 셈.확인전 > 0
-              ? [
-                  `조문 연결을 확인해 주세요 (확인 전 ${셈.확인전}개 조)`,
-                  (연결.연결상태 === "추천실패" ? "자동 추천을 만들지 못했어요. 직접 골라 주세요. " : "") +
-                    "비목에 연결하면 판정할 때 그 비목의 조문을 먼저 봅니다. 확인 전에는 모든 조문을 함께 봅니다.",
-                  "연결 확인하기",
-                ]
-              : [`조문 연결을 확인했어요 (${셈.전체}개 조)`, "판정할 때 고른 비목의 조문을 먼저 봅니다.", "연결 고치기"];
-          return (
-            <article>
-              <span className={`institution-badge${셈.확인전 > 0 || 셈.옛판 > 0 ? " warn" : ""}`}>
-                {셈.확인전 > 0 ? "연결 확인 전" : "조문 연결"}
+        <div className="mypage-v076-card">
+          <정보줄 아이콘="doc" 이름="공통 관리 기준" 배지={<em className="mypage-v076-badge is-brand">자동 반영</em>} 위로>
+            {/* 주의: 사업마다 적용 규정이 '다릅니다'. `GET /api/programs` 가 준 우선순위규칙 줄 수 그대로 보입니다
+                (`lib/norms.ts`). 여러 개면 제목만 여러 줄, 설명은 아래 안내 상자 하나에 모읍니다(v076 결정). */}
+            <span className="mypage-v076-stack">
+              {규정목록.map((규정) => (
+                <span key={규정.제목} className="mypage-v076-doc-title">{규정.제목}</span>
+              ))}
+              <span className="mypage-v076-guide">
+                <b>공통 기준</b>
+                <ul>
+                  {공통안내.map((줄) => (
+                    <li key={줄}>{줄}</li>
+                  ))}
+                </ul>
               </span>
-              <div>
-                <b>{제목}</b>
-                <small>{설명}{옛판}</small>
-              </div>
-              <button className="outline small institution-review-button" onClick={() => set연결창(연결)}>
-                {버튼}
-              </button>
-            </article>
-          );
-        })()}
-        {기준문서.확인대기목록.map((문서) => (
-          <article key={문서.doc_id} className="institution-file-failed">
-            <span className="institution-badge warn">확인 필요</span>
-            <div>
-              <b>{문서.원본파일명}</b>
-              <small>{문서.검토이유 ?? "세부기준 문서가 맞는지 확인이 필요합니다."} 고르기 전까지 판정에 쓰지 않습니다.</small>
-              <button
-                className="outline small institution-review-button"
-                onClick={() =>
-                  set기준확인({
-                    doc_id: 문서.doc_id,
-                    파일명: 문서.원본파일명,
-                    조_건수: 문서.조_건수,
-                    이유: 문서.검토이유 ?? null,
-                    적용중: 지금기준파일 ?? null,
-                  })
-                }
-              >
-                확인하기
-              </button>
-            </div>
-          </article>
-        ))}
-        {/* 주의: 파싱에 실패한(fail) 문서는 '숨기지 않습니다' — 숨기면 사용자가 올린 파일이
-            왜 판정에 적용되지 않는지 알 수 없습니다(2026-09-07). */}
-        {기준문서.처리중목록.map((문서) => (
-          <article key={문서.doc_id}>
-            <span className="institution-badge">읽는 중</span>
-            <div>
-              <b>{문서.원본파일명}</b>
-              <small>
-                다 읽으면 이 문서로 판정합니다.{" "}
-                {지금기준파일 ? "그때까지는 위 문서를 씁니다." : "그때까지는 공통 관리 기준만으로 판정합니다."}
-              </small>
-            </div>
-          </article>
-        ))}
-        {기준문서.실패목록.map((문서) => (
-          <article key={문서.doc_id} className="institution-file-failed">
-            <span className="institution-badge warn">읽지 못함</span>
-            <div>
-              <b>{문서.원본파일명}</b>
-              <small>판정에 반영되지 않습니다 — 조·항을 읽지 못했습니다.</small>
-            </div>
-          </article>
-        ))}
+            </span>
+          </정보줄>
+          <정보줄
+            아이콘="folder"
+            이름="주관기관 세부 지침"
+            배지={
+              (방금등록 ? 방금등록.ocr : 기준문서.ocr) ? (
+                <em className="mypage-v076-badge is-warn">OCR 인식</em>
+              ) : (
+                <em className="mypage-v076-badge is-info">사용자 등록</em>
+              )
+            }
+            위로
+          >
+            <span className="mypage-v076-stack">
+              <span className="mypage-v076-actions">
+                <span className="mypage-v076-doc-title">
+                  {지금기준파일 ?? (기준문서.조회실패 ? "기준 문서를 불러오지 못했습니다" : "등록된 기준 문서가 없습니다")}
+                </span>
+                {/* 주의: 고르자마자 바꾸지 않습니다 — 이 문서는 판정 기준이라 한 번 묻습니다.
+                    서버가 .doc·.docx 를 415 로 거부하므로 고를 수 있게 두지 않습니다. */}
+                <label className="outline mypage-v076-m mypage-v076-file">
+                  <input
+                    type="file"
+                    accept=".pdf,.hwp,.hwpx"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      event.target.value = "";
+                      if (!file) return;
+                      if (file.size > 30 * 1024 * 1024) {
+                        notify("기준 문서는 30MB 이하만 등록할 수 있습니다.");
+                        return;
+                      }
+                      set교체확인(file);
+                    }}
+                  />
+                  파일 등록
+                </label>
+              </span>
+              {/* 서버 `등록일` · 방금 등록 안내 · 조회 실패 안내(문서가 없으면 아래 안내 상자가 설명합니다) */}
+              {(방금등록 || 기준문서.파일명 || 기준문서.조회실패 || 기준문서.안내) && (
+                <small>
+                  {방금등록
+                    ? 방금등록.안내 ?? "방금 등록했습니다"
+                    : 기준문서.안내 ??
+                      (기준문서.파일명
+                        ? 기준문서.등록일
+                          ? `${기준문서.등록일.replace(/-/g, ".")} 등록`
+                          : "등록됨"
+                        : "새로고침해 주세요. 문서가 없다는 뜻은 아닙니다.")}
+                </small>
+              )}
+              <span className="mypage-v076-guide">
+                <b>기관 지침</b>
+                <ul>
+                  <li>주관기관에서 받은 세부 지침·운영 가이드 문서(PDF·HWP)를 올려 주세요.</li>
+                  <li>금액 기준·승인 절차·제출 양식을 판정에 함께 적용합니다.</li>
+                  <li>등록된 문서가 없을 시, 공통 관리 기준만으로 판정됩니다.</li>
+                </ul>
+              </span>
+              {/* 방금 올린 문서를 서버에서 다시 읽기 전에는 이전 문서의 연결을 보이지 않습니다 */}
+              {기준문서.연결문서 && (!방금등록 || 방금등록.파일명 === 기준문서.연결문서.원본파일명) && (() => {
+                const 연결 = 기준문서.연결문서;
+                const 셈 = 조문연결셈(연결);
+                const 작성중 = 연결.연결상태 === "추천작성중";
+                const 옛판 = 셈.옛판 > 0 ? ` 옛 판 지침과 같은 문구가 있는 조문이 ${셈.옛판}개 있어요. 지금 판 기준과 다를 수 있어요.` : "";
+                const [제목, 설명, 버튼] = 작성중
+                  ? ["조문 연결 추천을 만들고 있어요", "조문마다 어느 비목에 해당하는지 추천해요. 확인하기 전에는 모든 조문을 함께 보고 판정합니다.", "지금 보기"]
+                  : 셈.확인전 > 0
+                    ? [
+                        `조문 연결을 확인해 주세요 (확인 전 ${셈.확인전}개 조)`,
+                        (연결.연결상태 === "추천실패" ? "자동 추천을 만들지 못했어요. 직접 골라 주세요. " : "") +
+                          "비목에 연결하면 판정할 때 그 비목의 조문을 먼저 봅니다. 확인 전에는 모든 조문을 함께 봅니다.",
+                        "연결 확인하기",
+                      ]
+                    : [`조문 연결을 확인했어요 (${셈.전체}개 조)`, "판정할 때 고른 비목의 조문을 먼저 봅니다.", "연결 고치기"];
+                return (
+                  <문서상태줄
+                    배지={셈.확인전 > 0 ? "연결 확인 전" : "조문 연결"}
+                    색={셈.확인전 > 0 || 셈.옛판 > 0 ? "warn" : "brand"}
+                    제목={제목}
+                    설명={설명 + 옛판}
+                    버튼={<button className="outline mypage-v076-m" onClick={() => set연결창(연결)}>{버튼}</button>}
+                  />
+                );
+              })()}
+              {기준문서.확인대기목록.map((문서) => (
+                <문서상태줄
+                  key={문서.doc_id}
+                  배지="확인 필요"
+                  색="warn"
+                  제목={문서.원본파일명}
+                  설명={`${문서.검토이유 ?? "세부기준 문서가 맞는지 확인이 필요합니다."} 고르기 전까지 판정에 쓰지 않습니다.`}
+                  버튼={
+                    <button
+                      className="outline mypage-v076-m"
+                      onClick={() =>
+                        set기준확인({
+                          doc_id: 문서.doc_id,
+                          파일명: 문서.원본파일명,
+                          조_건수: 문서.조_건수,
+                          이유: 문서.검토이유 ?? null,
+                          적용중: 지금기준파일 ?? null,
+                        })
+                      }
+                    >
+                      확인하기
+                    </button>
+                  }
+                />
+              ))}
+              {기준문서.처리중목록.map((문서) => (
+                <문서상태줄
+                  key={문서.doc_id}
+                  배지="읽는 중"
+                  색="info"
+                  제목={문서.원본파일명}
+                  설명={`다 읽으면 이 문서로 판정합니다. ${지금기준파일 ? "그때까지는 위 문서를 씁니다." : "그때까지는 공통 관리 기준만으로 판정합니다."}`}
+                />
+              ))}
+              {/* 주의: 파싱에 실패한(fail) 문서는 '숨기지 않습니다' — 숨기면 사용자가 올린 파일이
+                  왜 판정에 적용되지 않는지 알 수 없습니다(2026-09-07). */}
+              {기준문서.실패목록.map((문서) => (
+                <문서상태줄 key={문서.doc_id} 배지="읽지 못함" 색="risk" 제목={문서.원본파일명} 설명="판정에 반영되지 않습니다 — 조·항을 읽지 못했습니다." />
+              ))}
+            </span>
+          </정보줄>
+        </div>
       </section>
-      <div className="rule-caution">
-        <Icon name="alert" />
+      <aside className="mypage-v076-caution">
+        <b>안내</b>
         <p>
-          <b>안내</b> AI 점검 결과는 입력한 정보와 연결된 규정에 기반한 사전
-          참고자료입니다. 최종 집행 가능 여부와 기관의 승인 절차는 담당기관의
-          최신 안내를 확인해야 합니다.
+          AI 점검 결과는 입력한 정보와 연결된 규정에 기반한 사전 참고자료입니다. 최종 집행 가능 여부와 기관의 승인
+          절차는 담당기관의 최신 안내를 확인해야 합니다.
         </p>
-      </div>
+      </aside>
       {교체확인 && (
         <div className="modal-backdrop">
           <section className="modal narrow file-replace-modal" role="dialog" aria-modal="true" aria-labelledby="file-replace-title">
@@ -10928,162 +11053,67 @@ function MyPage({
           }}
         />
       )}
-      {editingProfile && (
-        <div className="modal-backdrop">
-          <section className="modal my-profile-edit-modal" role="dialog" aria-modal="true" aria-labelledby="profile-edit-title">
-            <header>
-              <div>
-                <h2 id="profile-edit-title">내 정보 수정</h2>
-                <p>
-                  {협약출처 === "실패"
-                    ? "이메일·참여 사업·주관기관은 확인만 가능합니다. 협약 정보를 불러오지 못해 지금은 팀 이름만 수정할 수 있습니다."
-                    : 협약출처 === "조회중"
-                      ? "이메일·참여 사업·주관기관은 확인만 가능합니다. 협약 정보를 불러온 뒤에 수정할 수 있습니다."
-                      : "이메일·참여 사업·주관기관은 확인만 가능합니다. 팀 이름과 협약 정보를 수정할 수 있습니다."}
-                </p>
-              </div>
-              <button onClick={() => setEditingProfile(false)}>×</button>
-            </header>
-            <div className="my-profile-edit-grid">
-              <label>
-                <span>이메일 <small className="profile-fixed-label">수정 불가</small></span>
-                <input value={로그인이메일} readOnly aria-readonly="true" />
-              </label>
-              <label>
-                <span>팀 이름</span>
-                <input value={profileDraft.team} onChange={(event) => setProfileDraft((value) => ({ ...value, team: event.target.value }))} />
-              </label>
-              {/* 주의: 참여 사업과 주관기관은 온보딩에서 정하고, 정해진 순간부터
-                  비목 조회·규정 검색·판정이 그 값을 씁니다. 여기서 바꾸면 이미
-                  내려둔 판정과 근거가 어긋나므로 확인만 하도록 잠급니다. */}
-              <label>
-                <span>참여 사업 <small className="profile-fixed-label">수정 불가</small></span>
-                <input value={profileDraft.program} readOnly aria-readonly="true" />
-              </label>
-              <label>
-                <span>주관기관 <small className="profile-fixed-label">수정 불가</small></span>
-                <input value={profileDraft.host} readOnly aria-readonly="true" />
-              </label>
-              <label>
-                <span>사업 중복 수혜 여부</span>
-                <select value={profileDraft.duplicateBenefit} onChange={(event) => setProfileDraft((value) => ({ ...value, duplicateBenefit: event.target.value }))}>
-                  <option value="O">O</option>
-                  <option value="X">X</option>
-                </select>
-              </label>
-              {/* 주의: 아래 5칸이 서버 기업 프로필의 `협약` 입니다. AI 점검이 「협약기간 밖 지출」·
-                  「사업비 초과」·「현물 비율 한도」를 판단할 때 전제로 씁니다. */}
-              <label>
-                <span>협약 시작일</span>
-                <input type="date" disabled={협약잠김} value={협약초안.시작일} onChange={(event) => set협약초안((v) => ({ ...v, 시작일: event.target.value }))} />
-              </label>
-              <label>
-                <span>협약 종료일</span>
-                <input type="date" disabled={협약잠김} value={협약초안.종료일} onChange={(event) => set협약초안((v) => ({ ...v, 종료일: event.target.value }))} />
-              </label>
-              <label>
-                <span>정부지원금 (원)</span>
-                <input inputMode="numeric" disabled={협약잠김} value={협약초안.정부지원.toLocaleString("ko-KR")} onChange={(event) => set협약초안((v) => ({ ...v, 정부지원: Number(event.target.value.replace(/[^0-9]/g, "")) || 0 }))} />
-              </label>
-              <label>
-                <span>자기부담금 현금 (원)</span>
-                <input inputMode="numeric" disabled={협약잠김} value={협약초안.자기부담.toLocaleString("ko-KR")} onChange={(event) => set협약초안((v) => ({ ...v, 자기부담: Number(event.target.value.replace(/[^0-9]/g, "")) || 0 }))} />
-              </label>
-              {/* 주의: 현물은 비워 두면 「모름」, 0 이면 「현물 없음」입니다. 서버가 「현물은 총사업비의 20% 이하」
-                  같은 비율 한도를 이 값으로 계산하므로 빈 칸을 0 으로 바꾸지 않습니다. */}
-              <label>
-                <span>자기부담금 현물 (원) <small className="profile-fixed-label">없으면 0</small></span>
-                <input
-                  inputMode="numeric"
-                  placeholder="모르면 비워 두세요"
-                  disabled={협약잠김}
-                  value={협약초안.자기부담현물 == null ? "" : 협약초안.자기부담현물.toLocaleString("ko-KR")}
-                  onChange={(event) => {
-                    const 숫자만 = event.target.value.replace(/[^0-9]/g, "");
-                    set협약초안((v) => ({ ...v, 자기부담현물: 숫자만 ? Number(숫자만) : null }));
-                  }}
-                />
-              </label>
-            </div>
-            {협약출처 === "서버" && <협약경고알림 줄들={협약경고} 모달 />}
-            <footer>
-              <button className="outline" onClick={() => setEditingProfile(false)}>취소</button>
-              <button className="primary" disabled={!profileDraft.host.trim() || 협약저장중} onClick={() => {
-                // 주의: 협약을 '안 고쳤으면' 서버에 보내지 않습니다. 비교 기준은 수정 창을 연 때의 값입니다
-                //    (예시를 보여 주던 계정은 빈 값). 이 브라우저에만 있는 값은 안 고쳐도 보냅니다 —
-                //    안 보내면 화면에는 보이는데 판정에는 쓰이지 않는 상태가 계속됩니다.
-                const 기준 = 협약출처 === "서버" || 협약출처 === "이 브라우저" ? 협약 : 빈협약;
-                const 보낼값있음 =
-                  !협약잠김 &&
-                  (JSON.stringify(협약초안) !== JSON.stringify(기준) || 협약출처 === "이 브라우저");
-                // 주의: 일부만 넣으면 나머지가 0·빈 값으로 저장되어 판정의 전제가 됩니다.
-                //    다른 값을 바꾸기 전에 막습니다. 뒤에서 막으면 취소를 눌러도 팀 이름이 바뀌어 있습니다.
-                if (보낼값있음 && (!협약초안.시작일 || !협약초안.종료일 || !협약초안.정부지원)) {
-                  notify("협약 시작일·종료일·정부지원금을 모두 입력해 주세요.");
-                  return;
-                }
-                if (보낼값있음 && 협약초안.시작일 > 협약초안.종료일) {
-                  notify("협약 시작일이 종료일보다 늦습니다.");
-                  return;
-                }
-                // 화면은 먼저 바꿉니다 — 서버가 못 받아도 시연이 끊기면 안 됩니다.
-                setProfile(profileDraft);
-                // 주의: 팀 이름은 Supabase 계정에 붙여야 다음 로그인에도 남습니다.
-                //    실패해도 '막지 않습니다' — 화면 표기일 뿐입니다.
-                //    쓰기가 끝난 '뒤' 다시 읽습니다. 안 그러면 아래 effect 가
-                //    옛 값으로 방금 저장한 이름을 덮습니다.
-                팀이름기억(profileDraft.team.trim());
-                supabase팀이름쓰기(profileDraft.team)
-                  .catch(() => false)
-                  .finally(() => set팀갱신((n) => n + 1));
-                사업저장(profileDraft.program);
-                if (!보낼값있음) {
-                  setEditingProfile(false);
-                  notify(협약출처 === "실패"
-                    ? "내 정보를 저장했습니다. 협약 정보는 불러오지 못해 저장하지 않았습니다."
-                    : "내 정보를 저장했습니다.");
-                  return;
-                }
-                const 이전협약 = 협약;
-                set협약(협약초안);
-                set협약저장중(true);
-                협약쓰기(협약초안)
-                  .then(({ 결과, 사유, 경고 }) => {
-                    // 주의: 서버가 받으면 서버 값이 기준이므로 로컬 값을 지웁니다. 게스트·mock 은 서버에
-                    //    안 남아서 이 브라우저에 기억합니다. 서버가 거부하면(422 등) 기억하지 않고 화면도
-                    //    되돌립니다 — 거부된 값이 화면에 남으면 판정이 쓰는 값과 어긋납니다.
-                    if (결과 === "저장됨") {
-                      협약잊기();
-                      set협약출처("서버");
-                      set협약경고(경고);
-                    } else if (결과 === "실패") set협약(이전협약);
-                    else {
-                      협약기억(협약초안);
-                      set협약출처("이 브라우저");
-                    }
-                    if (결과 !== "실패") {
-                      setEditingProfile(false);
-                      window.dispatchEvent(new Event(협약저장알림));
-                    }
-                    notify(
-                      결과 === "저장됨"
-                        ? "내 정보를 저장했습니다. 다음 점검부터 반영됩니다."
-                        : 결과 === "서버가안받음"
-                          ? "내 정보를 수정했습니다. (현재 mock 서버라 서버에는 저장되지 않습니다)"
-                          : 결과 === "로그인필요"
-                            ? "이 브라우저에만 저장했습니다. 로그인하면 서버에 저장되어 점검에 반영됩니다."
-                            : 사유
-                              ? `서버에 저장하지 못했습니다. ${사유}`
-                              : "내 정보를 수정했지만 서버 저장에 실패했습니다.",
-                    );
-                  })
-                  .finally(() => set협약저장중(false));
-              }}>{협약저장중 ? "저장하는 중…" : "저장"}</button>
-            </footer>
-          </section>
-        </div>
-      )}
     </div>
+  );
+}
+
+/** v076: 마이페이지 한 줄 — 왼쪽 아이콘 · 항목명(· 배지), 오른쪽 값. `잠김` 이면 「수정 불가」 를 붙입니다. */
+function 정보줄({
+  아이콘,
+  이름,
+  배지,
+  좁게,
+  위로,
+  잠김,
+  children,
+}: {
+  아이콘: string;
+  이름: string;
+  배지?: React.ReactNode;
+  좁게?: boolean;
+  위로?: boolean;
+  잠김?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`mypage-v076-row${좁게 ? " is-narrow" : ""}${위로 ? " is-top" : ""}`}>
+      <div className="mypage-v076-label">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={`/icons/mypage/${아이콘}.svg`} width={16} height={20} alt="" />
+        <span>{이름}</span>
+        {배지}
+      </div>
+      <div className={`mypage-v076-value${잠김 ? " is-locked" : ""}`}>
+        {children}
+        {잠김 && <em className="mypage-v076-badge is-muted">수정 불가</em>}
+      </div>
+    </div>
+  );
+}
+
+/** v076: 기관 세부 지침 문서의 상태 한 줄(읽는 중 · 확인 필요 · 조문 연결 · 읽지 못함). */
+function 문서상태줄({
+  배지,
+  색,
+  제목,
+  설명,
+  버튼,
+}: {
+  배지: string;
+  색: "brand" | "info" | "warn" | "risk";
+  제목: string;
+  설명: string;
+  버튼?: React.ReactNode;
+}) {
+  return (
+    <span className="mypage-v076-doc-item">
+      <em className={`mypage-v076-badge is-${색}`}>{배지}</em>
+      <span className="mypage-v076-stack">
+        <b>{제목}</b>
+        <small>{설명}</small>
+      </span>
+      {버튼}
+    </span>
   );
 }
 
