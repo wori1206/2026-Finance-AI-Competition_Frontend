@@ -2620,7 +2620,6 @@ function Login({
   };
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
-  const 비밀번호칸 = useRef<HTMLInputElement>(null);
   /**
    * 회원가입. 가입을 마치면 온보딩 1단계로 이어지고, 입력한 이메일·팀 이름은 이 탭이
    *    기억해 사이드바·마이페이지에 그대로 보입니다.
@@ -3111,7 +3110,6 @@ function Login({
                 <label>
                   <span>비밀번호</span>
                   <input
-                    ref={비밀번호칸}
                     type="password"
                     value={loginPassword}
                     onChange={(event) => setLoginPassword(event.target.value)}
@@ -3163,20 +3161,6 @@ function Login({
                   회원가입
                 </button>
               </p>
-              {/* 주의: 비밀번호는 코드에 넣지 않습니다. 시연 때 직접 입력합니다. */}
-              <button
-                type="button"
-                className="outline login-v076-demo"
-                onClick={() => {
-                  setLoginEmail(시연이메일);
-                  setLoginPassword("");
-                  set로그인오류(null);
-                  비밀번호칸.current?.focus();
-                }}
-              >
-                시연용 계정으로 접근하기
-                <span aria-hidden="true">→</span>
-              </button>
             </form>
           </section>
           <aside className="login-v076-brand">
