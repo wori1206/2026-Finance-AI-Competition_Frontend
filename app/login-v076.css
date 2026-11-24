@@ -38,8 +38,6 @@
 .login-v076-error{color:var(--red);font-size:13px;line-height:20px;text-align:center}
 .login-v076-form>.login-success{color:var(--brand);font-size:13px;font-weight:500;line-height:20px;text-align:center}
 .login-v076-signup{display:flex;align-items:center;justify-content:center;gap:var(--space-2);margin:0;color:var(--sub);font-size:13px;line-height:20px}
-/* 시연용 계정: L 단계 보조 버튼 */
-.login-v076-form>.login-v076-demo{width:100%;height:40px!important;min-height:40px!important;display:inline-flex;align-items:center;justify-content:center;gap:var(--space-2);padding:0 var(--space-4)!important;border:1px solid var(--control)!important;border-radius:var(--radius-control)!important;background:#fff!important;color:var(--text)!important;font-size:14px!important;font-weight:500;line-height:20px}
 
 /* 오른쪽: 브랜드 패널 */
 .login-v076-brand{position:relative;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:var(--space-5);overflow:hidden;padding:var(--space-7);border-radius:var(--radius-hero);background:var(--surface-brand-gradient)}
